@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Awaitable, Callable
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
@@ -35,6 +36,55 @@ def _relative_output(source: Path, job_id: str, settings: Settings) -> Path:
     if not relative.parts or not source.is_file():
         raise DeliveryError("Output is not a regular file")
     return relative
+
+
+
+def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
+    """Read getcontentlength only for the requested resource's 200 propstat.
+
+    RFC 4918 returns property-level statuses inside 207 Multi-Status. A 207
+    alone does not establish that the uploaded resource exists or that its
+    getcontentlength property was retrieved successfully.
+    """
+    if len(payload) > 1_000_000:
+        return None
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return None
+    ns = "{DAV:}"
+    if root.tag != ns + "multistatus":
+        return None
+    expected = urlsplit(target_url)
+    sizes: list[int] = []
+    for response in root.findall(ns + "response"):
+        href = response.findtext(ns + "href")
+        if not href:
+            continue
+        found = urlsplit(urljoin(target_url, href.strip()))
+        if (
+            found.scheme != expected.scheme
+            or found.netloc != expected.netloc
+            or unquote(found.path) != unquote(expected.path)
+            or found.query
+            or found.fragment
+        ):
+            continue
+        for propstat in response.findall(ns + "propstat"):
+            status = (propstat.findtext(ns + "status") or "").strip()
+            if re.match(r"^HTTP/\\d+(?:\\.\\d+)?\\s+200(?:\\s|$)", status) is None:
+                continue
+            prop = propstat.find(ns + "prop")
+            length = prop.findtext(ns + "getcontentlength") if prop is not None else None
+            if length is None:
+                continue
+            try:
+                size = int(length)
+            except ValueError:
+                continue
+            if size >= 0:
+                sizes.append(size)
+    return sizes[0] if len(sizes) == 1 else None
 
 
 def _fernet(settings: Settings) -> Fernet:
@@ -219,15 +269,7 @@ async def deliver_files(
             )
             if verify.status_code != 207:
                 raise DeliveryError(f"WebDAV verification failed for {source.name} ({verify.status_code})")
-            remote_size = None
-            try:
-                root = ET.fromstring(verify.content)
-                for element in root.iter():
-                    if element.tag.endswith("getcontentlength") and element.text:
-                        remote_size = int(element.text)
-                        break
-            except (ET.ParseError, ValueError):
-                remote_size = None
+            remote_size = _webdav_uploaded_size(verify.content, target)
             expected_size = source.stat().st_size
             if remote_size != expected_size:
                 raise DeliveryError(f"WebDAV size verification failed for {source.name}: expected {expected_size}, got {remote_size}")
