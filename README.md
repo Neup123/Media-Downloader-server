@@ -85,7 +85,7 @@ The live CI acceptance workflow uses the production downloader Compose service p
 
 ## Verification
 
-The standard GitHub Actions workflow checks Python compilation, API/adapter/unit tests, OpenAPI YAML validation (15 documented paths), and a Docker image build that includes the TypeScript/Vite production bundle. The latest completed backend test run reported 31 passing tests; the UI change is under a fresh CI run.
+The latest standard GitHub Actions workflow passed on the current PR head: Python compilation, **31 tests**, OpenAPI YAML validation (15 documented paths), and the full Docker image build including the TypeScript/Vite production bundle.
 
 The live Nextcloud E2E workflow has passed for all three P0 engines (yt-dlp, aria2c, and gallery-dl) using the production Compose downloader service. Each file was fetched back from disposable Nextcloud and matched against the original fixture by size and SHA-256. The temporary containers and volumes were removed after the run.
 
