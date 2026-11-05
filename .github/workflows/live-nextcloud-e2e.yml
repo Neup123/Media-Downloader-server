@@ -70,7 +70,7 @@ jobs:
           PY
 
       - name: Start disposable Nextcloud and Downloader Server containers
-        run: docker compose --env-file .env.e2e -f compose.integration.yaml up -d --build
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml up -d --build
 
       - name: Verify real yt-dlp and aria2 delivery to Nextcloud
         run: python tests/e2e_live_webdav.py
@@ -83,10 +83,10 @@ jobs:
 
       - name: Collect container logs on failure
         if: failure()
-        run: docker compose --env-file .env.e2e -f compose.integration.yaml logs --no-color
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml logs --no-color
 
       - name: Stop containers and delete temporary volumes
         if: always()
         run: |
-          docker compose --env-file .env.e2e -f compose.integration.yaml down --volumes --remove-orphans || true
+          docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
           rm -f .env.e2e
