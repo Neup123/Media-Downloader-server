@@ -11,20 +11,12 @@ on:
       - "requirements.txt"
       - "app/**"
       - "tests/e2e_live_webdav.py"
-  pull_request:
-    paths:
-      - ".github/workflows/live-nextcloud-e2e.yml"
-      - "compose.integration.yaml"
-      - "Dockerfile"
-      - "requirements.txt"
-      - "app/**"
-      - "tests/e2e_live_webdav.py"
 
 permissions:
   contents: read
 
 concurrency:
-  group: nextcloud-webdav-e2e
+  group: nextcloud-webdav-e2e-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
