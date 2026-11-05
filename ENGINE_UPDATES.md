@@ -11,12 +11,12 @@ download engines. It never runs in the downloader service at runtime.
 | yt-dlp | yt-dlp | Candidate PR + automated gate |
 | gallery-dl | gallery-dl | Candidate PR + automated gate |
 | you-get | you-get | Candidate PR + automated gate |
-| svtplay-dl (once bundled) | svtplay-dl | Candidate PR + automated gate |
+| svtplay-dl | svtplay-dl | Candidate PR is blocked until a real site-specific E2E smoke is added |
 | aria2c | Debian system package | Not yet automated; separate update track |
 | generic / curl | Debian system package | Not yet automated; separate update track |
+| get-sauce | Pinned Go source tag | Bundled; Go update and checksum-validation track not yet automated |
 
-`get-sauce` is not bundled yet; its version source will require a separate
-Go release build and checksum-verification track.
+`get-sauce` is bundled through a pinned Go source tag in the multi-stage Docker build. Automated discovery and checksum verification of new Go releases remain a separate unfinished update track.
 
 The detector ignores prerelease and yanked releases and requires an upstream
 artifact SHA-256 digest. Python dependency versions are updated as exact
