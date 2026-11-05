@@ -90,3 +90,35 @@ def test_delivery_rejects_a_file_outside_the_job_workspace(settings):
     with pytest.raises(DeliveryError, match="outside its job directory"):
         asyncio.run(deliver_files([outside], "gallery-job", sessions, settings))
     engine.dispose()
+
+
+@pytest.mark.parametrize("folder", ["../private", "Downloads/../../private", "./Downloads", "Downloads/./nested"])
+def test_webdav_delivery_rejects_dot_segment_folder(settings, folder):
+    engine = make_engine(settings.database_url)
+    initialize_database(engine)
+    sessions = make_session_factory(engine)
+    encrypted = Fernet(settings.encryption_key.encode("ascii")).encrypt(b"test-secret").decode("ascii")
+    with sessions() as session:
+        session.add(DeliverySetting(
+            id=1,
+            mode="webdav",
+            webdav_url="https://cloud.example.test/remote.php/dav/files/u",
+            username="u",
+            password_encrypted=encrypted,
+            folder=folder,
+        ))
+        session.commit()
+    source = _two_album_files(settings, "gallery-job")[0]
+    requests = []
+
+    def handler(request: httpx.Request):
+        requests.append(str(request.url))
+        return httpx.Response(201)
+
+    with pytest.raises(DeliveryError, match="dot segments"):
+        asyncio.run(deliver_files(
+            [source], "gallery-job", sessions, settings,
+            transport=httpx.MockTransport(handler),
+        ))
+    assert requests == []
+    engine.dispose()
