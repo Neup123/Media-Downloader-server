@@ -459,7 +459,7 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                 result[key] = validate_extra_args(value)
             elif key == "playlist_items":
                 if not isinstance(value, str) or len(value) > 512 or (
-                    value and not re.fullmatch(r"[1-9]\\d{0,3}(?:-[1-9]\\d{0,3})?(?:,[1-9]\\d{0,3}(?:-[1-9]\\d{0,3})?)*", value)
+                    value and not re.fullmatch(r"[1-9]\d{0,3}(?:-[1-9]\d{0,3})?(?:,[1-9]\d{0,3}(?:-[1-9]\d{0,3})?)*", value)
                 ):
                     raise ValueError("playlist_items must be comma-separated indices or index ranges")
                 result[key] = value
