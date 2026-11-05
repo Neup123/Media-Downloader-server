@@ -84,6 +84,10 @@ def _effective_settings(global_settings: dict[str, Any], overrides: dict[str, An
             raise ValueError(f"gallery-dl option {key} must have a scalar value")
         if len(str(value)) > 2048 or "\x00" in str(value):
             raise ValueError(f"gallery-dl option value is too long or invalid: {key}")
+        if key.rsplit(".", 1)[-1] in {"filename", "directory"} and any(
+            marker in str(value) for marker in ("..", "/", "\\")
+        ):
+            raise ValueError("gallery-dl output templates cannot escape the service working directory")
 
     for field in ("cookies_file", "proxy"):
         value = result.get(field, "")

@@ -20,6 +20,32 @@ type MediaPreview = {
 };
 type AriaSettings = { options: Record<string, string> };
 type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
+type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
+type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
+
+function CommonOptionFields({ fields, values, onChange }: {
+  fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
+}) {
+  const groups = Array.from(new Set(fields.map(field => field.category)));
+  return <div className="common-options">
+    {groups.map(category => <div className="option-category" key={category}>
+      <div className="field-title">{category}</div>
+      {fields.filter(field => field.category === category).map(field => <label key={field.key} title={field.description ?? ''}>
+        {field.label}
+        {field.type === 'boolean'
+          ? <select value={values[field.key] ?? ''} onChange={event => onChange(field.key, event.target.value)}>
+              <option value="">Engine default</option><option value="true">Enabled</option><option value="false">Disabled</option>
+            </select>
+          : <input type={field.type === 'integer' ? 'number' : 'text'}
+              min={field.minimum} max={field.maximum}
+              value={values[field.key] ?? ''}
+              placeholder="Use engine default"
+              onChange={event => onChange(field.key, event.target.value)} />}
+        {field.description && <span className="muted option-help">{field.description}</span>}
+      </label>)}
+    </div>)}
+  </div>;
+}
 
 const API = '/api/v1';
 const ytDefaults: YtSettings = {
@@ -78,6 +104,8 @@ export default function App() {
   const [ariaOverride, setAriaOverride] = useState<AriaSettings>(ariaDefaults);
   const [gallery, setGallery] = useState<GallerySettings>(galleryDefaults);
   const [galleryOverride, setGalleryOverride] = useState<GallerySettings>(galleryDefaults);
+  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [] });
+  const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
   const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
   const [cookies, setCookies] = useState<{ filename: string; size_bytes: number }[]>([]);
@@ -138,6 +166,12 @@ export default function App() {
       setGalleryOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
+    void request(API + '/engines').then(setEngineStatus).catch(error => setMessage(String(error)));
+    for (const name of ['yt-dlp', 'aria2c', 'gallery-dl'] as Engine[]) {
+      void request(API + '/engines/' + name + '/options').then(data =>
+        setOptionCatalog(current => ({ ...current, [name]: data.fields }))
+      ).catch(error => setMessage(String(error)));
+    }
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
     void request(API + '/presets').then(setPresets).catch(error => setMessage(String(error)));
     void request(API + '/engine-rules').then(setEngineRules).catch(error => setMessage(String(error)));
@@ -243,6 +277,41 @@ export default function App() {
     setYtOverride(value => ({
       ...value, allow_playlist: true, playlist_items: next.join(','),
     }));
+  }
+
+  function updateAriaOption(key: string, value: string, global: boolean) {
+    const edit = (current: AriaSettings) => {
+      const options = { ...current.options };
+      if (value === '') delete options[key];
+      else options[key] = value;
+      return { options };
+    };
+    if (global) setAria(edit); else setAriaOverride(edit);
+  }
+
+  function updateGalleryOption(key: string, value: string, global: boolean) {
+    const setter = global ? setGalleryOptionsText : setGalleryOverrideOptionsText;
+    setter(previous => {
+      try {
+        const options = { ...parseOptionsJson(previous) };
+        if (value === '') delete options[key];
+        else options[key] = value;
+        return JSON.stringify(options, null, 2);
+      } catch {
+        setMessage('Fix the JSON in the advanced editor before changing graphical options.');
+        return previous;
+      }
+    });
+  }
+
+  function catalogValues(source: string): Record<string, string> {
+    try { return parseOptionsJson(source); }
+    catch { return {}; }
+  }
+
+  function engineVersion(name: Engine) {
+    const status = engineStatus.find(item => item.name === name);
+    return status?.installed ? 'Installed · ' + (status.version || 'version unavailable') : 'Executable not detected';
   }
 
   async function submit(event: React.FormEvent) {
@@ -484,10 +553,11 @@ export default function App() {
             </div>
           </div> : engine === 'aria2c' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
-            {['max-connection-per-server', 'split'].map(option => <label key={option}>{option}<input type="number" min="1" max="16" value={ariaOverride.options[option] ?? '4'} onChange={event => setAriaOverride(value => ({ ...value, options: { ...value.options, [option]: event.target.value } }))} /></label>)}
+            <CommonOptionFields fields={optionCatalog.aria2c} values={ariaOverride.options} onChange={(key, value) => updateAriaOption(key, value, false)} />
           </div> : engine === 'gallery-dl' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
-            <label>Extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label>
+            <CommonOptionFields fields={optionCatalog['gallery-dl']} values={catalogValues(galleryOverrideOptionsText)} onChange={(key, value) => updateGalleryOption(key, value, false)} />
+            <label>Advanced extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label>
             <label>Cookie file<select value={galleryOverride.cookies_file ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, cookies_file: event.target.value }))}>
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
@@ -537,7 +607,7 @@ export default function App() {
 
     {tab === 'engines' && <div className="settings-layout">
       <section className="panel">
-        <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">Global defaults apply to new jobs; per-download options take precedence.</p>
+        <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
         <label>Format selector<input value={yt.format} onChange={event => setYt(value => ({ ...value, format: event.target.value }))} /></label>
         <label>Subtitle languages<input value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
         <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div>
@@ -554,15 +624,16 @@ export default function App() {
         <button className="primary" onClick={() => void saveEngine('yt-dlp')}>Save yt-dlp defaults</button>
       </section>
       <section className="panel">
-        <div className="eyebrow">ENGINE DEFAULTS</div><h2>aria2c</h2><p className="muted">These values map to aria2 options. RPC access and output paths are service-managed.</p>
-        {Object.entries(aria.options).map(([key, value]) => <label key={key}>{key}<input value={value} onChange={event => setAria(current => ({ ...current, options: { ...current.options, [key]: event.target.value } }))} /></label>)}
+        <div className="eyebrow">ENGINE DEFAULTS</div><h2>aria2c</h2><p className="muted">{engineVersion('aria2c')}. These settings map to aria2 options; RPC access and output paths remain service-managed.</p>
+        <CommonOptionFields fields={optionCatalog.aria2c} values={aria.options} onChange={(key, value) => updateAriaOption(key, value, true)} />
         <button className="secondary" onClick={() => setAria(ariaDefaults)}>Reset shown defaults</button>
         <button className="primary" onClick={() => void saveEngine('aria2c')}>Save aria2c defaults</button>
       </section>
       <section className="panel">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>gallery-dl</h2>
-        <p className="muted">Configure extractor options as a JSON object. The service controls the destination folder and terminal progress format.</p>
-        <label>Extractor options (JSON object)<textarea rows={8} value={galleryOptionsText} onChange={event => setGalleryOptionsText(event.target.value)} /></label>
+        <p className="muted">{engineVersion('gallery-dl')}. Common extractor options are graphical; site-specific options remain available in the advanced JSON editor. The service controls the output root.</p>
+        <CommonOptionFields fields={optionCatalog['gallery-dl']} values={catalogValues(galleryOptionsText)} onChange={(key, value) => updateGalleryOption(key, value, true)} />
+        <label>Advanced extractor options (JSON object)<textarea rows={8} value={galleryOptionsText} onChange={event => setGalleryOptionsText(event.target.value)} /></label>
         <label>Default cookie file<select value={gallery.cookies_file ?? ''} onChange={event => setGallery(value => ({ ...value, cookies_file: event.target.value }))}>
           <option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
         </select></label>
