@@ -106,3 +106,28 @@ def test_redelivery_rejects_jobs_not_in_completed_state(client, auth_headers, se
     assert "Only completed jobs" in response.text
     missing = client.post("/api/v1/jobs/no-such-job/redeliver", headers=auth_headers)
     assert missing.status_code == 404
+
+
+def test_redelivery_rejects_same_size_corruption_with_original_mtime(client, auth_headers, settings):
+    import os
+
+    sessions, job_id = _completed_job(client, settings)
+    workdir = settings.data_dir / "jobs" / job_id
+    workdir.mkdir(parents=True)
+    source = workdir / "video.mp4"
+    source.write_bytes(b"fresh-data")
+    save_completed_files(workdir, [source])
+    stat = source.stat()
+    source.write_bytes(b"bad-data!!")
+    assert source.stat().st_size == stat.st_size
+    os.utime(source, ns=(stat.st_atime_ns, stat.st_mtime_ns))
+    assert source.stat().st_mtime_ns == stat.st_mtime_ns
+
+    response = client.post(f"/api/v1/jobs/{job_id}/redeliver", headers=auth_headers)
+    assert response.status_code == 409
+    assert "no longer verified" in response.text
+    with sessions() as session:
+        unchanged = session.get(Job, job_id)
+        assert unchanged.status == "completed"
+        assert unchanged.output_files[0]["path"] == "https://old.example/files/old.bin"
+        assert unchanged.output_files[0]["verified"] is True
