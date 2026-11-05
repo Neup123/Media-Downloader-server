@@ -48,9 +48,9 @@ jobs:
           token = secrets.token_urlsafe(48)
           print("::add-mask::" + token)
           with open(".env.standalone", "w", encoding="utf-8") as output:
-              output.write("APP_API_TOKEN=" + token + "\\n")
+              output.write("APP_API_TOKEN=" + token + "\n")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
-              output.write("APP_API_TOKEN=" + token + "\\n")
+              output.write("APP_API_TOKEN=" + token + "\n")
           PY
 
       - name: Start clean production Compose without Nextcloud
