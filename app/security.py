@@ -10,16 +10,63 @@ class UnsafeUrlError(ValueError):
     pass
 
 
+def _validated_urlsplit(url: str):
+    """Reject URL spellings that different HTTP clients might reinterpret.
+
+    urllib.urlsplit strips embedded tab/newline characters; a downloader may
+    interpret them differently. Backslashes and percent-encoded hostnames
+    likewise create parser inconsistencies. Validate before normalization.
+    """
+    if any(ord(char) < 32 or ord(char) == 127 or ord(char) == 92 for char in url):
+        raise UnsafeUrlError("URL must not contain control characters or backslashes")
+    try:
+        parsed = urlsplit(url.strip())
+        port = parsed.port
+    except ValueError as exc:
+        raise UnsafeUrlError("Invalid URL host, IPv6 brackets, or port") from exc
+    if port == 0 or parsed.netloc.endswith(":"):
+        raise UnsafeUrlError("URL contains an invalid or empty port")
+    if parsed.hostname and "%" in parsed.hostname:
+        raise UnsafeUrlError("Percent-encoded hostnames are not supported")
+    return parsed
+
+
+def _canonical_host(hostname: str) -> str:
+    """Normalize IDNA for safety checks, without altering the original URL."""
+    host = hostname.rstrip(".").lower()
+    if ":" not in host:
+        try:
+            host = host.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise UnsafeUrlError("Invalid internationalized hostname") from exc
+    return host
+
+
+def _reject_noncanonical_ipv4(host: str) -> None:
+    """Block historical numeric aliases such as 127.1 and 0x7f000001.
+
+    Many network clients parse those strings as an IPv4 address while Python's
+    ipaddress.ip_address rejects them. Deny them instead of making claims
+    about which address a particular downstream engine will actually dial.
+    This check is local (inet_aton) and never performs a DNS lookup.
+    """
+    try:
+        socket.inet_aton(host)
+    except OSError:
+        return
+    try:
+        ipaddress.ip_address(host)
+    except ValueError as exc:
+        raise UnsafeUrlError("Noncanonical IPv4 address syntax is blocked") from exc
+
+
 def validate_target_url(url: str, engine: str, allow_private: bool = False) -> str:
     """Validate URL syntax and reject obvious local/private destinations.
 
     The deployment must also restrict container egress at the host/network layer.
     This check is deliberately not treated as a replacement for an egress firewall.
     """
-    try:
-        parsed = urlsplit(url.strip())
-    except ValueError as exc:
-        raise UnsafeUrlError("Invalid URL") from exc
+    parsed = _validated_urlsplit(url)
     allowed = {"http", "https"}
     if engine == "aria2c":
         allowed |= {"ftp", "ftps", "magnet"}
@@ -33,8 +80,9 @@ def validate_target_url(url: str, engine: str, allow_private: bool = False) -> s
         return url.strip()
     if not parsed.hostname:
         raise UnsafeUrlError("URL must contain a hostname")
-    host = parsed.hostname.rstrip(".").lower()
+    host = _canonical_host(parsed.hostname)
     if not allow_private:
+        _reject_noncanonical_ipv4(host)
         if host in {"localhost", "localhost.localdomain"} or host.endswith((".localhost", ".local", ".internal")):
             raise UnsafeUrlError("Local and internal destinations are blocked")
         try:
@@ -157,12 +205,9 @@ def resolve_http_target(url: str, allow_private: bool = False) -> str | None:
     The caller must disable proxies and redirects to any unvalidated host.
     This applies to curl only, not to the other engine subprocesses.
     """
-    try:
-        parsed = urlsplit(url)
-        host = parsed.hostname
-        port = parsed.port or (443 if parsed.scheme == "https" else 80)
-    except ValueError as exc:
-        raise UnsafeUrlError("Invalid URL host or port") from exc
+    parsed = _validated_urlsplit(url)
+    host = parsed.hostname
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
     if parsed.scheme not in {"http", "https"} or not host:
         raise UnsafeUrlError("Direct HTTP DNS pinning requires an HTTP(S) hostname")
     if parsed.username or parsed.password:
@@ -174,6 +219,8 @@ def resolve_http_target(url: str, allow_private: bool = False) -> str | None:
         or host.lower().endswith((".localhost", ".local", ".internal"))
     ):
         raise UnsafeUrlError("Internal hostname is not allowed")
+    if not allow_private:
+        _reject_noncanonical_ipv4(_canonical_host(host))
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
