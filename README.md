@@ -61,6 +61,10 @@ The gallery-dl options UI accepts a JSON object to expose its large and site-spe
 
 The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEPRINT.md). Remaining engine adapters are not implemented yet.
 
+## Restart and retry safety
+
+The worker requeues interrupted downloads on restart. Files in a job directory are **not** considered completed merely because they have a normal extension. After an engine reports success, the service atomically writes a completion manifest containing each output path, size, and modification time. Reusing previously downloaded files (for example, after a WebDAV delivery failure) requires a valid manifest and unchanged output files. Otherwise, stale partial output is discarded before downloading again. Manual cancellation is preserved; stale queued cancellation flags from an unclean service shutdown are cleared during startup.
+
 ## Delivery
 
 Local delivery copies files into the job's output folder and checks the resulting file. Generic WebDAV delivery:
