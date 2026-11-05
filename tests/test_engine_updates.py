@@ -135,3 +135,22 @@ def test_pypi_auto_upgrade_allowlist_requires_real_e2e_engine_coverage():
     workflow = (root / ".github/workflows/pinned-engine-updates.yml").read_text(encoding="utf-8")
     assert "from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED" in workflow
     assert "unsupported = sorted(item[\"engine\"]" in workflow
+
+
+def test_e2e_fixtures_prefer_preinstalled_ffmpeg_with_bounded_apt_fallback():
+    from pathlib import Path
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    for workflow_path in (
+        ".github/workflows/live-nextcloud-e2e.yml",
+        ".github/workflows/pinned-engine-updates.yml",
+    ):
+        workflow = yaml.safe_load((root / workflow_path).read_text(encoding="utf-8"))
+        steps = next(iter(workflow["jobs"].values()))["steps"]
+        fixture = next(step["run"] for step in steps if "generate a deterministic" in step.get("name", ""))
+        assert "command -v ffmpeg" in fixture, workflow_path
+        assert "command -v ffprobe" in fixture, workflow_path
+        assert "Acquire::Retries=3" in fixture, workflow_path
+        assert "mkdir -p fixture" in fixture
+        assert "ffmpeg -hide_banner" in fixture
