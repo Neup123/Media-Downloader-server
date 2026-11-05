@@ -892,7 +892,7 @@ export default function App() {
           <label className="check"><input type="checkbox" checked={ruleEnabled} onChange={event => setRuleEnabled(event.target.checked)} /> Rule enabled</label>
           <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
           <button className="primary">{editingRuleId ? 'Update URL rule' : 'Create URL rule'}</button>
-          {editingRuleId && <button type="button" className="secondary" onClick={resetRuleEditor}>Cancel editing</button>
+          {editingRuleId && <button type="button" className="secondary" onClick={resetRuleEditor}>Cancel editing</button>}
         </form>
       </section>
       <section className="panel">
