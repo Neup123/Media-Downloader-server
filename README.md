@@ -78,7 +78,7 @@ The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEP
 
 ## Automated Python engine updates
 
-The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine releases weekly and prepares exact-version candidate PRs. A candidate may merge and publish a patch release only after the complete Python, Docker, and disposable-Nextcloud/WebDAV acceptance gate succeeds. Failures retain the previous pin and produce an `engine-update-blocked` issue. The workflow is not active until present on the repository's default branch, and apt/Go engines still need separate update tracks. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md) for implementation and limitations.
+The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine releases weekly and prepares exact-version candidate PRs. A candidate may merge and publish a patch release only after the complete Python, Docker, and disposable-Nextcloud/WebDAV acceptance gate succeeds. Failures retain the previous pin and produce an `engine-update-blocked` issue. The workflow is not active until present on the repository's default branch. A separate get-sauce Go-release watcher now prepares blocked candidate PRs and issues, but does not merge releases without a real site-specific get-sauce WebDAV smoke gate. Debian-system engines still need an update track. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md) for implementation and limitations.
 
 ## Restart and retry safety
 
