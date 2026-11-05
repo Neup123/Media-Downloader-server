@@ -31,9 +31,10 @@ def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any
         "user_agent": "",
     }
     allowed = frozenset(settings)
-    for source in (global_settings or {}, overrides or {}):
-        if not isinstance(source, dict):
+    for raw_source in (global_settings, overrides):
+        if raw_source is not None and not isinstance(raw_source, dict):
             raise ValueError("Generic engine settings must be objects")
+        source = raw_source if raw_source is not None else {}
         unknown = set(source) - allowed
         if unknown:
             raise ValueError(f"Unknown generic setting(s): {', '.join(sorted(unknown))}")
