@@ -67,7 +67,7 @@ The worker requeues interrupted downloads on restart. Files in a job directory a
 
 ## Delivery
 
-Local delivery copies files into the job's output folder and checks the resulting file. Generic WebDAV delivery:
+Local delivery copies files into the job's output folder and checks the resulting file. Relative paths beneath the download workspace are preserved: `album-a/image.jpg` and `album-b/image.jpg` remain separate files. Outputs outside the workspace and symlinked output paths are rejected. Generic WebDAV delivery:
 
 1. Creates missing destination folders using MKCOL.
 2. Uploads using PUT.

@@ -19,6 +19,23 @@ class DeliveryError(RuntimeError):
     pass
 
 
+def _relative_output(source: Path, job_id: str, settings: Settings) -> Path:
+    """Keep source directory structure and reject outputs outside the job workspace."""
+    root = (settings.data_dir / "jobs" / job_id).resolve()
+    original = source.absolute()
+    try:
+        raw_relative = original.relative_to(root)
+        for depth in range(1, len(raw_relative.parts) + 1):
+            if root.joinpath(*raw_relative.parts[:depth]).is_symlink():
+                raise DeliveryError("Symlinked output paths are not allowed")
+        relative = source.resolve(strict=True).relative_to(root)
+    except (ValueError, OSError) as exc:
+        raise DeliveryError("Output file is outside its job directory or unavailable") from exc
+    if not relative.parts or not source.is_file():
+        raise DeliveryError("Output is not a regular file")
+    return relative
+
+
 def _fernet(settings: Settings) -> Fernet:
     if not settings.encryption_key:
         raise DeliveryError("APP_ENCRYPTION_KEY is required before storing a WebDAV app password")
@@ -81,7 +98,9 @@ async def deliver_files(
             target_dir.mkdir(parents=True, exist_ok=True)
             output: list[dict[str, Any]] = []
             for source in files:
-                destination = target_dir / source.name
+                relative = _relative_output(source, job_id, settings)
+                destination = target_dir / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
                 if source.resolve() != destination.resolve():
                     shutil.copy2(source, destination)
                 output.append({
@@ -124,10 +143,18 @@ async def deliver_files(
             response = await client.request("MKCOL", current)
             if response.status_code not in {201, 405}:
                 raise DeliveryError(f"WebDAV directory creation failed ({response.status_code})")
+        created_folders = set()
         for source in files:
-            if not source.is_file():
-                raise DeliveryError(f"Output disappeared before delivery: {source.name}")
-            target = current + "/" + quote(source.name, safe="")
+            relative = _relative_output(source, job_id, settings)
+            parent_url = current
+            for segment in relative.parts[:-1]:
+                parent_url += "/" + quote(segment, safe="")
+                if parent_url not in created_folders:
+                    response = await client.request("MKCOL", parent_url)
+                    if response.status_code not in {201, 405}:
+                        raise DeliveryError(f"WebDAV nested directory creation failed ({response.status_code})")
+                    created_folders.add(parent_url)
+            target = parent_url + "/" + quote(relative.name, safe="")
 
             async def file_chunks(path: Path):
                 with path.open("rb") as stream:
