@@ -71,3 +71,28 @@ def test_candidate_plan_detects_concurrent_pin_changes():
     plan = {"updates": [{"engine": "yt-dlp", "from": "1.0", "to": "1.1"}]}
     with pytest.raises(ValueError, match="Version changed"):
         apply_updates("yt-dlp==1.2\n", plan)
+
+
+
+def test_update_workflow_is_gated_and_has_blocked_issue_path():
+    from pathlib import Path
+    import yaml
+
+    root = Path(__file__).resolve().parents[1]
+    workflow = yaml.safe_load((root / ".github/workflows/pinned-engine-updates.yml").read_text())
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+    assert workflow["permissions"] == {
+        "contents": "write", "pull-requests": "write", "issues": "write"
+    }
+    steps = workflow["jobs"]["candidate-gate"]["steps"]
+    descriptions = [step.get("name", "") for step in steps]
+    assert any("Detect stable" in text for text in descriptions)
+    assert any("disposable Nextcloud" in text for text in descriptions)
+    assert any("SHA-256" in text for text in descriptions)
+    assert any("Merge green candidate" in text for text in descriptions)
+    assert any("blocked-update issue" in text for text in descriptions)
+    for item in steps:
+        if "Merge green candidate" in item.get("name", ""):
+            assert "success()" in item["if"]
+        if "blocked-update issue" in item.get("name", ""):
+            assert "failure()" in item["if"]
