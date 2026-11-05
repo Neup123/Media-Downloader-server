@@ -22,5 +22,8 @@ def test_python_docker_and_webdav_checks_all_have_main_branch_path():
     root = Path(__file__).resolve().parents[1]
     testing = yaml.safe_load((root / ".github/workflows/test.yml").read_text())
     e2e = yaml.safe_load((root / ".github/workflows/live-nextcloud-e2e.yml").read_text())
-    assert "main" in (testing.get("on") or testing.get(True))["pull_request"] if isinstance((testing.get("on") or testing.get(True))["pull_request"], list) else True
-    assert "main" in (e2e.get("on") or e2e.get(True))["pull_request"]["branches"]
+    standard = testing.get("on") or testing.get(True)
+    live = e2e.get("on") or e2e.get(True)
+    assert "main" in standard["push"]["branches"]
+    assert "pull_request" in standard and standard["pull_request"] is None
+    assert "main" in live["pull_request"]["branches"]
