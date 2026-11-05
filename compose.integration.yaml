@@ -1,0 +1,39 @@
+services:
+  downloader-server:
+    environment:
+      # This is only for the disposable Docker test network's private
+      # media-source host; production Compose defaults to false.
+      ALLOW_PRIVATE_TARGETS: "true"
+      # Ephemeral Nextcloud runs on the disposable private bridge over HTTP.
+      ALLOW_PRIVATE_WEBDAV_TARGETS: "true"
+      ALLOW_INSECURE_WEBDAV: "true"
+
+  nextcloud:
+    image: nextcloud:35.0.2-apache
+    restart: unless-stopped
+    environment:
+      SQLITE_DATABASE: nextcloud.db
+      NEXTCLOUD_ADMIN_USER: admin
+      NEXTCLOUD_ADMIN_PASSWORD: ${NEXTCLOUD_ADMIN_PASSWORD:?Set an ephemeral Nextcloud admin password}
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost 127.0.0.1 nextcloud
+      PHP_MEMORY_LIMIT: 512M
+    ports:
+      - "127.0.0.1:8081:80"
+    volumes:
+      - nextcloud-e2e-data:/var/www/html
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1/status.php >/dev/null"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+  media-source:
+    image: python:3.13-slim
+    command: ["python", "-m", "http.server", "9000", "--bind", "0.0.0.0", "--directory", "/fixtures"]
+    volumes:
+      - ./fixture:/fixtures:ro
+    restart: unless-stopped
+
+volumes:
+  nextcloud-e2e-data:

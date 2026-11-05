@@ -1,0 +1,102 @@
+name: Live Nextcloud WebDAV E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["phase-1/**"]
+  push:
+    branches: ["phase-1/**"]
+    paths:
+      - ".github/workflows/live-nextcloud-e2e.yml"
+      - "compose.integration.yaml"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "app/**"
+      - "tests/e2e_live_webdav.py"
+
+permissions:
+  contents: read
+
+# Every PR head commit must get its own independent disposable acceptance.
+# Older slow attempts on the same PR must not block testing a corrected SHA.
+concurrency:
+  group: nextcloud-webdav-e2e-${{ github.ref }}-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  live-webdav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Build production image and generate a deterministic legal media fixture
+        run: |
+          set -euo pipefail
+          # Use the FFmpeg already bundled in the tested production image.
+          # No separate Ubuntu apt mirror or unpinned fixture-tool download.
+          docker build --tag downloader-server:local .
+          mkdir -p fixture
+          docker run --rm --user 0 --volume "$PWD/fixture:/fixtures" \
+            --entrypoint ffmpeg downloader-server:local \
+            -hide_banner -loglevel error \
+            -f lavfi -i "color=c=blue:s=320x240:r=24:d=2" \
+            -f lavfi -i "sine=frequency=1000:duration=2" \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest \
+            -movflags +faststart /fixtures/sample.mp4
+          docker run --rm --volume "$PWD/fixture:/fixtures:ro" \
+            --entrypoint ffprobe downloader-server:local \
+            -v error -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 /fixtures/sample.mp4
+          sha256sum fixture/sample.mp4
+
+      - name: Create ephemeral test credentials
+        run: |
+          python3 - <<'PY'
+          import os
+          import secrets
+          from cryptography.fernet import Fernet
+          token = secrets.token_urlsafe(48)
+          password = secrets.token_urlsafe(24)
+          key = Fernet.generate_key().decode()
+          print(f"::add-mask::{token}")
+          print(f"::add-mask::{password}")
+          print(f"::add-mask::{key}")
+          with open(".env.e2e", "w", encoding="utf-8") as stream:
+              stream.write(f"APP_API_TOKEN={token}\n")
+              stream.write(f"APP_ENCRYPTION_KEY={key}\n")
+              stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write(f"APP_API_TOKEN={token}\n")
+              stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
+          PY
+
+      - name: Start disposable Nextcloud and Downloader Server containers
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml up -d --build
+
+      - name: Verify real P0 engine downloads and delivery to Nextcloud
+        run: python tests/e2e_live_webdav.py
+        env:
+          DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
+          NEXTCLOUD_HTTP_URL: http://127.0.0.1:8081
+          SOURCE_URL: http://media-source:9000/sample.mp4
+          WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
+          MEDIA_FIXTURE: fixture/sample.mp4
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml logs --no-color
+
+      - name: Stop containers and delete temporary volumes
+        if: always()
+        run: |
+          docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
+          rm -f .env.e2e

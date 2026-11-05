@@ -1,0 +1,483 @@
+openapi: 3.1.0
+info:
+  title: Downloader Server API
+  version: 0.1.0
+  description: >-
+    REST API for standalone media download jobs. Requests other than healthz and
+    the API reference require the X-API-Key header.
+servers:
+  - url: /api/v1
+security:
+  - ApiKeyAuth: []
+paths:
+  /preview:
+    post:
+      operationId: previewYtDlpMedia
+      summary: Inspect yt-dlp media formats or the first playlist entries without downloading
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, minLength: 8, maxLength: 4096 }
+                max_entries: { type: integer, minimum: 1, maximum: 100, default: 50 }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Sanitized formats or selected playlist entry metadata }
+        '422': { description: Invalid or unsupported URL, or preview failed }
+  /engines:
+    get:
+      operationId: listEngines
+      summary: List available download engines and their defaults
+      tags: [engines]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Engine capabilities and default settings
+  /engines/{engine_name}/options:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+    get:
+      operationId: getEngineOptionCatalog
+      summary: List typed common engine option fields for graphical settings
+      tags: [engines]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Categorized option fields with types and labels }
+        '404': { description: Unknown engine }
+  /engines/{engine_name}/settings:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+    get:
+      operationId: getEngineSettings
+      summary: Read global settings for one engine
+      tags: [engines]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Engine settings }
+    put:
+      operationId: updateEngineSettings
+      summary: Update global settings for one engine
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EngineSettingsInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Saved engine settings }
+        '422': { description: Invalid setting }
+  /cookies:
+    get:
+      operationId: listCookieFiles
+      summary: List uploaded cookie file names and sizes without reading their contents
+      tags: [engines]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Cookie file inventory }
+  /cookies/{filename}:
+    parameters:
+      - name: filename
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      operationId: uploadCookieFile
+      summary: Store a Netscape-format cookie export in the private service data volume
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_base64]
+              properties:
+                content_base64: { type: string, minLength: 4, maxLength: 1400000 }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Stored cookie file; content is never returned }
+        '422': { description: Invalid filename or file content }
+    delete:
+      operationId: deleteCookieFile
+      summary: Delete an uploaded cookie file
+      tags: [engines]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Cookie file deleted }
+        '404': { description: Cookie file not found }
+  /presets:
+    get:
+      operationId: listPresets
+      summary: List saved per-engine option presets
+      tags: [settings]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Saved presets }
+    post:
+      operationId: createPreset
+      summary: Create a named engine options preset
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresetInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '201': { description: Preset created }
+        '409': { description: Preset name already exists for the engine }
+  /presets/{preset_id}:
+    parameters:
+      - name: preset_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: updatePreset
+      summary: Replace a saved preset
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PresetInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '200': { description: Preset updated }
+        '404': { description: Preset not found }
+    delete:
+      operationId: deletePreset
+      summary: Delete a saved preset
+      tags: [settings]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Preset deleted }
+        '404': { description: Preset not found }
+  /engine-rules:
+    get:
+      operationId: listEngineRules
+      summary: List URL host/path rules used by automatic engine selection
+      tags: [settings]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: URL engine rules, ordered by priority and specificity }
+    post:
+      operationId: createEngineRule
+      summary: Create a host suffix and path prefix engine rule
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EngineRuleInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '201': { description: Rule created }
+        '422': { description: Invalid host or path rule }
+  /engine-rules/{rule_id}:
+    parameters:
+      - name: rule_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: updateEngineRule
+      summary: Replace a URL engine rule
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EngineRuleInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '200': { description: Rule updated }
+        '404': { description: Rule not found }
+    delete:
+      operationId: deleteEngineRule
+      summary: Delete a URL engine rule
+      tags: [settings]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Rule deleted }
+        '404': { description: Rule not found }
+  /jobs:
+    get:
+      operationId: listJobs
+      summary: List recent jobs
+      tags: [jobs]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Recent jobs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/JobOut' } }
+    post:
+      operationId: submitJob
+      summary: Submit a download job
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreate' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '202':
+          description: Job queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '422': { description: Invalid URL or options }
+  /jobs/batch:
+    post:
+      operationId: submitBatch
+      summary: Atomically queue up to 50 download jobs
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobBatchCreate' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '202':
+          description: All batch items queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobBatchOut' }
+        '422': { description: Invalid batch item; no items are queued }
+  /jobs/{job_id}:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getJob
+      summary: Read job state, progress, logs, and delivered files
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '404': { description: Job not found }
+  /jobs/{job_id}/cancel:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelJob
+      summary: Request cancellation of a queued or running job
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Cancellation requested
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/retry:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: retryJob
+      summary: Queue a failed or cancelled job again
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '202':
+          description: Job queued for retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '409': { description: Job is not retryable }
+  /jobs/{job_id}/redeliver:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: redeliverJob
+      summary: Re-deliver completed and still-verified files to the current destination without downloading again
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '202':
+          description: Verified original output files queued for re-delivery
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '404': { description: Job not found }
+        '409': { description: Job is not completed or verified source files are unavailable }
+  /jobs/{job_id}/events:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: streamJobEvents
+      summary: Stream job updates using Server-Sent Events
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Job updates as SSE events
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /delivery:
+    get:
+      operationId: getDeliverySettings
+      summary: Read delivery destination settings without revealing secrets
+      tags: [delivery]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Delivery mode and masked credentials state }
+    put:
+      operationId: updateDeliverySettings
+      summary: Configure local or WebDAV delivery
+      tags: [delivery]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliverySettingsInput' }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200': { description: Saved delivery settings }
+        '422': { description: Invalid delivery settings }
+components:
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-API-Key header
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail: { type: string }
+    InvalidRequest:
+      description: Invalid request body or service-specific validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                anyOf:
+                  - { type: string }
+                  - { type: array, items: { type: object } }
+                  - { type: object }
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    JobOut:
+      type: object
+      required: [id, url, engine, status, overrides, progress, output_files, log_text, error, cancel_requested, created_at, updated_at, finished_at]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        engine: { type: string }
+        status: { type: string }
+        overrides: { type: object, additionalProperties: true }
+        progress: { type: object, additionalProperties: true }
+        output_files: { type: array, items: { type: object, additionalProperties: true } }
+        log_text: { type: string }
+        error: { type: [string, 'null'] }
+        cancel_requested: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    JobBatchOut:
+      type: object
+      required: [created, jobs]
+      properties:
+        created: { type: integer }
+        jobs: { type: array, items: { $ref: '#/components/schemas/JobOut' } }
+    JobCreate:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, minLength: 8, maxLength: 4096 }
+        engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce], default: auto }
+        preset_id: { type: [string, 'null'], maxLength: 36, default: null }
+        overrides: { type: object, additionalProperties: true }
+    JobBatchCreate:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: '#/components/schemas/JobCreate' }
+    PresetInput:
+      type: object
+      required: [name, engine]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 120 }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        settings: { type: object, additionalProperties: true }
+        description: { type: string, maxLength: 1000, default: '' }
+    EngineRuleInput:
+      type: object
+      required: [host_suffix, engine]
+      properties:
+        host_suffix: { type: string, minLength: 3, maxLength: 255, description: Hostname suffix without scheme or wildcard. Matches the exact host and its subdomains. }
+        path_prefix: { type: string, maxLength: 1024, default: / }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        priority: { type: integer, minimum: 0, maximum: 1000, default: 100 }
+        enabled: { type: boolean, default: true }
+        description: { type: string, maxLength: 255, default: '' }
+    EngineSettingsInput:
+      type: object
+      properties:
+        settings: { type: object, additionalProperties: true }
+    DeliverySettingsInput:
+      type: object
+      properties:
+        mode: { type: string, enum: [local, webdav], default: local }
+        webdav_url: { type: [string, 'null'], maxLength: 2048, default: null }
+        username: { type: [string, 'null'], maxLength: 255, default: null }
+        app_password: { type: [string, 'null'], maxLength: 1024, default: null, description: Write-only. Stored encrypted on the service. }
+        folder: { type: string, maxLength: 512, default: Downloader }

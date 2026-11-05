@@ -380,6 +380,10 @@ A feature is complete only when its behavior is demonstrated. Required gates:
 - WebDAV delivery test verifies destination metadata after PUT, not just an HTTP success status.
 - No unverified build or deployment configuration is enabled permanently.
 
+### Generic direct CLI implementation decision (2026-11)
+
+The P1 `generic/wget` role is implemented with **curl** rather than installing another untrusted-network client. curl is already present in the runtime image; the Debian trixie wget package was not selected because of outstanding security advisories listed at https://security-tracker.debian.org/tracker/source-package/wget. The service still delegates all HTTP transfers to a native CLI; it does not reimplement the HTTP downloader. Redirects default to disabled until a trusted network egress policy is in place. Revisit this decision after the wget advisories are resolved.
+
 ## 12. Source references
 
 ### Behavioral blueprint

@@ -1,0 +1,42 @@
+name: Retire safely merged branches
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Delete only exact, merged PR heads (otherwise dry-run)"
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: safe-merged-branch-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Inventory exact merged PR heads (dry-run)
+        run: python scripts/cleanup_merged_branches.py
+
+      - name: Remove eligible stale branches with SHA leases
+        if: github.event_name == 'push' || inputs.apply == true
+        run: python scripts/cleanup_merged_branches.py --apply
