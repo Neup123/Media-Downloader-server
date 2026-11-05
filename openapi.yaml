@@ -1,0 +1,209 @@
+openapi: 3.1.0
+info:
+  title: Downloader Server API
+  version: 0.1.0
+  description: >-
+    REST API for standalone media download jobs. Requests other than healthz and
+    the API reference require the X-API-Key header.
+servers:
+  - url: /api/v1
+security:
+  - ApiKeyAuth: []
+paths:
+  /engines:
+    get:
+      operationId: listEngines
+      summary: List available download engines and their defaults
+      tags: [engines]
+      responses:
+        '200':
+          description: Engine capabilities and default settings
+  /engines/{engine_name}/settings:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c] }
+    get:
+      operationId: getEngineSettings
+      summary: Read global settings for one engine
+      tags: [engines]
+      responses:
+        '200': { description: Engine settings }
+    put:
+      operationId: updateEngineSettings
+      summary: Update global settings for one engine
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EngineSettingsInput' }
+      responses:
+        '200': { description: Saved engine settings }
+        '422': { description: Invalid setting }
+  /cookies:
+    get:
+      operationId: listCookieFiles
+      summary: List uploaded cookie file names and sizes without reading their contents
+      tags: [engines]
+      responses:
+        '200': { description: Cookie file inventory }
+  /cookies/{filename}:
+    parameters:
+      - name: filename
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      operationId: uploadCookieFile
+      summary: Store a Netscape-format cookie export in the private service data volume
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_base64]
+              properties:
+                content_base64: { type: string, maxLength: 1400000 }
+      responses:
+        '200': { description: Stored cookie file; content is never returned }
+        '422': { description: Invalid filename or file content }
+    delete:
+      operationId: deleteCookieFile
+      summary: Delete an uploaded cookie file
+      tags: [engines]
+      responses:
+        '200': { description: Cookie file deleted }
+        '404': { description: Cookie file not found }
+  /jobs:
+    get:
+      operationId: listJobs
+      summary: List recent jobs
+      tags: [jobs]
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: status
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Recent jobs }
+    post:
+      operationId: submitJob
+      summary: Submit a download job
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/JobCreate' }
+      responses:
+        '202': { description: Job queued }
+        '422': { description: Invalid URL or options }
+  /jobs/{job_id}:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getJob
+      summary: Read job state, progress, logs, and delivered files
+      tags: [jobs]
+      responses:
+        '200': { description: Job details }
+        '404': { description: Job not found }
+  /jobs/{job_id}/cancel:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: cancelJob
+      summary: Request cancellation of a queued or running job
+      tags: [jobs]
+      responses:
+        '200': { description: Cancellation requested }
+        '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/retry:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: retryJob
+      summary: Queue a failed or cancelled job again
+      tags: [jobs]
+      responses:
+        '202': { description: Job queued for retry }
+        '409': { description: Job is not retryable }
+  /jobs/{job_id}/events:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: streamJobEvents
+      summary: Stream job updates using Server-Sent Events
+      tags: [jobs]
+      responses:
+        '200':
+          description: Job updates as SSE events
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /delivery:
+    get:
+      operationId: getDeliverySettings
+      summary: Read delivery destination settings without revealing secrets
+      tags: [delivery]
+      responses:
+        '200': { description: Delivery mode and masked credentials state }
+    put:
+      operationId: updateDeliverySettings
+      summary: Configure local or WebDAV delivery
+      tags: [delivery]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DeliverySettingsInput' }
+      responses:
+        '200': { description: Saved delivery settings }
+        '422': { description: Invalid delivery settings }
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  schemas:
+    JobCreate:
+      type: object
+      additionalProperties: false
+      required: [url]
+      properties:
+        url: { type: string, minLength: 8, maxLength: 4096 }
+        engine: { type: string, enum: [yt-dlp, aria2c], default: yt-dlp }
+        overrides: { type: object, additionalProperties: true }
+    EngineSettingsInput:
+      type: object
+      required: [settings]
+      properties:
+        settings: { type: object, additionalProperties: true }
+    DeliverySettingsInput:
+      type: object
+      required: [mode]
+      properties:
+        mode: { type: string, enum: [local, webdav] }
+        webdav_url: { type: [string, 'null'], format: uri }
+        username: { type: [string, 'null'] }
+        app_password: { type: [string, 'null'], description: Write-only. Stored encrypted on the service. }
+        folder: { type: string, default: Downloader }
