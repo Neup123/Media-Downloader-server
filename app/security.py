@@ -17,7 +17,7 @@ def _validated_urlsplit(url: str):
     interpret them differently. Backslashes and percent-encoded hostnames
     likewise create parser inconsistencies. Validate before normalization.
     """
-    if any(ord(char) < 32 or ord(char) == 127 or char == "\\\\" for char in url):
+    if any(ord(char) < 32 or ord(char) == 127 or ord(char) == 92 for char in url):
         raise UnsafeUrlError("URL must not contain control characters or backslashes")
     try:
         parsed = urlsplit(url.strip())
