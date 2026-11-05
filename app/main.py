@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -19,6 +20,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
+from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
 from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, MediaPreviewIn
@@ -92,8 +94,27 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         result = []
         for item in ENGINE_DESCRIPTIONS:
             binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl"}[item["name"]]
-            result.append({**item, "installed": shutil.which(binary) is not None, "defaults": ENGINE_DEFAULTS[item["name"]]})
+            executable = shutil.which(binary)
+            version = None
+            if executable:
+                try:
+                    completed = subprocess.run(
+                        [executable, "--version"], capture_output=True, text=True,
+                        timeout=4, check=False,
+                    )
+                    version = (completed.stdout or completed.stderr).splitlines()[0][:160]
+                except (OSError, subprocess.TimeoutExpired, IndexError):
+                    version = "unknown"
+            result.append({
+                **item, "installed": executable is not None, "version": version,
+                "defaults": ENGINE_DEFAULTS[item["name"]],
+            })
         return result
+
+    @app.get("/api/v1/engines/{engine_name}/options", tags=["engines"])
+    def engine_option_catalog(engine_name: str, _: bool = Depends(authenticate)):
+        _require_engine(engine_name)
+        return {"engine": engine_name, "fields": get_catalog(engine_name)}
 
     @app.get("/api/v1/engines/{engine_name}/settings", tags=["engines"])
     def get_engine_settings(engine_name: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
