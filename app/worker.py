@@ -136,8 +136,19 @@ class JobWorker:
             try:
                 slots = max(0, self.settings.max_concurrent_downloads - len(self._active))
                 if slots:
+                    active_counts: dict[str, int] = {}
+                    for engine_name in self._active_engines.values():
+                        active_counts[engine_name] = active_counts.get(engine_name, 0) + 1
+                    saturated_engines = {
+                        engine_name
+                        for engine_name, engine_limit in self.settings.max_concurrent_per_engine.items()
+                        if active_counts.get(engine_name, 0) >= engine_limit
+                    }
+                    # Filter saturated engines in SQL *before* applying LIMIT;
+                    # otherwise 100 queued items of a busy engine can hide a
+                    # runnable job of another engine.
                     with self.session_factory() as session:
-                        queued = get_queued_jobs(session, max(100, slots))
+                        queued = get_queued_jobs(session, max(100, slots), saturated_engines)
                     for job in self._select_queued_jobs(queued, slots):
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
