@@ -15,10 +15,27 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.db import DeliverySetting
+from app.security import UnsafeUrlError, resolve_http_target, validate_target_url
 
 
 class DeliveryError(RuntimeError):
     pass
+
+
+def _validate_webdav_destination(url: str, settings: Settings) -> None:
+    """Apply a delivery-specific network policy, independent of media sources."""
+    try:
+        validate_target_url(url, "generic", settings.allow_private_webdav_targets)
+    except UnsafeUrlError as exc:
+        raise DeliveryError(f"WebDAV destination is not allowed: {exc}") from exc
+    parts = urlsplit(url)
+    if parts.query or parts.fragment:
+        raise DeliveryError("WebDAV destination URL cannot contain a query or fragment")
+    if parts.scheme == "http" and not settings.allow_insecure_webdav:
+        raise DeliveryError(
+            "Plain HTTP WebDAV would expose the app password; "
+            "use HTTPS, or explicitly set ALLOW_INSECURE_WEBDAV=true only on a trusted network"
+        )
 
 
 def _relative_output(source: Path, job_id: str, settings: Settings) -> Path:
@@ -118,6 +135,8 @@ def serialize_delivery(setting: DeliverySetting | None) -> dict[str, Any]:
 
 
 def set_delivery_settings(session: Session, payload, settings: Settings) -> dict[str, Any]:
+    if payload.mode == "webdav":
+        _validate_webdav_destination(payload.webdav_url or "", settings)
     row = session.get(DeliverySetting, 1)
     if row is None:
         row = DeliverySetting(id=1, mode=payload.mode, folder=payload.folder)
@@ -205,6 +224,15 @@ async def deliver_files(
 
     if not data["url"] or not data["username"]:
         raise DeliveryError("WebDAV URL and username are not configured")
+    _validate_webdav_destination(data["url"], settings)
+    if transport is None and not settings.allow_private_webdav_targets:
+        # Defense in depth: reject current DNS answers that include private or
+        # reserved targets. httpx cannot pin these answers, so DNS rebinding
+        # still requires a production egress firewall.
+        try:
+            await asyncio.to_thread(resolve_http_target, data["url"], False)
+        except UnsafeUrlError as exc:
+            raise DeliveryError(f"WebDAV destination DNS check failed: {exc}") from exc
     base_parts = urlsplit(data["url"])
     if base_parts.scheme not in {"https", "http"} or not base_parts.netloc or base_parts.username or base_parts.password:
         raise DeliveryError("WebDAV URL must be an absolute HTTP(S) URL without embedded credentials")
