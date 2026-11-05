@@ -114,3 +114,41 @@ def test_scheduler_applies_per_engine_caps_without_starving_other_engines(settin
     worker._active_engines.clear()
     selected = worker._select_queued_jobs(queued, slots=3)
     assert [job.id for job in selected] == ["yt-2", "aria-1"]
+
+
+def test_queue_fetch_does_not_starve_eligible_engines_behind_busy_engine(settings):
+    from datetime import datetime, timedelta, timezone
+
+    from app.db import get_queued_jobs
+
+    engine = make_engine(settings.database_url)
+    initialize_database(engine)
+    sessions = make_session_factory(engine)
+    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with sessions() as session:
+        session.add_all([
+            Job(
+                url=f"https://example.com/video/{index}",
+                engine="yt-dlp",
+                status="queued",
+                created_at=start + timedelta(seconds=index),
+            )
+            for index in range(110)
+        ])
+        session.add(Job(
+            url="https://example.com/direct.bin",
+            engine="aria2c",
+            status="queued",
+            created_at=start + timedelta(seconds=110),
+        ))
+        session.commit()
+    worker = JobWorker(sessions, settings)
+    worker._active_engines["running-yt"] = "yt-dlp"
+    with sessions() as session:
+        # An unfiltered query of the oldest 100 would contain only yt-dlp.
+        unfiltered = get_queued_jobs(session, 100)
+        assert all(job.engine == "yt-dlp" for job in unfiltered)
+        eligible = get_queued_jobs(session, 100, excluded_engines={"yt-dlp"})
+        selected = worker._select_queued_jobs(eligible, slots=1)
+        assert [job.engine for job in selected] == ["aria2c"]
+    engine.dispose()
