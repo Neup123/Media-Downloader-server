@@ -20,7 +20,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - The per-engine graphical settings catalog is exposed at `/api/v1/engines/{engine}/options`. The dashboard groups common options into typed controls; site-specific gallery-dl options remain available in an advanced editor. The engines API reports installed versions.
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
 - All three currently implemented engines are classified P0 in the blueprint: yt-dlp, aria2c, and gallery-dl.
-- The generic direct HTTP(S) engine is now implemented through curl. you-get remains P1, and svtplay-dl and get-sauce remain P2.
+- The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. svtplay-dl and get-sauce remain P2.
 - The draft PR is intentionally not merged until its live and operational acceptance checks are complete.
 
 A feature is not complete merely because an API request succeeds or a container builds. The output file must be readable and, where configured, verified at its delivery destination.
@@ -61,7 +61,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, validated additional arguments, and opt-in playlist downloads with a bounded index/range selector. The web UI can preview formats and select playlist entries.
 - **aria2c:** loopback-only JSON-RPC daemon, generated RPC secret, progress polling, cancellation, and an allowlisted per-job option set.
 - **gallery-dl:** gallery/image extraction, terminal progress parsing, output discovery, extractor options, cookies, and optional proxy. Output directory and progress settings remain service-managed.
-- **generic / curl:** direct HTTP(S) file downloads with managed filenames, retries, optional redirects, and observed-byte progress (unknown total is not fabricated). curl is already shipped in the base image for health checks. It was chosen as the generic CLI backend instead of adding the Debian trixie `wget` package, which currently has unresolved security advisories; see https://security-tracker.debian.org/tracker/source-package/wget. No custom protocol client was implemented.
+- **you-get:** fallback site extractor using the pinned `0.4.1743` CLI, with format selection, service-managed output directory, optional cookie file, and proxy control. Progress reports observed bytes without inventing totals.\n- **generic / curl:** direct HTTP(S) file downloads with managed filenames, retries, optional redirects, and observed-byte progress (unknown total is not fabricated). curl is already shipped in the base image for health checks. It was chosen as the generic CLI backend instead of adding the Debian trixie `wget` package, which currently has unresolved security advisories; see https://security-tracker.debian.org/tracker/source-package/wget. No custom protocol client was implemented.
 
 The gallery-dl options UI accepts a JSON object to expose its large and site-specific configuration surface without hard-coding every extractor option. Credential-like option names and proxies with embedded credentials are rejected; use the private cookie-file upload for session cookies.
 
