@@ -4,6 +4,9 @@ services:
       # This is only for the disposable Docker test network's private
       # media-source host; production Compose defaults to false.
       ALLOW_PRIVATE_TARGETS: "true"
+      # Ephemeral Nextcloud runs on the disposable private bridge over HTTP.
+      ALLOW_PRIVATE_WEBDAV_TARGETS: "true"
+      ALLOW_INSECURE_WEBDAV: "true"
 
   nextcloud:
     image: nextcloud:35.0.2-apache
