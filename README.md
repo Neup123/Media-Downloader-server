@@ -45,6 +45,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - REST base path: `/api/v1`
 - Authentication: `X-API-Key`
 - API reference: `/api-reference` (Scalar)
+- Media metadata preview: `POST /api/v1/preview` inspects yt-dlp formats or the first 50 playlist entries without downloading; only allowlisted metadata is returned.
 - Presets: `/api/v1/presets`
 - Automatic URL routing rules: `/api/v1/engine-rules`
 - Batch queue: `POST /api/v1/jobs/batch` (up to 50 items)
@@ -56,7 +57,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 
 ## Implemented P0 engines
 
-- **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, and validated additional arguments.
+- **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, validated additional arguments, and opt-in playlist downloads with a bounded index/range selector. The web UI can preview formats and select playlist entries.
 - **aria2c:** loopback-only JSON-RPC daemon, generated RPC secret, progress polling, cancellation, and an allowlisted per-job option set.
 - **gallery-dl:** gallery/image extraction, terminal progress parsing, output discovery, extractor options, cookies, and optional proxy. Output directory and progress settings remain service-managed.
 

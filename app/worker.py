@@ -24,6 +24,8 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "write_subtitles": False,
         "embed_subtitles": False,
         "extra_args": [],
+        "allow_playlist": False,
+        "playlist_items": "",
     },
     "gallery-dl": {
         "options": {},
