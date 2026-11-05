@@ -13,6 +13,7 @@ on:
       - "requirements.txt"
       - "app/**"
       - "tests/e2e_live_webdav.py"
+      - "tests/e2e_standalone_compose.py"
 
 permissions:
   contents: read
@@ -24,6 +25,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  standalone-compose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install host API smoke-test dependency
+        run: python -m pip install httpx==0.28.1
+
+      - name: Generate ephemeral standalone credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import secrets
+          token = secrets.token_urlsafe(48)
+          print("::add-mask::" + token)
+          with open(".env.standalone", "w", encoding="utf-8") as output:
+              output.write("APP_API_TOKEN=" + token + "\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write("APP_API_TOKEN=" + token + "\n")
+          PY
+
+      - name: Start clean production Compose without Nextcloud
+        run: docker compose --env-file .env.standalone -f compose.yaml up -d --build downloader-server
+
+      - name: Verify clean startup, API authentication and engine registry
+        run: python tests/e2e_standalone_compose.py
+
+      - name: Inspect standalone service failure
+        if: failure()
+        run: docker compose --env-file .env.standalone -f compose.yaml logs --no-color
+
+      - name: Remove standalone containers, volumes and credentials
+        if: always()
+        shell: bash
+        run: |
+          docker compose --env-file .env.standalone -f compose.yaml down --volumes --remove-orphans || true
+          rm -f .env.standalone
+
   live-webdav:
     runs-on: ubuntu-latest
     timeout-minutes: 25
