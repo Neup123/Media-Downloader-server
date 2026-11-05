@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
+import re
 import socket
 from urllib.parse import urlsplit
 
@@ -54,7 +55,76 @@ SENSITIVE_OPTION_NAMES = {
 }
 
 
+# A generic denylist cannot protect against positional second URLs, alternate
+# output switches, external downloader activation, or new unsafe yt-dlp flags.
+# Only these audited, non-routing, non-executing options may be passed through.
+# Options taking values must use --option=value, never a second argv token.
+SAFE_YTDLP_FLAGS = frozenset({
+    "--no-warnings",
+    "--ignore-errors",
+    "--no-mtime",
+    "--restrict-filenames",
+    "--windows-filenames",
+    "--write-thumbnail",
+    "--write-all-thumbnails",
+    "--write-auto-subs",
+    "--embed-thumbnail",
+    "--embed-metadata",
+    "--no-embed-thumbnail",
+    "--no-embed-metadata",
+    "--no-part",
+    "--no-check-formats",
+    "--check-formats",
+})
+
+SAFE_YTDLP_INTEGER_OPTIONS: dict[str, tuple[int, int]] = {
+    "--socket-timeout": (1, 300),
+    "--retries": (0, 50),
+    "--fragment-retries": (0, 50),
+    "--extractor-retries": (0, 50),
+    "--concurrent-fragments": (1, 32),
+    "--playlist-start": (1, 10000),
+    "--playlist-end": (1, 10000),
+}
+
+SAFE_YTDLP_ENUM_OPTIONS = {
+    "--merge-output-format": {"mp4", "mkv", "webm", "mov", "m4a"},
+    "--remux-video": {"mp4", "mkv", "webm", "mov", "m4a"},
+    "--audio-format": {"best", "aac", "flac", "mp3", "m4a", "opus", "vorbis", "wav", "alac"},
+}
+
+SAFE_YTDLP_FORMAT_OPTIONS = {
+    "--limit-rate": r"[1-9][0-9]{0,8}[KMG]?",
+    "--format-sort": r"[A-Za-z0-9+.,:()_/-]{1,160}",
+    "--sub-format": r"[A-Za-z0-9+._/-]{1,80}",
+}
+
+
+def _validate_ytdlp_option_value(option: str, value: str) -> None:
+    """Reject unreviewed CLI behavior and unsafe or excessive argument values."""
+    if not value or "\r" in value or "\n" in value or "://" in value:
+        raise ValueError(f"{option} requires a nonempty single-line value")
+    if option in SAFE_YTDLP_INTEGER_OPTIONS:
+        lower, upper = SAFE_YTDLP_INTEGER_OPTIONS[option]
+        if not value.isascii() or not value.isdecimal() or not lower <= int(value) <= upper:
+            raise ValueError(f"{option} must be an integer between {lower} and {upper}")
+    elif option in SAFE_YTDLP_ENUM_OPTIONS:
+        if value not in SAFE_YTDLP_ENUM_OPTIONS[option]:
+            raise ValueError(f"Invalid value for {option}")
+    elif option in SAFE_YTDLP_FORMAT_OPTIONS:
+        if re.fullmatch(SAFE_YTDLP_FORMAT_OPTIONS[option], value) is None:
+            raise ValueError(f"Invalid value for {option}")
+    else:
+        raise ValueError(f"Unsupported yt-dlp advanced option: {option}")
+
+
 def validate_extra_args(args: list[str]) -> list[str]:
+    """Return reviewed yt-dlp options, never positional sources or executables.
+
+    Each argument must be a standalone safe flag or --name=value. Separate
+    value tokens would otherwise be indistinguishable from extra download
+    targets, including internal HTTP URLs bypassing normal job validation.
+    """
     if not isinstance(args, list):
         raise ValueError("extra_args must be a list of strings")
     if len(args) > 40:
@@ -63,9 +133,18 @@ def validate_extra_args(args: list[str]) -> list[str]:
     for raw in args:
         if not isinstance(raw, str) or len(raw) > 512 or "\x00" in raw:
             raise ValueError("Each extra argument must be a string of at most 512 characters")
-        option = raw.split("=", 1)[0]
+        option, separator, value = raw.partition("=")
         if option in SENSITIVE_OPTION_NAMES:
             raise ValueError(f"{option} is managed by the service and cannot be overridden")
+        if not option.startswith("--") or option == "--":
+            raise ValueError("Positional yt-dlp arguments are prohibited; use --option=value")
+        if option in SAFE_YTDLP_FLAGS:
+            if separator:
+                raise ValueError(f"{option} is a flag and must not have a value")
+        elif separator:
+            _validate_ytdlp_option_value(option, value)
+        else:
+            raise ValueError(f"Unsupported yt-dlp advanced option: {option}; use --option=value for supported value options")
         cleaned.append(raw)
     return cleaned
 

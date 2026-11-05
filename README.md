@@ -58,7 +58,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 
 ## Implemented engines
 
-- **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, validated additional arguments, and opt-in playlist downloads with a bounded index/range selector. The web UI can preview formats and select playlist entries.
+- **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, validated additional arguments, and opt-in playlist downloads with a bounded index/range selector. The web UI can preview formats and select playlist entries. Advanced CLI options are intentionally restricted to reviewed flags and `--option=value` forms; separate positional values, extra source URLs, external downloaders, arbitrary config/output paths, proxy overrides, and other unreviewed flags are rejected. Use typed engine settings for format/subtitles/playlist controls. Extend the reviewed option list in `app/security.py` with tests before supporting additional flags.
 - **aria2c:** loopback-only JSON-RPC daemon, generated RPC secret, progress polling, cancellation, and an allowlisted per-job option set.
 - **gallery-dl:** gallery/image extraction, terminal progress parsing, output discovery, extractor options, cookies, and optional proxy. Output directory and progress settings remain service-managed.
 - **you-get:** fallback site extractor using the pinned `0.4.1743` CLI, with format selection, service-managed output directory, optional cookie file, and proxy control. Progress reports observed bytes without inventing totals.
