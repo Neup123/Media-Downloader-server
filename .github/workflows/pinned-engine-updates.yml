@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   candidate-gate:
+    if: github.repository == 'Neup123/Media-Downloader-server'
     runs-on: ubuntu-latest
     timeout-minutes: 65
     env:
