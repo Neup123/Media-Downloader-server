@@ -38,6 +38,9 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Engine capabilities and default settings
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EngineStatusOut' } }
   /engines/{engine_name}/options:
     parameters:
       - name: engine_name
@@ -50,7 +53,11 @@ paths:
       tags: [engines]
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Categorized option fields with types and labels }
+        '200':
+          description: Categorized option fields with types and labels
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EngineOptionsOut' }
         '404': { description: Unknown engine }
   /engines/{engine_name}/settings:
     parameters:
@@ -64,7 +71,11 @@ paths:
       tags: [engines]
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Engine settings }
+        '200':
+          description: Engine settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EngineSettingsOut' }
     put:
       operationId: updateEngineSettings
       summary: Update global settings for one engine
@@ -76,7 +87,11 @@ paths:
             schema: { $ref: '#/components/schemas/EngineSettingsInput' }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Saved engine settings }
+        '200':
+          description: Saved engine settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EngineSettingsOut' }
         '422': { description: Invalid setting }
   /cookies:
     get:
@@ -85,7 +100,11 @@ paths:
       tags: [engines]
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Cookie file inventory }
+        '200':
+          description: Cookie file inventory
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/CookieFileOut' } }
   /cookies/{filename}:
     parameters:
       - name: filename
@@ -107,7 +126,11 @@ paths:
                 content_base64: { type: string, minLength: 4, maxLength: 1400000 }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Stored cookie file; content is never returned }
+        '200':
+          description: Stored cookie file; content is never returned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CookieUploadedOut' }
         '422': { description: Invalid filename or file content }
     delete:
       operationId: deleteCookieFile
@@ -115,7 +138,11 @@ paths:
       tags: [engines]
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Cookie file deleted }
+        '200':
+          description: Cookie file deleted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CookieDeletedOut' }
         '404': { description: Cookie file not found }
   /presets:
     get:
@@ -367,7 +394,11 @@ paths:
       tags: [delivery]
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Delivery mode and masked credentials state }
+        '200':
+          description: Delivery mode and masked credentials state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliverySettingsOut' }
     put:
       operationId: updateDeliverySettings
       summary: Configure local or WebDAV delivery
@@ -379,7 +410,11 @@ paths:
             schema: { $ref: '#/components/schemas/DeliverySettingsInput' }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Saved delivery settings }
+        '200':
+          description: Saved delivery settings
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliverySettingsOut' }
         '422': { description: Invalid delivery settings }
 components:
   responses:
@@ -411,6 +446,69 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    EngineStatusOut:
+      type: object
+      required: [name, label, role, priority, available, installed, version, defaults]
+      properties:
+        name: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        label: { type: string }
+        role: { type: string }
+        priority: { type: string }
+        available: { type: boolean }
+        installed: { type: boolean }
+        version: { type: [string, 'null'] }
+        defaults: { type: object, additionalProperties: true }
+    EngineOptionFieldOut:
+      type: object
+      required: [key, label, category, type, description]
+      properties:
+        key: { type: string }
+        label: { type: string }
+        category: { type: string }
+        type: { type: string }
+        description: { type: string }
+        minimum: { type: [integer, 'null'], default: null }
+        maximum: { type: [integer, 'null'], default: null }
+    EngineOptionsOut:
+      type: object
+      required: [engine, fields]
+      properties:
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        fields: { type: array, items: { $ref: '#/components/schemas/EngineOptionFieldOut' } }
+    EngineSettingsOut:
+      type: object
+      required: [engine, settings]
+      properties:
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        settings: { type: object, additionalProperties: true }
+    CookieFileOut:
+      type: object
+      required: [filename, size_bytes]
+      properties:
+        filename: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+    CookieUploadedOut:
+      type: object
+      required: [filename, size_bytes, stored]
+      properties:
+        filename: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+        stored: { type: boolean }
+    CookieDeletedOut:
+      type: object
+      required: [deleted, filename]
+      properties:
+        deleted: { type: boolean }
+        filename: { type: string }
+    DeliverySettingsOut:
+      type: object
+      required: [mode, folder, password_configured]
+      properties:
+        mode: { type: string, enum: [local, webdav] }
+        folder: { type: string }
+        password_configured: { type: boolean }
+        webdav_url: { type: [string, 'null'], default: null }
+        username: { type: [string, 'null'], default: null }
     JobOut:
       type: object
       required: [id, url, engine, status, overrides, progress, output_files, log_text, error, cancel_requested, created_at, updated_at, finished_at]
