@@ -210,7 +210,11 @@ paths:
           in: query
           schema: { type: string }
       responses:
-        '200': { description: Recent jobs }
+        '200':
+          description: Recent jobs
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/JobOut' } }
     post:
       operationId: submitJob
       summary: Submit a download job
@@ -221,7 +225,11 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/JobCreate' }
       responses:
-        '202': { description: Job queued }
+        '202':
+          description: Job queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
         '422': { description: Invalid URL or options }
   /jobs/batch:
     post:
@@ -234,7 +242,11 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/JobBatchCreate' }
       responses:
-        '202': { description: All batch items queued }
+        '202':
+          description: All batch items queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobBatchOut' }
         '422': { description: Invalid batch item; no items are queued }
   /jobs/{job_id}:
     parameters:
@@ -247,7 +259,11 @@ paths:
       summary: Read job state, progress, logs, and delivered files
       tags: [jobs]
       responses:
-        '200': { description: Job details }
+        '200':
+          description: Job details
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
         '404': { description: Job not found }
   /jobs/{job_id}/cancel:
     parameters:
@@ -260,7 +276,11 @@ paths:
       summary: Request cancellation of a queued or running job
       tags: [jobs]
       responses:
-        '200': { description: Cancellation requested }
+        '200':
+          description: Cancellation requested
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job cannot be cancelled in its current state }
   /jobs/{job_id}/retry:
     parameters:
@@ -273,7 +293,11 @@ paths:
       summary: Queue a failed or cancelled job again
       tags: [jobs]
       responses:
-        '202': { description: Job queued for retry }
+        '202':
+          description: Job queued for retry
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job is not retryable }
   /jobs/{job_id}/events:
     parameters:
@@ -317,6 +341,29 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    JobOut:
+      type: object
+      required: [id, url, engine, status, overrides, progress, output_files, log_text, error, cancel_requested, created_at, updated_at, finished_at]
+      properties:
+        id: { type: string }
+        url: { type: string }
+        engine: { type: string }
+        status: { type: string }
+        overrides: { type: object, additionalProperties: true }
+        progress: { type: object, additionalProperties: true }
+        output_files: { type: array, items: { type: object, additionalProperties: true } }
+        log_text: { type: string }
+        error: { type: [string, 'null'] }
+        cancel_requested: { type: boolean }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: [string, 'null'], format: date-time }
+    JobBatchOut:
+      type: object
+      required: [created, jobs]
+      properties:
+        created: { type: integer }
+        jobs: { type: array, items: { $ref: '#/components/schemas/JobOut' } }
     JobCreate:
       type: object
       required: [url]
