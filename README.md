@@ -95,7 +95,7 @@ The live CI acceptance workflow uses the production downloader Compose service p
 - WebDAV app passwords are encrypted at rest using `APP_ENCRYPTION_KEY`; the settings API never returns the password.
 - Cookie exports are stored in the private data volume and are not returned by the API.
 - Child processes receive argument arrays, not shell command strings.
-- Private/local IP destinations and obvious internal hostnames are blocked by default. URL validation is not a network firewall: DNS rebinding and redirects must also be restricted with host/container egress controls before exposing the service to untrusted users.
+- Private/local IP destinations and obvious internal hostnames are blocked by default. The generic curl adapter additionally checks **all** DNS answers before connecting, pins the approved addresses with curl `--resolve`, disables inherited proxy settings, and rejects automatic redirects unless the operator explicitly allows private targets. This guards the first direct-download connection against DNS rebinding; it does **not** secure the other engines, dynamic linked media URLs, or every outbound network path. Container/host egress restrictions are mandatory before allowing untrusted users to submit jobs.
 - Logs redact common credential forms. Do not enable verbose engine traffic logging in production.
 - Configure the service for trusted administrators until authentication/authorization scope and network isolation have been fully reviewed.
 
