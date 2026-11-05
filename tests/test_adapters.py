@@ -42,7 +42,7 @@ def test_yt_dlp_adapter_uses_argument_array_and_emits_progress(tmp_path: Path):
     assert events[0]["percent"] == 50.0
     assert "Starting yt-dlp" in logs[0]
     assert "https://example.com/video" not in " ".join(logs)
-    assert "%(progress.downloaded_bytes)s\\t" in PROGRESS_TEMPLATE
+    assert "%(progress.downloaded_bytes)s\t" in PROGRESS_TEMPLATE
 
 
 def test_aria2_rpc_secret_is_sent_only_in_authorization_parameter(tmp_path: Path):
