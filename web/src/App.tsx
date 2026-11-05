@@ -391,6 +391,7 @@ export default function App() {
     <nav className="tabs">
       <button className={tab === 'downloads' ? 'active' : ''} onClick={() => setTab('downloads')}>Downloads</button>
       <button className={tab === 'engines' ? 'active' : ''} onClick={() => setTab('engines')}>Engine settings</button>
+      <button className={tab === 'routing' ? 'active' : ''} onClick={() => setTab('routing')}>Presets & routing</button>
       <button className={tab === 'delivery' ? 'active' : ''} onClick={() => setTab('delivery')}>Delivery</button>
     </nav>
 
@@ -399,10 +400,17 @@ export default function App() {
         <div className="eyebrow">NEW DOWNLOAD</div><h2>Submit a link</h2>
         <form onSubmit={submit}>
           <label>Media URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://" required /></label>
-          <label>Engine<select value={engine} onChange={event => setEngine(event.target.value as Engine)}>
+          <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
+            <option value="auto">Automatic — use URL rules</option>
             <option value="yt-dlp">yt-dlp — websites and media</option>
             <option value="aria2c">aria2c — direct, torrent, magnet</option>
             <option value="gallery-dl">gallery-dl — image galleries</option>
+          </select></label>
+          <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
+            <option value="">No preset</option>
+            {presets.filter(preset => engine === 'auto' || preset.engine === engine).map(preset => (
+              <option key={preset.id} value={preset.id}>{preset.name} ({preset.engine})</option>
+            ))}
           </select></label>
           {engine === 'yt-dlp' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
@@ -418,16 +426,25 @@ export default function App() {
           </div> : engine === 'aria2c' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             {['max-connection-per-server', 'split'].map(option => <label key={option}>{option}<input type="number" min="1" max="16" value={ariaOverride.options[option] ?? '4'} onChange={event => setAriaOverride(value => ({ ...value, options: { ...value.options, [option]: event.target.value } }))} /></label>)}
-          </div> : <div className="options-block">
+          </div> : engine === 'gallery-dl' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             <label>Extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label>
             <label>Cookie file<select value={galleryOverride.cookies_file ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, cookies_file: event.target.value }))}>
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
             <label>Proxy URL<input value={galleryOverride.proxy ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, proxy: event.target.value }))} placeholder="Optional proxy" /></label>
+          </div> : <div className="options-block">
+            <div className="field-title">Automatic selection</div>
+            <p className="muted">The service chooses the engine from your saved host/path rules. FTP and magnet links default to aria2c; unmatched URLs default to yt-dlp. A selected preset provides engine defaults when no URL rule matches.</p>
           </div>}
           <button className="primary" disabled={busy || !apiKey || !url.trim()}>{busy ? 'Adding…' : 'Add to queue'}</button>
         </form>
+        <div className="options-block">
+          <div className="field-title">Batch download</div>
+          <label>One URL per line<textarea rows={5} value={batchUrls} onChange={event => setBatchUrls(event.target.value)} placeholder="https://example.com/video-1&#10;https://example.com/video-2" /></label>
+          <p className="muted">Up to 50 links per batch. The whole batch is rejected if any URL is invalid.</p>
+          <button className="secondary" disabled={busy || !apiKey || !batchUrls.trim()} onClick={() => void submitBatch()}>{busy ? 'Adding…' : 'Add batch to queue'}</button>
+        </div>
       </section>
 
       <section className="panel queue-panel">
@@ -492,6 +509,57 @@ export default function App() {
         <button className="primary" onClick={() => void saveEngine('gallery-dl')}>Save gallery-dl defaults</button>
       </section>
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
+    </div>}
+
+    {tab === 'routing' && <div className="settings-layout">
+      <section className="panel">
+        <div className="eyebrow">SAVED OPTIONS</div><h2>Create a preset</h2>
+        <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
+        <form onSubmit={createPreset}>
+          <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
+          <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option>
+          </select></label>
+          <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
+          <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>
+          <button className="primary">Save preset</button>
+        </form>
+      </section>
+      <section className="panel">
+        <div className="eyebrow">PRESET LIBRARY</div><h2>Saved presets</h2>
+        {!presets.length ? <div className="empty">No presets saved.</div> : <div className="job-list">
+          {presets.map(preset => <article key={preset.id} className="job">
+            <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span><strong>{preset.name}</strong></div></div>
+            {preset.description && <p className="muted">{preset.description}</p>}
+            <pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre>
+            <div className="job-actions"><button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button></div>
+          </article>)}
+        </div>}
+      </section>
+      <section className="panel">
+        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>Add a URL rule</h2>
+        <p className="muted">Host suffix matches the exact host and its subdomains. A more specific path or higher priority wins.</p>
+        <form onSubmit={createEngineRule}>
+          <label>Host suffix<input value={ruleHost} onChange={event => setRuleHost(event.target.value)} placeholder="example.com" required /></label>
+          <label>Path prefix<input value={rulePath} onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
+          <label>Engine<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option>
+          </select></label>
+          <label>Priority (0–1000)<input type="number" min="0" max="1000" value={rulePriority} onChange={event => setRulePriority(event.target.value)} /></label>
+          <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
+          <button className="primary">Save URL rule</button>
+        </form>
+      </section>
+      <section className="panel">
+        <div className="eyebrow">URL RULES</div><h2>Routing table</h2>
+        {!engineRules.length ? <div className="empty">No URL rules configured. Automatic selection defaults to yt-dlp, or aria2c for FTP/magnet links.</div> : <div className="job-list">
+          {engineRules.map(rule => <article key={rule.id} className="job">
+            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">Priority {rule.priority}</span></div>
+            {rule.description && <p className="muted">{rule.description}</p>}
+            <div className="job-actions"><button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button></div>
+          </article>)}
+        </div>}
+      </section>
     </div>}
 
     {tab === 'delivery' && <section className="panel delivery-panel">
