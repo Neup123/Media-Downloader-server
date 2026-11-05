@@ -507,6 +507,100 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
     raise ValueError("Unsupported engine")
 
 
+def preset_to_dict(row: Preset) -> dict:
+    return {
+        "id": row.id,
+        "name": row.name,
+        "engine": row.engine,
+        "settings": row.settings or {},
+        "description": row.description,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def engine_rule_to_dict(row: EngineRule) -> dict:
+    return {
+        "id": row.id,
+        "host_suffix": row.host_suffix,
+        "path_prefix": row.path_prefix,
+        "engine": row.engine,
+        "priority": row.priority,
+        "enabled": row.enabled,
+        "description": row.description,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+    }
+
+
+def _merge_settings(base: dict, override: dict) -> dict:
+    result = dict(base or {})
+    for key, value in (override or {}).items():
+        if isinstance(value, dict) and isinstance(result.get(key), dict):
+            result[key] = _merge_settings(result[key], value)
+        else:
+            result[key] = value
+    return result
+
+
+def _resolve_job_engine(url: str, requested: str, session: Session, preset: Preset | None) -> str:
+    if requested != "auto":
+        return requested
+    parsed = urlsplit(url.strip())
+    scheme = parsed.scheme.lower()
+    if scheme == "magnet" or scheme in {"ftp", "ftps"}:
+        return "aria2c"
+    host = (parsed.hostname or "").lower().rstrip(".")
+    path = parsed.path or "/"
+    matches = []
+    if host:
+        for rule in session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all():
+            suffix_match = host == rule.host_suffix or host.endswith("." + rule.host_suffix)
+            path_match = rule.path_prefix == "/" or path.startswith(rule.path_prefix)
+            if suffix_match and path_match:
+                matches.append(rule)
+    if matches:
+        selected = max(
+            matches,
+            key=lambda rule: (rule.priority, len(rule.host_suffix), len(rule.path_prefix)),
+        )
+        return selected.engine
+    if preset is not None:
+        return preset.engine
+    return "yt-dlp"
+
+
+def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
+    preset = None
+    if payload.preset_id:
+        preset = session.get(Preset, payload.preset_id)
+        if preset is None:
+            raise HTTPException(status_code=404, detail="Selected preset was not found")
+
+    engine = _resolve_job_engine(payload.url, payload.engine, session, preset)
+    if preset is not None and preset.engine != engine:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Selected preset uses {preset.engine}, but URL routing selected {engine}",
+        )
+
+    try:
+        url = validate_target_url(payload.url, engine, config.allow_private_targets)
+        preset_settings = validate_engine_settings(engine, preset.settings, partial=True) if preset else {}
+        job_overrides = validate_engine_settings(engine, payload.overrides, partial=True)
+        overrides = _merge_settings(preset_settings, job_overrides)
+    except (UnsafeUrlError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return Job(
+        url=url,
+        engine=engine,
+        status="queued",
+        overrides=overrides,
+        progress={"state": "queued"},
+    )
+
+
 def job_to_dict(job: Job) -> dict:
     return {
         "id": job.id,
