@@ -88,11 +88,17 @@ class JobOut(BaseModel):
     overrides: dict[str, Any]
     progress: dict[str, Any]
     output_files: list[dict[str, Any]]
+    log_text: str
     error: str | None
     cancel_requested: bool
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
+
+
+class JobBatchOut(BaseModel):
+    created: int
+    jobs: list[JobOut]
 
 
 class EngineSettingsIn(BaseModel):
