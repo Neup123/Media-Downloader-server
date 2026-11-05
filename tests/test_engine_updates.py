@@ -89,6 +89,7 @@ def test_update_workflow_is_gated_and_has_blocked_issue_path():
     assert any("Detect stable" in text for text in descriptions)
     assert any("disposable Nextcloud" in text for text in descriptions)
     assert any("SHA-256" in text for text in descriptions)
+    assert any("Require a real smoke test" in text for text in descriptions)
     assert any("Merge green candidate" in text for text in descriptions)
     assert any("blocked-update issue" in text for text in descriptions)
     for item in steps:
