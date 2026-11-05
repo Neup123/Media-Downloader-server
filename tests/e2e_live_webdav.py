@@ -16,10 +16,10 @@ API_TOKEN = os.environ["APP_API_TOKEN"]
 NC_URL = os.getenv("NEXTCLOUD_HTTP_URL", "http://127.0.0.1:8081")
 NC_USER = "admin"
 NC_PASSWORD = os.environ["NEXTCLOUD_ADMIN_PASSWORD"]
-SOURCE_URL = os.getenv("SOURCE_URL", "http://host.docker.internal:9000/sample.mp4")
+SOURCE_URL = os.getenv("SOURCE_URL", "http://media-source:9000/sample.mp4")
 WEBDAV_URL = os.getenv(
     "WEBDAV_BASE_URL",
-    "http://host.docker.internal:8081/remote.php/dav/files/admin",
+    "http://nextcloud/remote.php/dav/files/admin",
 )
 FIXTURE = Path(os.getenv("MEDIA_FIXTURE", "fixture/sample.mp4"))
 
@@ -121,7 +121,7 @@ def verify_downloaded_files(job: dict) -> None:
             fail(f"WebDAV result is not an HTTP(S) URL: {item['path']}")
         # The container-only DNS alias is replaced by the host-published port
         # so the CI runner can independently read the delivered Nextcloud file.
-        netloc = parsed.netloc.replace("host.docker.internal:8081", "127.0.0.1:8081")
+        netloc = parsed.netloc.replace("nextcloud", "127.0.0.1:8081")
         download_url = urlunsplit((parsed.scheme, netloc, parsed.path, "", ""))
         with httpx.Client(auth=(NC_USER, NC_PASSWORD), timeout=30.0) as remote:
             response = remote.get(download_url)
