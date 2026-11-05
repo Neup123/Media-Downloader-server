@@ -509,6 +509,10 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                     raise ValueError(f"Sensitive gallery-dl option {key} cannot be stored as plain text; use an uploaded cookie file")
                 if isinstance(value, (dict, list)) or value is None or len(str(value)) > 2048 or "\x00" in str(value):
                     raise ValueError(f"Invalid gallery-dl option value: {key}")
+                if key.rsplit(".", 1)[-1] in {"filename", "directory"} and any(
+                    marker in str(value) for marker in ("..", "/", "\\")
+                ):
+                    raise ValueError("gallery-dl filename/directory templates cannot contain path separators or parent traversal")
                 normalized[key] = str(value)
             result["options"] = normalized
         for key in ("cookies_file", "proxy"):
