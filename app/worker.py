@@ -372,7 +372,7 @@ class JobWorker:
                     session.commit()
 
 
-_LOG_URL = re.compile(r"(?i)\\b(?:https?|ftps?)://[^\\s<>\\\"'\\x60]+")
+_LOG_URL = re.compile(r"(?i)\b(?:https?|ftps?)://[^\s<>\\"'\x60]+")
 
 
 def _redact(message: str) -> str:
@@ -383,8 +383,8 @@ def _redact(message: str) -> str:
     content, including uncommon credential names and URL-embedded passwords.
     """
     message = re.sub(
-        r"(?i)(authorization|cookie|set-cookie|app_password|rpc-secret)(\\s*[:=]\\s*)[^\\s,;]+",
-        r"\\1\\2[REDACTED]", message,
+        r"(?i)(authorization|cookie|set-cookie|app_password|rpc-secret)(\s*[:=]\s*)[^\s,;]+",
+        r"\1\2[REDACTED]", message,
     )
 
     def clean_url(match: re.Match[str]) -> str:
@@ -405,8 +405,8 @@ def _redact(message: str) -> str:
     # Preserve existing protection for bare key/value secrets not attached to
     # an HTTP URL, such as a credential printed by a CLI diagnostic.
     message = re.sub(
-        r"([?&](?:token|access_token|api_key|key|secret|auth|password|signature|sig|session|cookie)=)[^&#\\s]+",
-        r"\\1[REDACTED]", message, flags=re.IGNORECASE,
+        r"([?&](?:token|access_token|api_key|key|secret|auth|password|signature|sig|session|cookie)=)[^&#\s]+",
+        r"\1[REDACTED]", message, flags=re.IGNORECASE,
     )
     return message[:4000]
 
