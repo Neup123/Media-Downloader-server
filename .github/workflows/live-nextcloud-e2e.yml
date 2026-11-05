@@ -57,6 +57,9 @@ jobs:
           token = secrets.token_urlsafe(48)
           password = secrets.token_urlsafe(24)
           key = Fernet.generate_key().decode()
+          print(f"::add-mask::{token}")
+          print(f"::add-mask::{password}")
+          print(f"::add-mask::{key}")
           with open(".env.e2e", "w", encoding="utf-8") as stream:
               stream.write(f"APP_API_TOKEN={token}\n")
               stream.write(f"APP_ENCRYPTION_KEY={key}\n")
