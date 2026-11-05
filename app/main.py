@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.adapters.process_env import downloader_environment
 from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
@@ -101,7 +102,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                     version_flag = "-v" if item["name"] == "get-sauce" else "--version"
                     completed = subprocess.run(
                         [executable, version_flag], capture_output=True, text=True,
-                        timeout=4, check=False,
+                        timeout=4, check=False, env=downloader_environment(),
                     )
                     lines = (completed.stdout or completed.stderr).splitlines()
                     version = lines[0][:160] if completed.returncode == 0 and lines else "unknown"
