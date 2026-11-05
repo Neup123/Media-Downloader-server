@@ -165,8 +165,8 @@ jobs:
                   path = Path(name)
                   if path.is_file():
                       content = path.read_text(encoding="utf-8", errors="replace")
-                      content = re.sub(r"(?i)(token|password|authorization)(\\s*[:=]\\s*)[^\\s,;]+", r"\\1\\2[REDACTED]", content)
-                      stream.write(f"===== {name} =====\\n" + content[-25000:] + "\\n")
+                      content = re.sub(r"(?i)(token|password|authorization)(\s*[:=]\s*)[^\s,;]+", r"\1\2[REDACTED]", content)
+                      stream.write(f"===== {name} =====\n" + content[-25000:] + "\n")
           PY
 
       - uses: actions/upload-artifact@v4
@@ -200,7 +200,7 @@ jobs:
           set -euo pipefail
           tag=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | python -c '
           import re,sys
-          versions=[tuple(map(int,m.groups())) for line in sys.stdin for m in [re.fullmatch(r"v(\\d+)\\.(\\d+)\\.(\\d+)", line.strip())] if m]
+          versions=[tuple(map(int,m.groups())) for line in sys.stdin for m in [re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", line.strip())] if m]
           major,minor,patch=max(versions, default=(0,1,0))
           print(f"v{major}.{minor}.{patch+1}")
           ')
@@ -241,7 +241,11 @@ jobs:
           )
           PY
           title=$(cat blocked-issue-title.txt)
-          existing=$(gh issue list --state open --label engine-update-blocked --json number,title --jq ".[] | select(.title == \\"$title\\") | .number" | head -n 1)
+          existing=$(gh issue list --state open --label engine-update-blocked --json number,title | TITLE="$title" python -c '
+          import json, os, sys
+          entries = json.load(sys.stdin)
+          print(next((str(item["number"]) for item in entries if item["title"] == os.environ["TITLE"]), ""))
+          ')
           if [ -n "$existing" ]; then
             gh issue comment "$existing" --body-file blocked-issue-body.md
           else
