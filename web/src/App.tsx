@@ -851,17 +851,18 @@ export default function App() {
     </div>}
 
     {tab === 'routing' && <div className="settings-layout">
-      <section className="panel">
-        <div className="eyebrow">SAVED OPTIONS</div><h2>Create a preset</h2>
+      <section className="panel" id="preset-editor">
+        <div className="eyebrow">SAVED OPTIONS</div><h2>{editingPresetId ? 'Edit preset' : 'Create a preset'}</h2>
         <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
-        <form onSubmit={createPreset}>
+        <form onSubmit={savePreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
             <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
           <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>
-          <button className="primary">Save preset</button>
+          <button className="primary">{editingPresetId ? 'Update preset' : 'Create preset'}</button>
+          {editingPresetId && <button type="button" className="secondary" onClick={resetPresetEditor}>Cancel editing</button>}
         </form>
       </section>
       <section className="panel">
@@ -871,31 +872,39 @@ export default function App() {
             <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span><strong>{preset.name}</strong></div></div>
             {preset.description && <p className="muted">{preset.description}</p>}
             <pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre>
-            <div className="job-actions"><button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button></div>
+            <div className="job-actions">
+              <button className="small" onClick={() => editPreset(preset)}>Edit</button>
+              <button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button>
+            </div>
           </article>)}
         </div>}
       </section>
-      <section className="panel">
-        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>Add a URL rule</h2>
+      <section className="panel" id="rule-editor">
+        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>{editingRuleId ? 'Edit URL rule' : 'Add a URL rule'}</h2>
         <p className="muted">Host suffix matches the exact host and its subdomains. A more specific path or higher priority wins.</p>
-        <form onSubmit={createEngineRule}>
+        <form onSubmit={saveEngineRule}>
           <label>Host suffix<input value={ruleHost} onChange={event => setRuleHost(event.target.value)} placeholder="example.com" required /></label>
           <label>Path prefix<input value={rulePath} onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
           <label>Engine<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Priority (0–1000)<input type="number" min="0" max="1000" value={rulePriority} onChange={event => setRulePriority(event.target.value)} /></label>
+          <label className="check"><input type="checkbox" checked={ruleEnabled} onChange={event => setRuleEnabled(event.target.checked)} /> Rule enabled</label>
           <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
-          <button className="primary">Save URL rule</button>
+          <button className="primary">{editingRuleId ? 'Update URL rule' : 'Create URL rule'}</button>
+          {editingRuleId && <button type="button" className="secondary" onClick={resetRuleEditor}>Cancel editing</button>
         </form>
       </section>
       <section className="panel">
         <div className="eyebrow">URL RULES</div><h2>Routing table</h2>
         {!engineRules.length ? <div className="empty">No URL rules configured. Automatic selection defaults to yt-dlp, or aria2c for FTP/magnet links.</div> : <div className="job-list">
           {engineRules.map(rule => <article key={rule.id} className="job">
-            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">Priority {rule.priority}</span></div>
+            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">{rule.enabled ? 'Enabled' : 'Disabled'} · Priority {rule.priority}</span></div>
             {rule.description && <p className="muted">{rule.description}</p>}
-            <div className="job-actions"><button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button></div>
+            <div className="job-actions">
+              <button className="small" onClick={() => editEngineRule(rule)}>Edit</button>
+              <button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button>
+            </div>
           </article>)}
         </div>}
       </section>
