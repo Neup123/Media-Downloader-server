@@ -20,7 +20,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - The **Presets & routing** dashboard tab lets administrators create, edit and delete saved presets and URL rules. Editing preserves the record ID, and routing rules can be temporarily disabled without deleting them. Rule changes affect future automatic engine selection; already queued jobs keep their resolved engine and options.
 - The per-engine graphical settings catalog is exposed at `/api/v1/engines/{engine}/options`. The dashboard groups common options into typed controls; site-specific gallery-dl options remain available in an advanced editor. The engines API reports installed versions.
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
-- All three currently implemented engines are classified P0 in the blueprint: yt-dlp, aria2c, and gallery-dl.
+- The three P0 engines are yt-dlp, aria2c, and gallery-dl. The P1 and P2 adapters are also implemented, with remaining site-specific acceptance gaps called out below.
 - The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. Both P2 adapters (svtplay-dl and get-sauce) are implemented behind validated engine option forms; live site-specific acceptance remains outstanding.
 - The draft PR is intentionally not merged until its live and operational acceptance checks are complete.
 
@@ -59,6 +59,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Health check: `/healthz`
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
+- WebDAV directory creation accepts `MKCOL` 201, or a 405 only when a follow-up Depth:0 `PROPFIND` verifies that the exact resource is a `DAV:collection` with a successful property status. This applies to nested output folders.
 
 ## Implemented engines
 
@@ -73,7 +74,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 
 The gallery-dl options UI accepts a JSON object to expose its large and site-specific configuration surface without hard-coding every extractor option. Credential-like option names and proxies with embedded credentials are rejected; use the private cookie-file upload for session cookies.
 
-The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEPRINT.md). Remaining engine adapters are not implemented yet.
+The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEPRINT.md). All seven bundled adapters are implemented; site-specific P2 smoke coverage, external-network egress enforcement, and deployment acceptance remain outstanding.
 
 ## Automated Python engine updates
 
