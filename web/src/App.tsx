@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type Engine = 'yt-dlp' | 'aria2c';
+type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl';
 type Job = {
   id: string; url: string; engine: Engine; status: string;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
@@ -11,6 +11,7 @@ type YtSettings = {
   extra_args: string[]; cookies_file?: string;
 };
 type AriaSettings = { options: Record<string, string> };
+type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
 
 const API = '/api/v1';
 const ytDefaults: YtSettings = {
@@ -20,6 +21,15 @@ const ytDefaults: YtSettings = {
 const ariaDefaults: AriaSettings = {
   options: { 'max-connection-per-server': '4', split: '4', 'max-tries': '5', 'retry-wait': '5' },
 };
+const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy: '' };
+
+function parseOptionsJson(value: string): Record<string, string> {
+  const parsed: unknown = JSON.parse(value);
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('Extractor options must be a JSON object.');
+  }
+  return parsed as Record<string, string>;
+}
 
 function bytes(value: unknown): string {
   if (typeof value !== 'number' || !Number.isFinite(value)) return '—';
@@ -47,6 +57,10 @@ export default function App() {
   const [ytOverride, setYtOverride] = useState<YtSettings>(ytDefaults);
   const [aria, setAria] = useState<AriaSettings>(ariaDefaults);
   const [ariaOverride, setAriaOverride] = useState<AriaSettings>(ariaDefaults);
+  const [gallery, setGallery] = useState<GallerySettings>(galleryDefaults);
+  const [galleryOverride, setGalleryOverride] = useState<GallerySettings>(galleryDefaults);
+  const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
+  const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
   const [cookies, setCookies] = useState<{ filename: string; size_bytes: number }[]>([]);
   const [mode, setMode] = useState<'local' | 'webdav'>('local');
   const [davUrl, setDavUrl] = useState('');
@@ -89,6 +103,12 @@ export default function App() {
     void request(API + '/engines/aria2c/settings').then(data => {
       const saved = { ...ariaDefaults, ...data.settings };
       setAria(saved); setAriaOverride(saved);
+    }).catch(error => setMessage(String(error)));
+    void request(API + '/engines/gallery-dl/settings').then(data => {
+      const saved = { ...galleryDefaults, ...data.settings };
+      setGallery(saved); setGalleryOverride(saved);
+      setGalleryOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
+      setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
   }, [apiKey, request]);
@@ -154,7 +174,14 @@ export default function App() {
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true);
     try {
-      const overrides = engine === 'yt-dlp' ? ytOverride : ariaOverride;
+      let overrides: YtSettings | AriaSettings | GallerySettings;
+      if (engine === 'yt-dlp') {
+        overrides = ytOverride;
+      } else if (engine === 'aria2c') {
+        overrides = ariaOverride;
+      } else {
+        overrides = { ...galleryOverride, options: parseOptionsJson(galleryOverrideOptionsText) };
+      }
       const job = await request(API + '/jobs', {
         method: 'POST', body: JSON.stringify({ url, engine, overrides }),
       });
@@ -172,12 +199,20 @@ export default function App() {
           method: 'PUT', body: JSON.stringify({ settings }),
         });
         setYtOverride(settings);
-      } else {
+      } else if (name === 'aria2c') {
         const settings = aria;
         await request(API + '/engines/aria2c/settings', {
           method: 'PUT', body: JSON.stringify({ settings }),
         });
         setAriaOverride(settings);
+      } else {
+        const settings = { ...gallery, options: parseOptionsJson(galleryOptionsText) };
+        await request(API + '/engines/gallery-dl/settings', {
+          method: 'PUT', body: JSON.stringify({ settings }),
+        });
+        setGallery(settings);
+        setGalleryOverride(settings);
+        setGalleryOverrideOptionsText(JSON.stringify(settings.options, null, 2));
       }
       setMessage(name + ' defaults saved.');
     } catch (error) {
@@ -256,7 +291,9 @@ export default function App() {
         <form onSubmit={submit}>
           <label>Media URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://" required /></label>
           <label>Engine<select value={engine} onChange={event => setEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp — websites and media</option><option value="aria2c">aria2c — direct, torrent, magnet</option>
+            <option value="yt-dlp">yt-dlp — websites and media</option>
+            <option value="aria2c">aria2c — direct, torrent, magnet</option>
+            <option value="gallery-dl">gallery-dl — image galleries</option>
           </select></label>
           {engine === 'yt-dlp' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
@@ -269,9 +306,16 @@ export default function App() {
               <label className="check"><input type="checkbox" checked={ytOverride.write_subtitles} onChange={event => setYtOverride(value => ({ ...value, write_subtitles: event.target.checked }))} /> Download subtitles</label>
               <label className="check"><input type="checkbox" checked={ytOverride.embed_subtitles} onChange={event => setYtOverride(value => ({ ...value, embed_subtitles: event.target.checked }))} /> Embed subtitles</label>
             </div>
-          </div> : <div className="options-block">
+          </div> : engine === 'aria2c' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             {['max-connection-per-server', 'split'].map(option => <label key={option}>{option}<input type="number" min="1" max="16" value={ariaOverride.options[option] ?? '4'} onChange={event => setAriaOverride(value => ({ ...value, options: { ...value.options, [option]: event.target.value } }))} /></label>)}
+          </div> : <div className="options-block">
+            <div className="field-title">Per-download overrides</div>
+            <label>Extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label>
+            <label>Cookie file<select value={galleryOverride.cookies_file ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, cookies_file: event.target.value }))}>
+              <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
+            </select></label>
+            <label>Proxy URL<input value={galleryOverride.proxy ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, proxy: event.target.value }))} placeholder="Optional proxy" /></label>
           </div>}
           <button className="primary" disabled={busy || !apiKey || !url.trim()}>{busy ? 'Adding…' : 'Add to queue'}</button>
         </form>
@@ -326,6 +370,17 @@ export default function App() {
         {Object.entries(aria.options).map(([key, value]) => <label key={key}>{key}<input value={value} onChange={event => setAria(current => ({ ...current, options: { ...current.options, [key]: event.target.value } }))} /></label>)}
         <button className="secondary" onClick={() => setAria(ariaDefaults)}>Reset shown defaults</button>
         <button className="primary" onClick={() => void saveEngine('aria2c')}>Save aria2c defaults</button>
+      </section>
+      <section className="panel">
+        <div className="eyebrow">ENGINE DEFAULTS</div><h2>gallery-dl</h2>
+        <p className="muted">Configure extractor options as a JSON object. The service controls the destination folder and terminal progress format.</p>
+        <label>Extractor options (JSON object)<textarea rows={8} value={galleryOptionsText} onChange={event => setGalleryOptionsText(event.target.value)} /></label>
+        <label>Default cookie file<select value={gallery.cookies_file ?? ''} onChange={event => setGallery(value => ({ ...value, cookies_file: event.target.value }))}>
+          <option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
+        </select></label>
+        <label>Default proxy URL<input value={gallery.proxy ?? ''} onChange={event => setGallery(value => ({ ...value, proxy: event.target.value }))} placeholder="Optional proxy" /></label>
+        <button className="secondary" onClick={() => { setGallery(galleryDefaults); setGalleryOptionsText('{}'); }}>Reset shown defaults</button>
+        <button className="primary" onClick={() => void saveEngine('gallery-dl')}>Save gallery-dl defaults</button>
       </section>
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
     </div>}
