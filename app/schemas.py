@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-EngineName = Literal["yt-dlp", "aria2c"]
+EngineName = Literal["yt-dlp", "aria2c", "gallery-dl"]
 
 
 class JobCreate(BaseModel):
