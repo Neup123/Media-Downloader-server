@@ -15,6 +15,8 @@ class Settings:
     aria2_rpc_port: int
     encryption_key: str | None
     allow_private_targets: bool
+    allow_private_webdav_targets: bool = False
+    allow_insecure_webdav: bool = False
     max_concurrent_per_engine: dict[str, int] = field(
         default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1, "get-sauce": 1}
     )
@@ -32,6 +34,8 @@ class Settings:
             aria2_rpc_port=int(os.getenv("ARIA2_RPC_PORT", "16800")),
             encryption_key=os.getenv("APP_ENCRYPTION_KEY") or None,
             allow_private_targets=os.getenv("ALLOW_PRIVATE_TARGETS", "false").lower() == "true",
+            allow_private_webdav_targets=os.getenv("ALLOW_PRIVATE_WEBDAV_TARGETS", "false").lower() == "true",
+            allow_insecure_webdav=os.getenv("ALLOW_INSECURE_WEBDAV", "false").lower() == "true",
             max_concurrent_per_engine={
                 "yt-dlp": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YTDLP", "1")))),
                 "aria2c": max(1, min(8, int(os.getenv("MAX_CONCURRENT_ARIA2", "1")))),
