@@ -19,6 +19,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.adapters.process_env import downloader_environment
+from app.completion import load_completed_files
 from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
@@ -382,6 +383,34 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         job.error = None
         job.finished_at = None
         append_log(job, "Job queued for retry")
+        session.commit()
+        session.refresh(job)
+        return job_to_dict(job)
+
+    @app.post("/api/v1/jobs/{job_id}/redeliver", status_code=202, response_model=JobOut, tags=["jobs"])
+    def redeliver_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.status != "completed":
+            raise HTTPException(status_code=409, detail="Only completed jobs can be re-delivered")
+
+        # The durable manifest proves the engine finished successfully and
+        # that the original files have not changed since that success.
+        # Never silently download a new copy through this operation.
+        workdir = config.data_dir / "jobs" / job.id
+        if not load_completed_files(workdir):
+            raise HTTPException(
+                status_code=409,
+                detail="Completed download files are no longer verified or available; submit a new download",
+            )
+        job.status = "queued"
+        job.cancel_requested = False
+        job.progress = {"state": "queued", "operation": "redeliver"}
+        job.output_files = []
+        job.error = None
+        job.finished_at = None
+        append_log(job, "Re-delivery queued using verified existing files; earlier destination files are not removed")
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
