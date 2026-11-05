@@ -17,6 +17,14 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
 
 
 OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "svtplay-dl": [
+        field("quality", "Quality selector", "Media", "text", "svtplay-dl --quality"),
+        field("resolution", "Preferred resolutions", "Media", "text", "Comma-separated values such as 480,720,1080"),
+        field("output_format", "Output container (mp4 or mkv)", "Files", "text"),
+        field("subtitles", "Download subtitles", "Subtitles", "boolean"),
+        field("all_subtitles", "Download all subtitle languages", "Subtitles", "boolean"),
+        field("all_episodes", "Download all episodes", "Series", "boolean"),
+    ],
     "you-get": [
         field("format", "Format code", "Media", "text", "you-get --format, e.g. stream identifier"),
         field("no_proxy", "Disable system proxy", "Network", "boolean"),
