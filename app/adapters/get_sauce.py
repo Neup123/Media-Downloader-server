@@ -30,7 +30,7 @@ def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any
     if not isinstance(values["subdirectory"], bool):
         raise ValueError("get-sauce subdirectory must be a boolean")
     pages = values["pages"]
-    if not isinstance(pages, str) or (pages and not re.fullmatch(r"[1-9]\\d{0,5}(?:-[1-9]\\d{0,5})?(?:,[1-9]\\d{0,5}(?:-[1-9]\\d{0,5})?)*", pages)):
+    if not isinstance(pages, str) or (pages and not re.fullmatch(r"[1-9]\d{0,5}(?:-[1-9]\d{0,5})?(?:,[1-9]\d{0,5}(?:-[1-9]\d{0,5})?)*", pages)):
         raise ValueError("get-sauce pages must be comma-separated positive indices and ranges")
     return values
 
