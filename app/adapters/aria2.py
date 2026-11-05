@@ -70,7 +70,10 @@ class Aria2Rpc:
             "--console-log-level=warn",
             "--summary-interval=0",
         ]
-        self.process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        self.process = subprocess.Popen(
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            close_fds=True, env=downloader_environment(),
+        )
         for _ in range(40):
             if self.process.poll() is not None:
                 raise RuntimeError("aria2c exited during startup; check that aria2c is installed and the RPC port is available")
