@@ -26,39 +26,5 @@ services:
       - ./fixture:/fixtures:ro
     restart: unless-stopped
 
-  downloader:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: downloader-server:e2e
-    restart: unless-stopped
-    environment:
-      APP_API_TOKEN: ${APP_API_TOKEN:?Set an ephemeral API token}
-      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:?Set an ephemeral Fernet key}
-      DATA_DIR: /data
-      OUTPUT_DIR: /data/downloads
-      DATABASE_URL: sqlite:////data/downloader.db
-      MAX_CONCURRENT_DOWNLOADS: 2
-      MAX_CONCURRENT_YTDLP: 1
-      MAX_CONCURRENT_ARIA2: 1
-      ARIA2_RPC_PORT: 16800
-      ALLOW_PRIVATE_TARGETS: "false"
-    ports:
-      - "127.0.0.1:8080:8080"
-    volumes:
-      - downloader-e2e-data:/data
-    depends_on:
-      nextcloud:
-        condition: service_started
-      media-source:
-        condition: service_started
-    healthcheck:
-      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
 volumes:
   nextcloud-e2e-data:
-  downloader-e2e-data:
