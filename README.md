@@ -30,6 +30,7 @@ A feature is not complete merely because an API request succeeds or a container 
 1. Copy `.env.example` to `.env`.
 2. Generate `APP_API_TOKEN` with `python -c "import secrets; print(secrets.token_urlsafe(48))"` and set it in `.env`.
 3. For WebDAV delivery, generate `APP_ENCRYPTION_KEY` with `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Keep it stable across restarts and backups.
+   Use an HTTPS WebDAV endpoint. If Nextcloud is reachable only through a trusted internal Docker network, explicitly set `ALLOW_PRIVATE_WEBDAV_TARGETS=true` and, only for an HTTP endpoint, `ALLOW_INSECURE_WEBDAV=true`. These flags are independent of `ALLOW_PRIVATE_TARGETS`, which controls submitted media sources.
 4. Start with `docker compose up --build -d`.
 5. Open `http://127.0.0.1:8080`, enter the API token, and submit a link.
 
@@ -97,6 +98,7 @@ The live CI acceptance workflow uses the production downloader Compose service p
 - The API requires a random key. The default Compose port binds to localhost.
 - aria2 RPC listens on the container loopback interface and uses a generated secret.
 - WebDAV app passwords are encrypted at rest using `APP_ENCRYPTION_KEY`; the settings API never returns the password.
+- WebDAV destinations default to HTTPS and cannot point at literal private/reserved IPs or obvious internal hostnames. `ALLOW_PRIVATE_WEBDAV_TARGETS` is a **separate**, explicit opt-in for a trusted private Nextcloud destination; it does not enable private download sources. `ALLOW_INSECURE_WEBDAV` is a separate opt-in for plain HTTP, which sends Basic Auth credentials without transport encryption. The service rechecks destination policy at delivery and resolves public-target DNS to reject private/reserved answers, but DNS answers are not pinned in HTTPX; host-level egress filtering remains necessary against DNS rebinding.
 - Cookie exports are stored in the private data volume and are not returned by the API.
 - Child processes receive argument arrays, not shell command strings.
 - Downloader subprocesses and metadata previews discard inherited `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `FTP_PROXY`, and `NO_PROXY` variables (case-insensitively). The aria2 loopback RPC client and authenticated WebDAV delivery also disable HTTPX environment-proxy discovery. An explicitly configured gallery-dl proxy remains supported; host-level proxy environment settings are not silently trusted as download routing or credential handling policy. This is defense in depth and does **not** replace network egress restrictions.
