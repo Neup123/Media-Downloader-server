@@ -11,6 +11,7 @@ from sqlalchemy import select
 from app.adapters.aria2 import Aria2Rpc
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
+from app.adapters.you_get import run_you_get
 from app.adapters.yt_dlp import run_ytdlp
 from app.completion import load_completed_files, save_completed_files
 from app.config import Settings
@@ -20,6 +21,7 @@ from app.delivery import deliver_files
 
 ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
+    "you-get": {"format": "", "cookies_file": "", "no_proxy": False},
     "yt-dlp": {
         "format": "bv*+ba/b",
         "subtitles_lang": "",
@@ -49,6 +51,7 @@ ENGINE_DESCRIPTIONS = [
     {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
     {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
     {"name": "generic", "label": "generic / curl", "role": "Plain direct HTTP(S) downloads", "priority": "P1", "available": True},
+    {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
 ]
 
 
@@ -245,6 +248,13 @@ class JobWorker:
                 files = await run_generic(
                     executable="curl", url=url, workdir=workdir,
                     global_settings=global_settings, overrides=overrides,
+                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                )
+            elif engine == "you-get":
+                files = await run_you_get(
+                    executable="you-get", url=url, workdir=workdir,
+                    global_settings=global_settings, overrides=overrides,
+                    cookie_dir=self.settings.data_dir / "cookies",
                     on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                 )
             elif engine == "aria2c":
