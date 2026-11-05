@@ -36,6 +36,19 @@ paths:
       responses:
         '200':
           description: Engine capabilities and default settings
+  /engines/{engine_name}/options:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl] }
+    get:
+      operationId: getEngineOptionCatalog
+      summary: List typed common engine option fields for graphical settings
+      tags: [engines]
+      responses:
+        '200': { description: Categorized option fields with types and labels }
+        '404': { description: Unknown engine }
   /engines/{engine_name}/settings:
     parameters:
       - name: engine_name
