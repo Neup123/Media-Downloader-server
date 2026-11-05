@@ -136,7 +136,7 @@ def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
             continue
         for propstat in response.findall(ns + "propstat"):
             status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\\d+(?:\\.\\d+)?\\s+200(?:\\s|$)", status) is None:
+            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
                 continue
             prop = propstat.find(ns + "prop")
             resource_type = prop.find(ns + "resourcetype") if prop is not None else None
