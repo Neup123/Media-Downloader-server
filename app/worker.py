@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from app.adapters.aria2 import Aria2Rpc
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.yt_dlp import run_ytdlp
+from app.completion import load_completed_files, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.delivery import deliver_files
@@ -99,6 +101,14 @@ class JobWorker:
                 job.status = "queued"
                 job.cancel_requested = False
                 append_log(job, "Service restarted; job returned to the queue for recovery.")
+            # An unclean shutdown can strand queued work with a stale cancellation flag.
+            # A deliberately cancelled queued job has status "cancelled".
+            stranded = session.scalars(
+                select(Job).where(Job.status == "queued", Job.cancel_requested.is_(True))
+            ).all()
+            for job in stranded:
+                job.cancel_requested = False
+                append_log(job, "Cleared stale shutdown cancellation flag; job returned to the queue.")
             session.commit()
 
     def _select_queued_jobs(self, queued_jobs: list[Job], slots: int) -> list[Job]:
@@ -181,9 +191,15 @@ class JobWorker:
                 return not current or current.cancel_requested
 
         try:
-            existing_files = _completed_files(workdir)
+            existing_files = load_completed_files(workdir)
+            if not existing_files and any(workdir.iterdir()):
+                # Partial outputs may have ordinary extensions. Only a valid
+                # completion manifest permits reuse; otherwise start clean.
+                shutil.rmtree(workdir)
+                workdir.mkdir(parents=True, exist_ok=True)
+                await on_log("Discarded unverified output left by an interrupted download")
             if existing_files:
-                await on_log(f"Recovery found {len(existing_files)} completed output file(s); skipping another download")
+                await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
                 files = existing_files
             elif engine == "yt-dlp":
                 files = await run_ytdlp(
@@ -211,6 +227,8 @@ class JobWorker:
                 raise ValueError(f"Unsupported engine: {engine}")
             if await is_cancelled():
                 raise asyncio.CancelledError
+            if not existing_files:
+                save_completed_files(workdir, files)
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
@@ -259,13 +277,3 @@ def _redact(message: str) -> str:
     return message[:4000]
 
 
-def _completed_files(workdir: Path) -> list[Path]:
-    ignored_suffixes = (".part", ".ytdl", ".aria2", ".tmp")
-    output = []
-    for path in workdir.rglob("*"):
-        if not path.is_file() or path.name.endswith(ignored_suffixes):
-            continue
-        if Path(str(path) + ".aria2").exists():
-            continue
-        output.append(path)
-    return sorted(output)
