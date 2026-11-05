@@ -183,7 +183,9 @@ class JobWorker:
             if not job or job.status != "queued":
                 return
             job.status = "starting"
-            job.output_files = []
+            # Preserve previously verified delivery records on crash recovery.
+            # The explicit retry API clears these records itself; if the
+            # completed-download manifest is missing we clear them below.
             job.updated_at = utcnow()
             append_log(job, f"Job started with engine {job.engine}")
             url, engine, overrides = job.url, job.engine, dict(job.overrides or {})
@@ -222,11 +224,31 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    current.output_files = [*(current.output_files or []), item]
+                    # Re-delivery after a restart may verify the same file
+                    # again. Replace the old record rather than duplicating it.
+                    existing = [
+                        old for old in (current.output_files or [])
+                        if not (
+                            isinstance(old, dict)
+                            and old.get("path") == item.get("path")
+                            and old.get("delivery") == item.get("delivery")
+                        )
+                    ]
+                    current.output_files = [*existing, item]
                     session.commit()
 
         try:
             existing_files = load_completed_files(workdir)
+            if not existing_files:
+                with self.session_factory() as session:
+                    current = session.get(Job, job_id)
+                    if current and current.output_files:
+                        current.output_files = []
+                        append_log(
+                            current,
+                            "Cleared prior delivery records: no verified completed-download manifest survived recovery",
+                        )
+                        session.commit()
             if not existing_files and any(workdir.iterdir()):
                 # Partial outputs may have ordinary extensions. Only a valid
                 # completion manifest permits reuse; otherwise start clean.
