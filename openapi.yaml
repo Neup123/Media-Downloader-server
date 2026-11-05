@@ -26,6 +26,7 @@ paths:
                 url: { type: string, minLength: 8, maxLength: 4096 }
                 max_entries: { type: integer, minimum: 1, maximum: 100, default: 50 }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Sanitized formats or selected playlist entry metadata }
         '422': { description: Invalid or unsupported URL, or preview failed }
   /engines:
@@ -34,6 +35,7 @@ paths:
       summary: List available download engines and their defaults
       tags: [engines]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Engine capabilities and default settings
   /engines/{engine_name}/options:
@@ -47,6 +49,7 @@ paths:
       summary: List typed common engine option fields for graphical settings
       tags: [engines]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Categorized option fields with types and labels }
         '404': { description: Unknown engine }
   /engines/{engine_name}/settings:
@@ -60,6 +63,7 @@ paths:
       summary: Read global settings for one engine
       tags: [engines]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Engine settings }
     put:
       operationId: updateEngineSettings
@@ -71,6 +75,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/EngineSettingsInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Saved engine settings }
         '422': { description: Invalid setting }
   /cookies:
@@ -79,6 +84,7 @@ paths:
       summary: List uploaded cookie file names and sizes without reading their contents
       tags: [engines]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Cookie file inventory }
   /cookies/{filename}:
     parameters:
@@ -100,6 +106,7 @@ paths:
               properties:
                 content_base64: { type: string, minLength: 4, maxLength: 1400000 }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Stored cookie file; content is never returned }
         '422': { description: Invalid filename or file content }
     delete:
@@ -107,6 +114,7 @@ paths:
       summary: Delete an uploaded cookie file
       tags: [engines]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Cookie file deleted }
         '404': { description: Cookie file not found }
   /presets:
@@ -115,6 +123,7 @@ paths:
       summary: List saved per-engine option presets
       tags: [settings]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Saved presets }
     post:
       operationId: createPreset
@@ -126,6 +135,8 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/PresetInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
         '201': { description: Preset created }
         '409': { description: Preset name already exists for the engine }
   /presets/{preset_id}:
@@ -144,6 +155,8 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/PresetInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
         '200': { description: Preset updated }
         '404': { description: Preset not found }
     delete:
@@ -151,6 +164,7 @@ paths:
       summary: Delete a saved preset
       tags: [settings]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Preset deleted }
         '404': { description: Preset not found }
   /engine-rules:
@@ -159,6 +173,7 @@ paths:
       summary: List URL host/path rules used by automatic engine selection
       tags: [settings]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: URL engine rules, ordered by priority and specificity }
     post:
       operationId: createEngineRule
@@ -170,6 +185,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/EngineRuleInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '201': { description: Rule created }
         '422': { description: Invalid host or path rule }
   /engine-rules/{rule_id}:
@@ -188,6 +204,8 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/EngineRuleInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
         '200': { description: Rule updated }
         '404': { description: Rule not found }
     delete:
@@ -195,6 +213,7 @@ paths:
       summary: Delete a URL engine rule
       tags: [settings]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Rule deleted }
         '404': { description: Rule not found }
   /jobs:
@@ -210,6 +229,7 @@ paths:
           in: query
           schema: { type: string }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Recent jobs
           content:
@@ -225,6 +245,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/JobCreate' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '202':
           description: Job queued
           content:
@@ -242,6 +263,7 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/JobBatchCreate' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '202':
           description: All batch items queued
           content:
@@ -259,6 +281,7 @@ paths:
       summary: Read job state, progress, logs, and delivered files
       tags: [jobs]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Job details
           content:
@@ -276,6 +299,7 @@ paths:
       summary: Request cancellation of a queued or running job
       tags: [jobs]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Cancellation requested
           content:
@@ -293,6 +317,7 @@ paths:
       summary: Queue a failed or cancelled job again
       tags: [jobs]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '202':
           description: Job queued for retry
           content:
@@ -310,6 +335,7 @@ paths:
       summary: Re-deliver completed and still-verified files to the current destination without downloading again
       tags: [jobs]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '202':
           description: Verified original output files queued for re-delivery
           content:
@@ -328,6 +354,7 @@ paths:
       summary: Stream job updates using Server-Sent Events
       tags: [jobs]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: Job updates as SSE events
           content:
@@ -339,6 +366,7 @@ paths:
       summary: Read delivery destination settings without revealing secrets
       tags: [delivery]
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Delivery mode and masked credentials state }
     put:
       operationId: updateDeliverySettings
@@ -350,9 +378,33 @@ paths:
           application/json:
             schema: { $ref: '#/components/schemas/DeliverySettingsInput' }
       responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Saved delivery settings }
         '422': { description: Invalid delivery settings }
 components:
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-API-Key header
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail: { type: string }
+    InvalidRequest:
+      description: Invalid request body or service-specific validation error
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [detail]
+            properties:
+              detail:
+                anyOf:
+                  - { type: string }
+                  - { type: array, items: { type: object } }
+                  - { type: object }
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
