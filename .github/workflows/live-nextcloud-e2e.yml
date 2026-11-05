@@ -17,6 +17,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+
+      - name: Install test dependencies
+        run: python -m pip install -r requirements.txt
+
       - name: Install FFmpeg and generate a deterministic media fixture
         run: |
           sudo apt-get update
@@ -57,7 +65,7 @@ jobs:
               stream.write(f"APP_API_TOKEN={token}\n")
               stream.write(f"APP_ENCRYPTION_KEY={key}\n")
               stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
-          with open("$GITHUB_ENV", "a", encoding="utf-8") as stream:
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
               stream.write(f"APP_API_TOKEN={token}\n")
               stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
           PY
