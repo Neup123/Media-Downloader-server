@@ -11,10 +11,10 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 
 ## Current status
 
-**Phase 0 blueprint is recorded. Phase 1 core MVP is in draft review.**
+**Phase 0 blueprint is recorded and the core development implementation is now on `main`.** Merging the former review branch established the development baseline; it did not approve production exposure or a release.
 
 - [BLUEPRINT.md](BLUEPRINT.md) records the clean-room reference inventory, engine settings taxonomy, screen mapping, service architecture, and acceptance gates.
-- The current Phase 1 branch includes the API, persistent queue, restart recovery, yt-dlp, aria2c, and gallery-dl adapters, the web UI, global engine settings, per-job overrides, cookie upload, saved presets, URL-to-engine rules, batch submission (up to 50 URLs), local/WebDAV delivery, and standalone Docker packaging.
+- The current `main` branch includes the API, persistent queue, restart recovery, yt-dlp, aria2c, and gallery-dl adapters, the web UI, global engine settings, per-job overrides, cookie upload, saved presets, URL-to-engine rules, batch submission (up to 50 URLs), local/WebDAV delivery, and standalone Docker packaging.
 - Automatic engine selection uses saved host-suffix/path-prefix rules with priority and specificity ordering. FTP/magnet URLs default to aria2c; unmatched URLs default to yt-dlp unless a selected preset supplies the engine.
 - Saved presets store validated engine-specific settings. Job-level options override preset settings.
 - The **Presets & routing** dashboard tab lets administrators create, edit and delete saved presets and URL rules. Editing preserves the record ID, and routing rules can be temporarily disabled without deleting them. Rule changes affect future automatic engine selection; already queued jobs keep their resolved engine and options.
@@ -22,7 +22,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
 - The three P0 engines are yt-dlp, aria2c, and gallery-dl. The P1 and P2 adapters are also implemented, with remaining site-specific acceptance gaps called out below.
 - The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. Both P2 adapters (svtplay-dl and get-sauce) are implemented behind validated engine option forms; live site-specific acceptance remains outstanding.
-- The draft PR is intentionally not merged until its live and operational acceptance checks are complete.
+- [Core PR #2](https://github.com/Neup123/Media-Downloader-server/pull/2) was merged into `main` after passing Python and Docker CI. The operational egress-isolation, P2 real-site and full update-release acceptance gates remain open, so do not expose the downloader to untrusted users.
 
 A feature is not complete merely because an API request succeeds or a container builds. The output file must be readable and, where configured, verified at its delivery destination.
 
@@ -80,7 +80,7 @@ The manually dispatched `Manual legal P2 site smoke into disposable Nextcloud` w
 
 ## Automated Python engine updates
 
-The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine releases weekly and prepares exact-version candidate PRs. A candidate may merge and publish a patch release only after the complete Python, Docker, and disposable-Nextcloud/WebDAV acceptance gate succeeds. Failures retain the previous pin and produce an `engine-update-blocked` issue. The workflow is not active until present on the repository's default branch. A separate get-sauce Go-release watcher now prepares blocked candidate PRs and issues, but does not merge releases without a real site-specific get-sauce WebDAV smoke gate. Debian-packaged aria2c and generic/curl candidates now share the Python update workflow's full Docker and disposable-Nextcloud gate, with exact apt pins prepared from the trixie runtime-base package index. Live red/green release demonstrations and fully immutable dependency locking remain outstanding. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md) for implementation and limitations.
+The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine releases weekly and prepares exact-version candidate PRs. A candidate may be merged and published automatically **only** after the Python, Docker and disposable-Nextcloud/WebDAV gate succeeds **and** the explicit repository variable `DOWNLOADER_AUTOMATED_RELEASES_APPROVED` equals `true`. The variable is unset by default, preventing unattended merges/releases until the remaining acceptance requirements are signed off. Failures retain the previous pin and produce an `engine-update-blocked` issue. The workflow is present on the default branch; scheduled candidate detection is available, but automatic merge and publication are disabled by default. A separate get-sauce Go-release watcher now prepares blocked candidate PRs and issues, but does not merge releases without a real site-specific get-sauce WebDAV smoke gate. Debian-packaged aria2c and generic/curl candidates now share the Python update workflow's full Docker and disposable-Nextcloud gate, with exact apt pins prepared from the trixie runtime-base package index. Live red/green release demonstrations and fully immutable dependency locking remain outstanding. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md) for implementation and limitations.
 
 ## Restart and retry safety
 
@@ -117,7 +117,7 @@ The live CI acceptance workflow uses the production downloader Compose service p
 ## Verification
 
 The CI acceptance gate runs Python compilation and the full unit suite, verifies the checked-in OpenAPI contract, and builds the Docker image including the TypeScript/Vite production bundle.
-The production web image installs the exact `web/package-lock.json` dependency graph with `npm ci`; direct and transitive frontend versions are reproducible within that lock rather than re-resolved by `npm install` on each build. Node and other container base-image tags are not yet immutable digest pins. Verify the current feature-branch checks in GitHub Actions before merging; test counts are not pinned in this document.
+The production web image installs the exact `web/package-lock.json` dependency graph with `npm ci`; direct and transitive frontend versions are reproducible within that lock rather than re-resolved by `npm install` on each build. Node and other container base-image tags are not yet immutable digest pins. GitHub Actions verifies changes on `main` and review PRs; check the most recent run status rather than assuming historical test counts.
 
 The live Nextcloud E2E workflow has passed for all three P0 engines (yt-dlp, aria2c, and gallery-dl) using the production Compose downloader service. Each file was fetched back from disposable Nextcloud and matched against the original fixture by size and SHA-256. The temporary containers and volumes were removed after the run.
 
