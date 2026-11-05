@@ -97,7 +97,7 @@ The dashboard offers **Re-deliver** for completed jobs. This operation uses the 
 
 Cancellation during delivery is cooperative: the service checks cancellation between local-copy and WebDAV upload chunks, and between remote operations. Local files are copied to temporary paths, verified against the copied source bytes with SHA-256 and checked for concurrent source size/mtime changes, then atomically published. A size match alone is not considered sufficient. Completed uploads remain listed in the job record if a subsequent upload is cancelled; cancellation **cannot guarantee deletion** of files already written to a remote server, and an interrupted WebDAV PUT may leave a partial remote file. Retrying a cancelled job attempts delivery again.
 
-The live CI acceptance workflow uses the production downloader Compose service plus an ephemeral Nextcloud container. It runs yt-dlp, aria2c, and gallery-dl against a test fixture, retrieves each delivered file, and compares its size and SHA-256 hash. It does not connect to or modify the eventual production Nextcloud instance.
+The live CI acceptance workflow uses the production downloader Compose service plus an ephemeral Nextcloud container. Its synthetic video fixture is generated with FFmpeg already bundled in the tested production image, avoiding separate host apt installs. The workflow isolates acceptance runs by GitHub ref and exact commit SHA, so an older stalled revision cannot block testing corrected code. It runs yt-dlp, aria2c, gallery-dl, generic/curl and you-get against the fixture, retrieves each delivered file, and compares its size and SHA-256 hash. It does not connect to or modify the eventual production Nextcloud instance.
 
 ## Security notes
 
