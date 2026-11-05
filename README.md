@@ -20,7 +20,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - The per-engine graphical settings catalog is exposed at `/api/v1/engines/{engine}/options`. The dashboard groups common options into typed controls; site-specific gallery-dl options remain available in an advanced editor. The engines API reports installed versions.
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
 - All three currently implemented engines are classified P0 in the blueprint: yt-dlp, aria2c, and gallery-dl.
-- The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. svtplay-dl and get-sauce remain P2.
+- The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. The P2 svtplay-dl adapter is also available; get-sauce remains planned.
 - The draft PR is intentionally not merged until its live and operational acceptance checks are complete.
 
 A feature is not complete merely because an API request succeeds or a container builds. The output file must be readable and, where configured, verified at its delivery destination.
@@ -37,7 +37,7 @@ The port binds to loopback by default. Use an authenticated TLS reverse proxy be
 
 Concurrency:
 - `MAX_CONCURRENT_DOWNLOADS` sets the total worker limit.
-- `MAX_CONCURRENT_YTDLP`, `MAX_CONCURRENT_ARIA2`, and `MAX_CONCURRENT_GALLERY_DL` set independent per-engine caps.
+- `MAX_CONCURRENT_YTDLP`, `MAX_CONCURRENT_ARIA2`, `MAX_CONCURRENT_GALLERY_DL`, `MAX_CONCURRENT_GENERIC`, `MAX_CONCURRENT_YOU_GET`, and `MAX_CONCURRENT_SVTPLAY_DL` set independent per-engine caps.
 
 The scheduler excludes engines that are already at their concurrency cap before limiting which queued jobs to inspect. This allows an eligible job for another engine to start even when many earlier jobs belong to a busy engine.
 
@@ -56,12 +56,15 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
 
-## Implemented P0 engines
+## Implemented engines
 
 - **yt-dlp:** structured progress output, output discovery, format selector, subtitle controls, cookie file support, validated additional arguments, and opt-in playlist downloads with a bounded index/range selector. The web UI can preview formats and select playlist entries.
 - **aria2c:** loopback-only JSON-RPC daemon, generated RPC secret, progress polling, cancellation, and an allowlisted per-job option set.
 - **gallery-dl:** gallery/image extraction, terminal progress parsing, output discovery, extractor options, cookies, and optional proxy. Output directory and progress settings remain service-managed.
-- **you-get:** fallback site extractor using the pinned `0.4.1743` CLI, with format selection, service-managed output directory, optional cookie file, and proxy control. Progress reports observed bytes without inventing totals.\n- **generic / curl:** direct HTTP(S) file downloads with managed filenames, retries, optional redirects, and observed-byte progress (unknown total is not fabricated). curl is already shipped in the base image for health checks. It was chosen as the generic CLI backend instead of adding the Debian trixie `wget` package, which currently has unresolved security advisories; see https://security-tracker.debian.org/tracker/source-package/wget. No custom protocol client was implemented.
+- **you-get:** fallback site extractor using the pinned `0.4.1743` CLI, with format selection, service-managed output directory, optional cookie file, and proxy control. Progress reports observed bytes without inventing totals.
+- **generic / curl:** direct HTTP(S) file downloads with managed filenames, retries, optional redirects, and observed-byte progress (unknown total is not fabricated). curl is already shipped in the base image for health checks. It was chosen as the generic CLI backend instead of adding the Debian trixie `wget` package, which currently has unresolved security advisories; see https://security-tracker.debian.org/tracker/source-package/wget. No custom protocol client was implemented.
+
+- **svtplay-dl:** P2 Nordic video/broadcaster adapter pinned to `4.211`. Global and per-job graphical controls cover quality, preferred resolutions, subtitles, all episodes and MP4/MKV output. The service manages configuration and output paths; live broadcaster acceptance tests remain to be completed.
 
 The gallery-dl options UI accepts a JSON object to expose its large and site-specific configuration surface without hard-coding every extractor option. Credential-like option names and proxies with embedded credentials are rejected; use the private cookie-file upload for session cookies.
 
@@ -101,7 +104,7 @@ The live CI acceptance workflow uses the production downloader Compose service p
 
 ## Verification
 
-The latest standard GitHub Actions workflow passed on the current PR head: Python compilation, **31 tests**, OpenAPI YAML validation (15 documented paths), and the full Docker image build including the TypeScript/Vite production bundle.
+The CI acceptance gate runs Python compilation and the full unit suite, verifies the checked-in OpenAPI contract, and builds the Docker image including the TypeScript/Vite production bundle. Verify the current feature-branch checks in GitHub Actions before merging; test counts are not pinned in this document.
 
 The live Nextcloud E2E workflow has passed for all three P0 engines (yt-dlp, aria2c, and gallery-dl) using the production Compose downloader service. Each file was fetched back from disposable Nextcloud and matched against the original fixture by size and SHA-256. The temporary containers and volumes were removed after the run.
 
