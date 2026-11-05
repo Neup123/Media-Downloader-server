@@ -18,9 +18,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
-from app.db import DeliverySetting, EngineSetting, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
+from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
-from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, JobCreate
+from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate
 from app.security import UnsafeUrlError, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -147,18 +147,158 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         target.unlink()
         return {"deleted": True, "filename": filename}
 
+    @app.get("/api/v1/presets", tags=["settings"])
+    def list_presets(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        rows = session.scalars(select(Preset).order_by(Preset.engine, Preset.name)).all()
+        return [preset_to_dict(row) for row in rows]
+
+    @app.post("/api/v1/presets", status_code=201, tags=["settings"])
+    def create_preset(payload: PresetInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        try:
+            settings_value = validate_engine_settings(payload.engine, payload.settings, partial=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        duplicate = session.scalar(
+            select(Preset.id).where(Preset.engine == payload.engine, Preset.name == payload.name)
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="A preset with this name already exists for the selected engine")
+        row = Preset(
+            name=payload.name,
+            engine=payload.engine,
+            settings=settings_value,
+            description=payload.description,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return preset_to_dict(row)
+
+    @app.put("/api/v1/presets/{preset_id}", tags=["settings"])
+    def update_preset(preset_id: str, payload: PresetInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        row = session.get(Preset, preset_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        try:
+            settings_value = validate_engine_settings(payload.engine, payload.settings, partial=True)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        duplicate = session.scalar(
+            select(Preset.id).where(
+                Preset.engine == payload.engine,
+                Preset.name == payload.name,
+                Preset.id != preset_id,
+            )
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="A preset with this name already exists for the selected engine")
+        row.name = payload.name
+        row.engine = payload.engine
+        row.settings = settings_value
+        row.description = payload.description
+        row.updated_at = utcnow()
+        session.commit()
+        session.refresh(row)
+        return preset_to_dict(row)
+
+    @app.delete("/api/v1/presets/{preset_id}", tags=["settings"])
+    def delete_preset(preset_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        row = session.get(Preset, preset_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Preset not found")
+        session.delete(row)
+        session.commit()
+        return {"deleted": True, "id": preset_id}
+
+    @app.get("/api/v1/engine-rules", tags=["settings"])
+    def list_engine_rules(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        rows = session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all()
+        rows = sorted(rows, key=lambda item: (item.priority, len(item.host_suffix), len(item.path_prefix)), reverse=True)
+        return [engine_rule_to_dict(row) for row in rows]
+
+    @app.post("/api/v1/engine-rules", status_code=201, tags=["settings"])
+    def create_engine_rule(payload: EngineRuleInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        duplicate = session.scalar(
+            select(EngineRule.id).where(
+                EngineRule.host_suffix == payload.host_suffix,
+                EngineRule.path_prefix == payload.path_prefix,
+                EngineRule.engine == payload.engine,
+            )
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="This host/path rule already exists for the selected engine")
+        row = EngineRule(
+            host_suffix=payload.host_suffix,
+            path_prefix=payload.path_prefix,
+            engine=payload.engine,
+            priority=payload.priority,
+            enabled=payload.enabled,
+            description=payload.description,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return engine_rule_to_dict(row)
+
+    @app.put("/api/v1/engine-rules/{rule_id}", tags=["settings"])
+    def update_engine_rule(rule_id: str, payload: EngineRuleInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        row = session.get(EngineRule, rule_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Engine rule not found")
+        duplicate = session.scalar(
+            select(EngineRule.id).where(
+                EngineRule.host_suffix == payload.host_suffix,
+                EngineRule.path_prefix == payload.path_prefix,
+                EngineRule.engine == payload.engine,
+                EngineRule.id != rule_id,
+            )
+        )
+        if duplicate:
+            raise HTTPException(status_code=409, detail="This host/path rule already exists for the selected engine")
+        row.host_suffix = payload.host_suffix
+        row.path_prefix = payload.path_prefix
+        row.engine = payload.engine
+        row.priority = payload.priority
+        row.enabled = payload.enabled
+        row.description = payload.description
+        row.updated_at = utcnow()
+        session.commit()
+        session.refresh(row)
+        return engine_rule_to_dict(row)
+
+    @app.delete("/api/v1/engine-rules/{rule_id}", tags=["settings"])
+    def delete_engine_rule(rule_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        row = session.get(EngineRule, rule_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Engine rule not found")
+        session.delete(row)
+        session.commit()
+        return {"deleted": True, "id": rule_id}
+
     @app.post("/api/v1/jobs", status_code=202, tags=["jobs"])
     def submit_job(payload: JobCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
-        try:
-            url = validate_target_url(payload.url, payload.engine, config.allow_private_targets)
-            overrides = validate_engine_settings(payload.engine, payload.overrides, partial=True)
-        except (UnsafeUrlError, ValueError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        job = Job(url=url, engine=payload.engine, status="queued", overrides=overrides, progress={"state": "queued"})
+        job = build_job(payload, session, config)
         session.add(job)
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
+
+    @app.post("/api/v1/jobs/batch", status_code=202, tags=["jobs"])
+    def submit_batch(payload: JobBatchCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        jobs = []
+        for index, item in enumerate(payload.items):
+            try:
+                jobs.append(build_job(item, session, config))
+            except HTTPException as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail={"item": index + 1, "url": item.url, "error": exc.detail},
+                ) from exc
+        session.add_all(jobs)
+        session.commit()
+        for job in jobs:
+            session.refresh(job)
+        return {"created": len(jobs), "jobs": [job_to_dict(job) for job in jobs]}
 
     @app.get("/api/v1/jobs", tags=["jobs"])
     def list_jobs(_: bool = Depends(authenticate), session: Session = Depends(db_session), limit: int = 50, status: str | None = None):
