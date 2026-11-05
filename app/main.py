@@ -212,7 +212,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     @app.get("/api/v1/engine-rules", tags=["settings"])
     def list_engine_rules(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
-        rows = session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all()
+        rows = session.scalars(select(EngineRule)).all()
         rows = sorted(rows, key=lambda item: (item.priority, len(item.host_suffix), len(item.path_prefix)), reverse=True)
         return [engine_rule_to_dict(row) for row in rows]
 
