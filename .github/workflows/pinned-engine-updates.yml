@@ -31,15 +31,23 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Detect stable non-yanked PyPI releases and apply candidate pins
+      - name: Detect stable PyPI and Debian trixie release candidates
         id: detect
         shell: bash
         run: |
           set -euo pipefail
           python scripts/engine_updates.py --report engine-update-report.json --apply | tee engine-update-detection.log
-          if git diff --quiet -- requirements.txt; then
+          # Query the exact runtime Debian distribution rather than the host's Ubuntu apt policy.
+          # Never substitute packages from testing/sid or relax an existing pin.
+          docker run --rm --entrypoint sh python:3.13-slim-trixie -c \
+            'set -eu; apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -qq; apt-cache policy aria2 curl' \
+            | tee debian-engine-policy.log
+          python scripts/debian_engine_updates.py \
+            --policy debian-engine-policy.log --report debian-engine-update-report.json --apply \
+            | tee debian-engine-detection.log
+          if git diff --quiet -- requirements.txt Dockerfile; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No bundled Python engine updates found."
+            echo "No eligible bundled Python or Debian engine updates found."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -54,7 +62,7 @@ jobs:
           git switch -c "$branch"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add requirements.txt
+          git add requirements.txt Dockerfile
           git commit -m "chore: propose pinned engine version updates"
           git push origin HEAD:"$branch"
           sha=$(git rev-parse HEAD)
