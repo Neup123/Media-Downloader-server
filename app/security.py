@@ -102,7 +102,7 @@ SAFE_YTDLP_FORMAT_OPTIONS = {
 
 def _validate_ytdlp_option_value(option: str, value: str) -> None:
     """Reject unreviewed CLI behavior and unsafe or excessive argument values."""
-    if not value or "\r" in value or "\n" in value:
+    if not value or "\r" in value or "\n" in value or "://" in value:
         raise ValueError(f"{option} requires a nonempty single-line value")
     if option in SAFE_YTDLP_INTEGER_OPTIONS:
         lower, upper = SAFE_YTDLP_INTEGER_OPTIONS[option]
