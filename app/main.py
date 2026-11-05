@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
@@ -149,7 +150,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         return [
             {"filename": p.name, "size_bytes": p.stat().st_size}
             for p in sorted(cookie_dir.iterdir())
-            if p.is_file() and p.suffix.lower() in {".txt", ".cookies"}
+            if p.is_file() and not p.is_symlink() and p.suffix.lower() in {".txt", ".cookies"}
         ]
 
     @app.put("/api/v1/cookies/{filename}", tags=["engines"])
@@ -165,9 +166,29 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=413, detail="Cookie file is too large or contains invalid bytes")
         cookie_dir = config.data_dir / "cookies"
         cookie_dir.mkdir(parents=True, exist_ok=True)
+        if cookie_dir.is_symlink():
+            raise HTTPException(status_code=422, detail="Cookie directory must not be a symlink")
         target = cookie_dir / filename
-        target.write_bytes(content)
-        os.chmod(target, 0o600)
+        temporary: Path | None = None
+        try:
+            # NamedTemporaryFile is created 0600; replace the destination
+            # atomically so partial writes and pre-existing symlinks cannot
+            # redirect or expose credentials outside the cookie directory.
+            with tempfile.NamedTemporaryFile(
+                mode="wb", dir=cookie_dir, prefix=".downloader-cookie-",
+                suffix=".part", delete=False,
+            ) as stream:
+                temporary = Path(stream.name)
+                os.fchmod(stream.fileno(), 0o600)
+                stream.write(content)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, target)
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Cookie file could not be stored securely") from exc
+        finally:
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
         return {"filename": filename, "size_bytes": len(content), "stored": True}
 
     @app.delete("/api/v1/cookies/{filename}", tags=["engines"])
