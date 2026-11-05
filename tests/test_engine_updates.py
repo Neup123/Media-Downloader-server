@@ -150,9 +150,10 @@ def test_e2e_fixtures_use_exact_production_or_candidate_docker_ffmpeg():
         (".github/workflows/pinned-engine-updates.yml", "downloader-server:engine-candidate"),
     ):
         workflow = yaml.safe_load((root / workflow_path).read_text(encoding="utf-8"))
-        steps = next(iter(workflow["jobs"].values()))["steps"]
         fixture = next(
-            step["run"] for step in steps
+            step["run"]
+            for job in workflow["jobs"].values()
+            for step in job["steps"]
             if "fixture" in step.get("name", "").lower()
             and "--entrypoint ffmpeg" in step.get("run", "")
         )
