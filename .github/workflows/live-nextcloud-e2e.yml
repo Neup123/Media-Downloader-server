@@ -73,6 +73,7 @@ jobs:
       - name: Create ephemeral test credentials
         run: |
           python3 - <<'PY'
+          import os
           import secrets
           from cryptography.fernet import Fernet
           token = secrets.token_urlsafe(48)
