@@ -319,12 +319,11 @@ components:
   schemas:
     JobCreate:
       type: object
-      additionalProperties: false
       required: [url]
       properties:
         url: { type: string, minLength: 8, maxLength: 4096 }
         engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce], default: auto }
-        preset_id: { type: [string, 'null'], maxLength: 36 }
+        preset_id: { type: [string, 'null'], maxLength: 36, default: null }
         overrides: { type: object, additionalProperties: true }
     JobBatchCreate:
       type: object
@@ -342,7 +341,7 @@ components:
         name: { type: string, minLength: 1, maxLength: 120 }
         engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         settings: { type: object, additionalProperties: true }
-        description: { type: string, maxLength: 1000 }
+        description: { type: string, maxLength: 1000, default: '' }
     EngineRuleInput:
       type: object
       required: [host_suffix, engine]
@@ -352,7 +351,7 @@ components:
         engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         priority: { type: integer, minimum: 0, maximum: 1000, default: 100 }
         enabled: { type: boolean, default: true }
-        description: { type: string, maxLength: 255 }
+        description: { type: string, maxLength: 255, default: '' }
     EngineSettingsInput:
       type: object
       properties:
@@ -360,8 +359,8 @@ components:
     DeliverySettingsInput:
       type: object
       properties:
-        mode: { type: string, enum: [local, webdav] }
-        webdav_url: { type: [string, 'null'], maxLength: 2048 }
-        username: { type: [string, 'null'], maxLength: 255 }
-        app_password: { type: [string, 'null'], maxLength: 1024, description: Write-only. Stored encrypted on the service. }
+        mode: { type: string, enum: [local, webdav], default: local }
+        webdav_url: { type: [string, 'null'], maxLength: 2048, default: null }
+        username: { type: [string, 'null'], maxLength: 255, default: null }
+        app_password: { type: [string, 'null'], maxLength: 1024, default: null, description: Write-only. Stored encrypted on the service. }
         folder: { type: string, maxLength: 512, default: Downloader }
