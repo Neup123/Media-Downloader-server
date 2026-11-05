@@ -30,9 +30,11 @@ Do not describe this as checksum-enforced installation.
 2. Checks PyPI with a bounded network timeout, writes `engine-update-report.json`,
    and creates a unique candidate branch and PR only if a bundled engine changed.
 3. Fails closed if a changed engine lacks a real smoke fixture in the
-   disposable Nextcloud test gate. Currently only yt-dlp and gallery-dl
-   are covered; updates involving you-get or svtplay-dl remain blocked until
-   those engines have equivalent live acceptance.
+   disposable Nextcloud test gate. Currently yt-dlp, gallery-dl and you-get
+   are covered by the disposable Nextcloud E2E loop with remote SHA-256 verification;
+   updates involving svtplay-dl remain blocked until that engine has equivalent
+   live acceptance. The allowlist is kept in `scripts/engine_smoke_coverage.py`
+   and checked against the E2E test by CI.
 4. On the candidate commit, runs Python compilation and unit/fixture tests,
    builds the production Docker image, then uses the production Compose
    downloader alongside disposable Nextcloud and a generated legal media fixture.
