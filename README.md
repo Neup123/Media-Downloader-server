@@ -54,7 +54,8 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Batch queue: `POST /api/v1/jobs/batch` (up to 50 items)
 - Re-deliver a completed job: `POST /api/v1/jobs/{id}/redeliver`. The service verifies the original completion manifest and unchanged workspace files before queuing a new destination transfer, without fetching the media again. If the original download is missing or modified, the API returns HTTP 409 and leaves the completed job unchanged; submit a new download instead.
 - Checked-in API contract: [openapi.yaml](openapi.yaml)
-- API contract CI compares path/method coverage, documented success statuses, and API-key requirements against the implemented FastAPI routes. Detailed schema parity remains a separate acceptance gate.
+- API contract CI compares paths/methods, success and error statuses, API-key requirements, request-body constraints, and enforced job-response shapes against FastAPI/Pydantic.
+- The browser formats structured Pydantic validation errors as field-specific messages and identifies invalid batch items without echoing submitted URLs; frontend error-format tests run as part of the Docker build. Detailed schema parity remains a separate acceptance gate.
 - Health check: `/healthz`
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
