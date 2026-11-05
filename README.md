@@ -45,7 +45,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 
 - REST base path: `/api/v1`
 - Authentication: `X-API-Key`
-- API reference: `/api-reference` (Scalar)
+- API reference: `/api-reference` (Scalar, bundled in the local Vite build; no external CDN or Nextcloud required)
 - Media metadata preview: `POST /api/v1/preview` inspects yt-dlp formats or the first 50 playlist entries without downloading; only allowlisted metadata is returned.
 - Presets: `/api/v1/presets`
 - Automatic URL routing rules: `/api/v1/engine-rules`
