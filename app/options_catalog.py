@@ -17,6 +17,11 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
 
 
 OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "you-get": [
+        field("format", "Format code", "Media", "text", "you-get --format, e.g. stream identifier"),
+        field("no_proxy", "Disable system proxy", "Network", "boolean"),
+        field("cookies_file", "Cookie file", "Authentication", "text", "Netscape cookie file stored by the service"),
+    ],
     "generic": [
         field("filename", "Output filename", "File", "text", "Simple filename, leave blank to derive from URL"),
         field("follow_redirects", "Follow HTTP redirects", "Network", "boolean", "Disabled by default until trusted egress controls are configured"),
