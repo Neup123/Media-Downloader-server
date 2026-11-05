@@ -425,9 +425,16 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=404, detail="OpenAPI contract file is missing")
         return FileResponse(OPENAPI_FILE, media_type="application/yaml")
 
-    @app.get("/api-reference", response_class=HTMLResponse, include_in_schema=False)
+    @app.get("/api-reference", include_in_schema=False)
     def api_reference():
-        return """<!doctype html><html><head><title>Downloader Server API</title><meta charset='utf-8'></head><body><script id='api-reference' data-url='/openapi.yaml'></script><script src='https://cdn.jsdelivr.net/npm/@scalar/api-reference'></script></body></html>"""
+        reference = WEB_DIST / "api-reference.html"
+        if reference.is_file():
+            return FileResponse(reference, media_type="text/html")
+        return HTMLResponse(
+            "<h1>Downloader Server API Reference</h1>"
+            "<p>The local Scalar UI build is not present. "
+            "The OpenAPI contract remains available at <a href='/openapi.yaml'>/openapi.yaml</a>.</p>"
+        )
 
     @app.get("/", include_in_schema=False)
     def index():
