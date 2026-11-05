@@ -19,7 +19,8 @@ def test_generic_options_and_filename_are_safe():
         effective_settings({}, {"max_redirects": 100})
 
 
-def test_generic_cli_uses_service_managed_output(tmp_path: Path):
+def test_generic_cli_uses_service_managed_output(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr("app.adapters.generic.resolve_http_target", lambda *_: "example.com:443:93.184.215.14")
     executable = tmp_path / "fake-curl"
     executable.write_text(
         "#!/usr/bin/env python3\n"
@@ -27,6 +28,9 @@ def test_generic_cli_uses_service_managed_output(tmp_path: Path):
         "assert sys.argv[1] == '--disable'\n"
         "assert '--proto' in sys.argv\n"
         "assert '--location' not in sys.argv\n"
+        "assert sys.argv[sys.argv.index('--resolve')+1] == 'example.com:443:93.184.215.14'\n"
+        "assert sys.argv[sys.argv.index('--noproxy')+1] == '*'\n"
+        "assert sys.argv[sys.argv.index('--proxy')+1] == ''\n"
         "path = pathlib.Path(sys.argv[sys.argv.index('--output')+1])\n"
         "path.write_bytes(b'direct download content')\n"
     )

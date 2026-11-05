@@ -1,4 +1,10 @@
 services:
+  downloader-server:
+    environment:
+      # This is only for the disposable Docker test network's private
+      # media-source host; production Compose defaults to false.
+      ALLOW_PRIVATE_TARGETS: "true"
+
   nextcloud:
     image: nextcloud:35.0.2-apache
     restart: unless-stopped
