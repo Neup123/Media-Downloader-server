@@ -31,15 +31,23 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Detect stable non-yanked PyPI releases and apply candidate pins
+      - name: Detect stable PyPI and Debian trixie release candidates
         id: detect
         shell: bash
         run: |
           set -euo pipefail
           python scripts/engine_updates.py --report engine-update-report.json --apply | tee engine-update-detection.log
-          if git diff --quiet -- requirements.txt; then
+          # Query the exact runtime Debian distribution rather than the host's Ubuntu apt policy.
+          # Never substitute packages from testing/sid or relax an existing pin.
+          docker run --rm --entrypoint sh python:3.13-slim-trixie -c \
+            'set -eu; apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -qq; apt-cache policy aria2 curl' \
+            | tee debian-engine-policy.log
+          python scripts/debian_engine_updates.py \
+            --policy debian-engine-policy.log --report debian-engine-update-report.json --apply \
+            | tee debian-engine-detection.log
+          if git diff --quiet -- requirements.txt Dockerfile; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
-            echo "No bundled Python engine updates found."
+            echo "No eligible bundled Python or Debian engine updates found."
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
@@ -54,7 +62,7 @@ jobs:
           git switch -c "$branch"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add requirements.txt
+          git add requirements.txt Dockerfile
           git commit -m "chore: propose pinned engine version updates"
           git push origin HEAD:"$branch"
           sha=$(git rev-parse HEAD)
@@ -179,7 +187,8 @@ jobs:
           from pathlib import Path
           import re
           files = [
-              "engine-update-detection.log", "engine-update-tests.log",
+              "engine-update-detection.log", "debian-engine-detection.log",
+              "debian-engine-policy.log", "engine-update-tests.log",
               "engine-update-docker.log", "engine-update-compose.log",
               "engine-update-webdav.log",
           ]
@@ -199,6 +208,7 @@ jobs:
           name: engine-update-diagnostics
           path: |
             engine-update-report.json
+            debian-engine-update-report.json
             engine-update-diagnostics.txt
           retention-days: 30
 
@@ -231,11 +241,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json
-          changes=json.loads(Path("engine-update-report.json").read_text())["updates"]
+          python_changes=json.loads(Path("engine-update-report.json").read_text())["updates"]
+          debian_changes=json.loads(Path("debian-engine-update-report.json").read_text())["updates"]
+          changes=python_changes + debian_changes
           Path("engine-update-release.md").write_text(
               "Pinned engine upgrades verified by Python tests, Docker build and Nextcloud WebDAV E2E:\n"
               + "\n".join(f"- {item['engine']}: {item['from']} -> {item['to']}" for item in changes)
-              + "\n\nSee GitHub Actions run for test and artifact provenance.\n"
+              + "\n\nDebian candidates were read from the trixie runtime-base package index on the CI architecture.\n"
+              + "System libraries, image tags and transitive dependencies are not fully hash-locked.\n"
+              + "See GitHub Actions run for test and artifact provenance.\n"
           )
           PY
           gh release create "$tag" --target main --title "$tag" --notes-file engine-update-release.md
@@ -249,7 +263,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json, os
-          changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          python_changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          debian_changes = json.loads(Path("debian-engine-update-report.json").read_text())["updates"]
+          changes = python_changes + debian_changes
           summary = ", ".join(f"{x['engine']} {x['from']} -> {x['to']}" for x in changes)
           heading = f"engine-update-blocked: {summary}"[:240]
           log = Path("engine-update-diagnostics.txt")
