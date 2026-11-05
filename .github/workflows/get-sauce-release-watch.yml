@@ -1,0 +1,104 @@
+name: get-sauce release watch (smoke-gated)
+
+on:
+  schedule:
+    - cron: "27 7 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: get-sauce-release-watch
+  cancel-in-progress: false
+
+jobs:
+  release-watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Detect official stable release and stage candidate pin
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/get_sauce_updates.py --report get-sauce-release-report.json --apply
+          if git diff --quiet -- Dockerfile; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "get-sauce has no newer stable pinned release"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Record gated candidate PR and blocked-update issue
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Both version strings have been validated as strict vX.Y.Z tags.
+          old=$(python -c 'import json; print(json.load(open("get-sauce-release-report.json"))["from"])')
+          new=$(python -c 'import json; print(json.load(open("get-sauce-release-report.json"))["to"])')
+          title="engine-update-blocked: get-sauce $old -> $new"
+          gh label create engine-update-blocked --description "Pinned update has not passed its real smoke gate" --color B60205 2>/dev/null || true
+          existing=$(gh issue list --state open --label engine-update-blocked --limit 100 --json number,title |
+            TITLE="$title" python -c 'import json,os,sys; print(next((str(x["number"]) for x in json.load(sys.stdin) if x["title"]==os.environ["TITLE"]), ""))')
+          if [ -n "$existing" ]; then
+            echo "An open issue already tracks this exact get-sauce candidate: #$existing"
+            exit 0
+          fi
+          branch="automatic/get-sauce-$GITHUB_RUN_ID"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add Dockerfile
+          git commit -m "chore: propose pinned get-sauce $new"
+          git push origin HEAD:"$branch"
+          {
+            echo "Refs #59"
+            echo
+            echo "Pinned get-sauce source tag: $old -> $new"
+            echo
+            echo "This PR is intentionally blocked. A live, legal, site-specific"
+            echo "get-sauce smoke test with verified WebDAV delivery is required."
+            echo "Do not merge or release based only on Docker compilation or P0 tests."
+            echo
+            echo "Detection workflow: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          } > candidate-body.md
+          gh pr create --base main --head "$branch" --title "Update get-sauce $old to $new (blocked)" --body-file candidate-body.md
+          pr_url=$(gh pr view "$branch" --json url --jq .url)
+          {
+            echo "## Update"
+            echo "Engine: get-sauce"
+            echo "Previously pinned: $old"
+            echo "New candidate: $new"
+            echo
+            echo "Candidate PR: $pr_url"
+            echo "Detection: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "## Why blocked"
+            echo "There is no accepted site-specific get-sauce WebDAV E2E smoke."
+            echo "The candidate must not merge until its CLI behavior, real transfer,"
+            echo "readback SHA-256 and complete Python/Docker/Nextcloud gate pass."
+            echo "No released version or production deployment is changed by this watch."
+          } > blocked-body.md
+          gh issue create --title "$title" --label engine-update-blocked --body-file blocked-body.md
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: get-sauce-release-report
+          path: get-sauce-release-report.json
+          if-no-files-found: ignore
+          retention-days: 30
