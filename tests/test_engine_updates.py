@@ -148,7 +148,7 @@ def test_e2e_fixtures_prefer_preinstalled_ffmpeg_with_bounded_apt_fallback():
     ):
         workflow = yaml.safe_load((root / workflow_path).read_text(encoding="utf-8"))
         steps = next(iter(workflow["jobs"].values()))["steps"]
-        fixture = next(step["run"] for step in steps if "generate a deterministic" in step.get("name", ""))
+        fixture = next(step["run"] for step in steps if "fixture" in step.get("name", "").lower() and "ffmpeg -hide_banner" in step.get("run", ""))
         assert "command -v ffmpeg" in fixture, workflow_path
         assert "command -v ffprobe" in fixture, workflow_path
         assert "Acquire::Retries=3" in fixture, workflow_path
