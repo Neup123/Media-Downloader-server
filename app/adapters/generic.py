@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import unquote, urlsplit
 
+from app.security import UnsafeUrlError, resolve_http_target
+
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
 CancelCallback = Callable[[], Awaitable[bool]]
@@ -62,11 +64,20 @@ async def run_generic(
     global_settings: dict[str, Any], overrides: dict[str, Any],
     on_progress: ProgressCallback, on_log: LogCallback,
     is_cancelled: CancelCallback,
+    allow_private_targets: bool = False,
 ) -> list[Path]:
     parsed = urlsplit(url)
     if parsed.scheme.lower() not in {"http", "https"}:
         raise ValueError("Generic direct downloads require HTTP(S) URLs")
     options = effective_settings(global_settings, overrides)
+    if options["follow_redirects"] and not allow_private_targets:
+        raise UnsafeUrlError(
+            "Generic direct-download redirects are disabled without a trusted network egress policy"
+        )
+    # Pin the initial TCP destination to the validated DNS answers.
+    # This prevents subsequent DNS rebinding in curl, but is not a network
+    # firewall and does not constrain separate downloader engines.
+    pin = await asyncio.to_thread(resolve_http_target, url, allow_private_targets)
     workdir.mkdir(parents=True, exist_ok=True)
     filename = output_filename(url, options["filename"])
     destination = workdir / filename
@@ -75,8 +86,11 @@ async def run_generic(
         "--globoff", "--proto", "=http,https", "--proto-redir", "=http,https",
         "--connect-timeout", "15", "--max-time", "3600",
         "--retry", str(options["retry_count"]),
+        "--noproxy", "*", "--proxy", "",
         "--output", str(destination),
     ]
+    if pin:
+        argv.extend(["--resolve", pin])
     if options["follow_redirects"]:
         argv.extend(["--location", "--max-redirs", str(options["max_redirects"])])
     if options["user_agent"]:
