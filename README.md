@@ -20,7 +20,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - The per-engine graphical settings catalog is exposed at `/api/v1/engines/{engine}/options`. The dashboard groups common options into typed controls; site-specific gallery-dl options remain available in an advanced editor. The engines API reports installed versions.
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
 - All three currently implemented engines are classified P0 in the blueprint: yt-dlp, aria2c, and gallery-dl.
-- The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. The P2 svtplay-dl adapter is also available; get-sauce remains planned.
+- The P1 generic direct engine (curl) and P1 you-get fallback extractor are implemented. Both P2 adapters (svtplay-dl and get-sauce) are implemented behind validated engine option forms; live site-specific acceptance remains outstanding.
 - The draft PR is intentionally not merged until its live and operational acceptance checks are complete.
 
 A feature is not complete merely because an API request succeeds or a container builds. The output file must be readable and, where configured, verified at its delivery destination.
@@ -65,6 +65,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - **generic / curl:** direct HTTP(S) file downloads with managed filenames, retries, optional redirects, and observed-byte progress (unknown total is not fabricated). curl is already shipped in the base image for health checks. It was chosen as the generic CLI backend instead of adding the Debian trixie `wget` package, which currently has unresolved security advisories; see https://security-tracker.debian.org/tracker/source-package/wget. No custom protocol client was implemented.
 
 - **svtplay-dl:** P2 Nordic video/broadcaster adapter pinned to `4.211`. Global and per-job graphical controls cover quality, preferred resolutions, subtitles, all episodes and MP4/MKV output. The service manages configuration and output paths; live broadcaster acceptance tests remain to be completed.
+- **get-sauce:** P2 specialized extractor built from the upstream `v1.10.0` Go release with a pinned Go 1.27 builder. Exposes stream index, worker count, timeout, image limit, page selection, subfolders, and merge modes. The output path is service-managed; its live site-specific smoke test remains outstanding.
 
 The gallery-dl options UI accepts a JSON object to expose its large and site-specific configuration surface without hard-coding every extractor option. Credential-like option names and proxies with embedded credentials are rejected; use the private cookie-file upload for session cookies.
 

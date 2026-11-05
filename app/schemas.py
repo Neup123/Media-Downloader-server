@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl"]
+EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
+EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
 
 
 class MediaPreviewIn(BaseModel):
@@ -110,8 +110,8 @@ class DeliverySettingsIn(BaseModel):
     @classmethod
     def safe_folder(cls, value: str) -> str:
         value = value.strip().strip("/")
-        if ".." in value.split("/") or "\\" in value or "\x00" in value:
-            raise ValueError("Delivery folder must be a relative path without parent segments")
+        if (value and any(segment in {"", ".", ".."} for segment in value.split("/"))) or "\\" in value or "\x00" in value:
+            raise ValueError("Delivery folder must contain nonempty path segments without dot traversal")
         return value
 
     @field_validator("webdav_url")

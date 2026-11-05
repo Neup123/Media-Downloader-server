@@ -41,7 +41,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
     get:
       operationId: getEngineOptionCatalog
       summary: List typed common engine option fields for graphical settings
@@ -54,7 +54,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
     get:
       operationId: getEngineSettings
       summary: Read global settings for one engine
@@ -322,7 +322,7 @@ components:
       required: [url]
       properties:
         url: { type: string, minLength: 8, maxLength: 4096 }
-        engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl], default: auto }
+        engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce], default: auto }
         preset_id: { type: [string, 'null'], maxLength: 36, default: null }
         overrides: { type: object, additionalProperties: true }
     JobBatchCreate:
@@ -339,7 +339,7 @@ components:
       required: [name, engine]
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         settings: { type: object, additionalProperties: true }
         description: { type: string, maxLength: 1000, default: '' }
     EngineRuleInput:
@@ -348,7 +348,7 @@ components:
       properties:
         host_suffix: { type: string, minLength: 3, maxLength: 255, description: Hostname suffix without scheme or wildcard. Matches the exact host and its subdomains. }
         path_prefix: { type: string, maxLength: 1024, default: / }
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         priority: { type: integer, minimum: 0, maximum: 1000, default: 100 }
         enabled: { type: boolean, default: true }
         description: { type: string, maxLength: 255, default: '' }
