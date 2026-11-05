@@ -2,13 +2,25 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from uuid import uuid4
 
 
 MANIFEST_FILENAME = ".download-complete.json"
+SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
+
+
+def _file_sha256(path: Path) -> str:
+    """Hash file content in bounded chunks, without buffering the download."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_completed_files(workdir: Path) -> list[Path]:
@@ -40,6 +52,18 @@ def load_completed_files(workdir: Path) -> list[Path]:
             stat = resolved.stat()
             if stat.st_size != item.get("size_bytes") or stat.st_mtime_ns != item.get("mtime_ns"):
                 return []
+            # New manifests are content-hashed. Older size/mtime-only
+            # manifests remain readable for in-place upgrades; their
+            # reduced integrity assurance is documented in README.
+            expected_digest = item.get("sha256")
+            if expected_digest is not None:
+                if not isinstance(expected_digest, str) or SHA256_PATTERN.fullmatch(expected_digest) is None:
+                    return []
+                if _file_sha256(resolved) != expected_digest:
+                    return []
+                after_hash = resolved.stat()
+                if after_hash.st_size != stat.st_size or after_hash.st_mtime_ns != stat.st_mtime_ns:
+                    return []
             seen.add(resolved)
             files.append(resolved)
         return files
@@ -63,7 +87,16 @@ def save_completed_files(workdir: Path, files: list[Path]) -> None:
             raise ValueError("Invalid or duplicated engine output file")
         seen.add(source)
         stat = source.stat()
-        entries.append({"path": relative.as_posix(), "size_bytes": stat.st_size, "mtime_ns": stat.st_mtime_ns})
+        digest = _file_sha256(source)
+        after_hash = source.stat()
+        if after_hash.st_size != stat.st_size or after_hash.st_mtime_ns != stat.st_mtime_ns:
+            raise ValueError("Engine output changed while writing its completion manifest")
+        entries.append({
+            "path": relative.as_posix(),
+            "size_bytes": stat.st_size,
+            "mtime_ns": stat.st_mtime_ns,
+            "sha256": digest,
+        })
     temp = workdir / f".download-complete-{uuid4().hex}.tmp"
     try:
         with temp.open("w", encoding="utf-8") as stream:
