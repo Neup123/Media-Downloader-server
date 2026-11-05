@@ -72,7 +72,7 @@ def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
             continue
         for propstat in response.findall(ns + "propstat"):
             status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\\d+(?:\\.\\d+)?\\s+200(?:\\s|$)", status) is None:
+            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
                 continue
             prop = propstat.find(ns + "prop")
             length = prop.findtext(ns + "getcontentlength") if prop is not None else None
