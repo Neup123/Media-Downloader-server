@@ -16,6 +16,8 @@ concurrency:
 jobs:
   python-tests:
     runs-on: ubuntu-latest
+    env:
+      DATA_DIR: ${{ runner.temp }}/downloader-test-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
