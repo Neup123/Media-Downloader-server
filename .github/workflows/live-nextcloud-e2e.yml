@@ -38,8 +38,12 @@ jobs:
 
       - name: Install FFmpeg and generate a deterministic media fixture
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+          # GitHub runners may already supply FFmpeg. Avoid an unnecessary
+          # apt mirror request (which can stall a whole acceptance run).
+          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
+            sudo apt-get -o Acquire::Retries=3 install -y ffmpeg
+          fi
           mkdir -p fixture
           ffmpeg -hide_banner -loglevel error \
             -f lavfi -i "color=c=blue:s=320x240:r=24:d=2" \
