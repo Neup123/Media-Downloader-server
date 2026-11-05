@@ -160,6 +160,8 @@ async def deliver_files(
         raise DeliveryError("WebDAV URL must be an absolute HTTP(S) URL without embedded credentials")
     base_url = data["url"].rstrip("/")
     folder_parts = [p for p in data["folder"].split("/") if p]
+    if any(part in {".", ".."} or "\\x00" in part for part in folder_parts):
+        raise DeliveryError("WebDAV destination folder must not contain dot segments or NUL bytes")
     prefix_parts = folder_parts + [job_id]
     output = []
     client_options = {
