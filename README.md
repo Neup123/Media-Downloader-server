@@ -114,7 +114,8 @@ The live CI acceptance workflow uses the production downloader Compose service p
 
 ## Verification
 
-The CI acceptance gate runs Python compilation and the full unit suite, verifies the checked-in OpenAPI contract, and builds the Docker image including the TypeScript/Vite production bundle. Verify the current feature-branch checks in GitHub Actions before merging; test counts are not pinned in this document.
+The CI acceptance gate runs Python compilation and the full unit suite, verifies the checked-in OpenAPI contract, and builds the Docker image including the TypeScript/Vite production bundle.
+The production web image installs the exact `web/package-lock.json` dependency graph with `npm ci`; direct and transitive frontend versions are reproducible within that lock rather than re-resolved by `npm install` on each build. Node and other container base-image tags are not yet immutable digest pins. Verify the current feature-branch checks in GitHub Actions before merging; test counts are not pinned in this document.
 
 The live Nextcloud E2E workflow has passed for all three P0 engines (yt-dlp, aria2c, and gallery-dl) using the production Compose downloader service. Each file was fetched back from disposable Nextcloud and matched against the original fixture by size and SHA-256. The temporary containers and volumes were removed after the run.
 
