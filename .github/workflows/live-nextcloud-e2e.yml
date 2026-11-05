@@ -3,9 +3,9 @@ name: Live Nextcloud WebDAV E2E
 on:
   workflow_dispatch:
   pull_request:
-    branches: ["phase-1/**"]
+    branches: [main]
   push:
-    branches: ["phase-1/**"]
+    branches: [main]
     paths:
       - ".github/workflows/live-nextcloud-e2e.yml"
       - "compose.integration.yaml"
