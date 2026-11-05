@@ -1,3 +1,8 @@
+# Pinned Go toolchain and source release for the get-sauce CLI.
+FROM golang:1.27-alpine AS get-sauce-build
+ENV GOTOOLCHAIN=local CGO_ENABLED=0
+RUN go install github.com/gan-of-culture/get-sauce@v1.10.0
+
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
 WORKDIR /web
@@ -29,6 +34,7 @@ RUN pip install --no-cache-dir --upgrade pip \
 COPY app/ ./app/
 COPY openapi.yaml ./openapi.yaml
 COPY --from=web-build /web/dist ./web/dist
+COPY --from=get-sauce-build /go/bin/get-sauce /usr/local/bin/get-sauce
 RUN chown -R downloader:downloader /app
 USER downloader
 EXPOSE 8080
