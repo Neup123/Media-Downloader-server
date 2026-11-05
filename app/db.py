@@ -94,3 +94,12 @@ def append_log(job: Job, message: str, max_chars: int = 100_000) -> None:
 def get_queued_ids(session: Session, limit: int) -> list[str]:
     rows = session.scalars(select(Job.id).where(Job.status == "queued", Job.cancel_requested.is_(False)).order_by(Job.created_at).limit(limit)).all()
     return list(rows)
+
+
+def get_queued_jobs(session: Session, limit: int) -> list[Job]:
+    return list(session.scalars(
+        select(Job)
+        .where(Job.status == "queued", Job.cancel_requested.is_(False))
+        .order_by(Job.created_at)
+        .limit(limit)
+    ).all())
