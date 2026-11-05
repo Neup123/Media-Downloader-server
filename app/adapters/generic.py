@@ -30,8 +30,15 @@ def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any
         "retry_count": 2,
         "user_agent": "",
     }
-    settings.update(global_settings or {})
-    settings.update(overrides or {})
+    allowed = frozenset(settings)
+    for raw_source in (global_settings, overrides):
+        if raw_source is not None and not isinstance(raw_source, dict):
+            raise ValueError("Generic engine settings must be objects")
+        source = raw_source if raw_source is not None else {}
+        unknown = set(source) - allowed
+        if unknown:
+            raise ValueError(f"Unknown generic setting(s): {', '.join(sorted(unknown))}")
+        settings.update(source)
     name = settings["filename"]
     if not isinstance(name, str) or (name and (
         not _SAFE_FILENAME.fullmatch(name) or name in {".", ".."} or name.startswith(".")
