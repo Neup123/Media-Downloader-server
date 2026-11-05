@@ -38,22 +38,24 @@ jobs:
       - name: Install test dependencies
         run: python -m pip install -r requirements.txt
 
-      - name: Install FFmpeg and generate a deterministic media fixture
+      - name: Build production image and generate a deterministic legal media fixture
         run: |
-          # GitHub runners may already supply FFmpeg. Avoid an unnecessary
-          # apt mirror request (which can stall a whole acceptance run).
-          if ! command -v ffmpeg >/dev/null 2>&1 || ! command -v ffprobe >/dev/null 2>&1; then
-            sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update
-            sudo apt-get -o Acquire::Retries=3 install -y ffmpeg
-          fi
+          set -euo pipefail
+          # Use the FFmpeg already bundled in the tested production image.
+          # No separate Ubuntu apt mirror or unpinned fixture-tool download.
+          docker build --tag downloader-server:local .
           mkdir -p fixture
-          ffmpeg -hide_banner -loglevel error \
+          docker run --rm --user 0 --volume "$PWD/fixture:/fixtures" \
+            --entrypoint ffmpeg downloader-server:local \
+            -hide_banner -loglevel error \
             -f lavfi -i "color=c=blue:s=320x240:r=24:d=2" \
             -f lavfi -i "sine=frequency=1000:duration=2" \
             -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest \
-            -movflags +faststart fixture/sample.mp4
-          ffprobe -v error -show_entries format=duration,size \
-            -of default=noprint_wrappers=1 fixture/sample.mp4
+            -movflags +faststart /fixtures/sample.mp4
+          docker run --rm --volume "$PWD/fixture:/fixtures:ro" \
+            --entrypoint ffprobe downloader-server:local \
+            -v error -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 /fixtures/sample.mp4
           sha256sum fixture/sample.mp4
 
       - name: Create ephemeral test credentials
