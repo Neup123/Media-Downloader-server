@@ -1,0 +1,93 @@
+name: Manual legal P2 site smoke into disposable Nextcloud
+
+on:
+  workflow_dispatch:
+    inputs:
+      engine:
+        description: P2 download engine to verify
+        required: true
+        type: choice
+        options:
+          - svtplay-dl
+          - get-sauce
+      url:
+        description: Public authorized media URL, without credentials or query parameters
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: manual-p2-site-smoke
+  cancel-in-progress: false
+
+jobs:
+  p2-site-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      P2_SMOKE_ENGINE: ${{ inputs.engine }}
+      P2_SMOKE_URL: ${{ inputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Reject unsafe or credential-bearing source input before deployment
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          from scripts.p2_smoke_support import validate_site_smoke_source
+          validate_site_smoke_source(
+              os.environ["P2_SMOKE_ENGINE"], os.environ["P2_SMOKE_URL"]
+          )
+          print("Public P2 source syntax accepted; no URL or tokens printed")
+          PY
+
+      - name: Install CI client dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Prepare disposable source-service mount
+        run: mkdir -p fixture
+
+      - name: Create masked ephemeral test credentials
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+          from cryptography.fernet import Fernet
+          values = {
+              "APP_API_TOKEN": secrets.token_urlsafe(48),
+              "APP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+              "NEXTCLOUD_ADMIN_PASSWORD": secrets.token_urlsafe(24),
+          }
+          with open(".env.e2e", "w", encoding="utf-8") as stream:
+              for key, value in values.items():
+                  print(f"::add-mask::{value}")
+                  stream.write(f"{key}={value}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              for key in ("APP_API_TOKEN", "NEXTCLOUD_ADMIN_PASSWORD"):
+                  stream.write(f"{key}={values[key]}\n")
+          PY
+
+      - name: Start clean production downloader and disposable Nextcloud
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml up -d --build
+
+      - name: Verify the requested site through actual P2 download and WebDAV readback
+        env:
+          DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
+          NEXTCLOUD_HTTP_URL: http://127.0.0.1:8081
+          WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
+        run: python tests/e2e_p2_site_webdav.py
+
+      - name: Remove disposable Nextcloud, downloader and temporary credentials
+        if: always()
+        shell: bash
+        run: |
+          docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
+          rm -f .env.e2e
