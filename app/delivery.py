@@ -124,6 +124,7 @@ def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
     if root.tag != ns + "multistatus":
         return False
     expected = urlsplit(target_url)
+    successful_collections = 0
     for response in root.findall(ns + "response"):
         href = response.findtext(ns + "href")
         if not href:
@@ -143,8 +144,10 @@ def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
             prop = propstat.find(ns + "prop")
             resource_type = prop.find(ns + "resourcetype") if prop is not None else None
             if resource_type is not None and resource_type.find(ns + "collection") is not None:
-                return True
-    return False
+                successful_collections += 1
+    # A 207 response can contain multiple entries for the same href. Do not
+    # treat duplicate successful collection properties as unambiguous proof.
+    return successful_collections == 1
 
 
 async def _ensure_webdav_collection(client: httpx.AsyncClient, url: str, label: str) -> None:
