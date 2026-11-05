@@ -73,4 +73,4 @@ def test_standalone_compose_needs_no_nextcloud_and_rejects_anon_api():
     assert "e2e_standalone_compose.py" in steps
     assert "compose.integration.yaml" not in steps
     assert "NEXTCLOUD_ADMIN_PASSWORD" not in steps
-    assert "if: always()" in steps
+    assert any(step.get("if") == "always()" for step in standalone["steps"])
