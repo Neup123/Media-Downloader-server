@@ -38,6 +38,8 @@ Concurrency:
 - `MAX_CONCURRENT_DOWNLOADS` sets the total worker limit.
 - `MAX_CONCURRENT_YTDLP`, `MAX_CONCURRENT_ARIA2`, and `MAX_CONCURRENT_GALLERY_DL` set independent per-engine caps.
 
+The scheduler excludes engines that are already at their concurrency cap before limiting which queued jobs to inspect. This allows an eligible job for another engine to start even when many earlier jobs belong to a busy engine.
+
 ## API and storage
 
 - REST base path: `/api/v1`
