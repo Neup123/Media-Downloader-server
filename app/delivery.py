@@ -1,0 +1,174 @@
+from __future__ import annotations
+
+import asyncio
+import shutil
+import xml.etree.ElementTree as ET
+from pathlib import Path
+from typing import Any
+from urllib.parse import quote, urlsplit
+
+import httpx
+from cryptography.fernet import Fernet, InvalidToken
+from sqlalchemy.orm import Session
+
+from app.config import Settings
+from app.db import DeliverySetting
+
+
+class DeliveryError(RuntimeError):
+    pass
+
+
+def _fernet(settings: Settings) -> Fernet:
+    if not settings.encryption_key:
+        raise DeliveryError("APP_ENCRYPTION_KEY is required before storing a WebDAV app password")
+    try:
+        return Fernet(settings.encryption_key.encode("ascii"))
+    except Exception as exc:
+        raise DeliveryError("APP_ENCRYPTION_KEY must be a valid Fernet key") from exc
+
+
+def decrypt_password(encrypted: str | None, settings: Settings) -> str:
+    if not encrypted:
+        raise DeliveryError("WebDAV app password has not been configured")
+    try:
+        return _fernet(settings).decrypt(encrypted.encode("ascii")).decode("utf-8")
+    except (InvalidToken, UnicodeDecodeError) as exc:
+        raise DeliveryError("Stored WebDAV app password cannot be decrypted; verify APP_ENCRYPTION_KEY") from exc
+
+
+def serialize_delivery(setting: DeliverySetting | None) -> dict[str, Any]:
+    if not setting:
+        return {"mode": "local", "folder": "Downloader", "password_configured": False}
+    return {
+        "mode": setting.mode,
+        "webdav_url": setting.webdav_url,
+        "username": setting.username,
+        "folder": setting.folder,
+        "password_configured": bool(setting.password_encrypted),
+    }
+
+
+def set_delivery_settings(session: Session, payload, settings: Settings) -> dict[str, Any]:
+    row = session.get(DeliverySetting, 1)
+    if row is None:
+        row = DeliverySetting(id=1, mode=payload.mode, folder=payload.folder)
+        session.add(row)
+    row.mode = payload.mode
+    row.folder = payload.folder
+    row.webdav_url = payload.webdav_url.strip().rstrip("/") if payload.webdav_url else None
+    row.username = payload.username.strip() if payload.username else None
+    if payload.app_password:
+        row.password_encrypted = _fernet(settings).encrypt(payload.app_password.encode("utf-8")).decode("ascii")
+    if payload.mode == "webdav" and not row.password_encrypted:
+        raise DeliveryError("Enter the WebDAV app password before enabling WebDAV delivery")
+    session.commit()
+    session.refresh(row)
+    return serialize_delivery(row)
+
+
+async def deliver_files(
+    files: list[Path],
+    job_id: str,
+    session_factory,
+    settings: Settings,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> list[dict[str, Any]]:
+    with session_factory() as session:
+        setting = session.get(DeliverySetting, 1)
+        if setting is None or setting.mode == "local":
+            target_dir = settings.output_dir / job_id
+            target_dir.mkdir(parents=True, exist_ok=True)
+            output: list[dict[str, Any]] = []
+            for source in files:
+                destination = target_dir / source.name
+                if source.resolve() != destination.resolve():
+                    shutil.copy2(source, destination)
+                output.append({
+                    "filename": destination.name,
+                    "size_bytes": destination.stat().st_size,
+                    "path": str(destination),
+                    "delivery": "local",
+                    "verified": destination.is_file() and destination.stat().st_size == source.stat().st_size,
+                })
+            if not all(item["verified"] for item in output):
+                raise DeliveryError("Local delivery verification failed")
+            return output
+        data = {
+            "url": setting.webdav_url,
+            "username": setting.username,
+            "password": decrypt_password(setting.password_encrypted, settings),
+            "folder": setting.folder,
+        }
+
+    if not data["url"] or not data["username"]:
+        raise DeliveryError("WebDAV URL and username are not configured")
+    base_parts = urlsplit(data["url"])
+    if base_parts.scheme not in {"https", "http"} or not base_parts.netloc or base_parts.username or base_parts.password:
+        raise DeliveryError("WebDAV URL must be an absolute HTTP(S) URL without embedded credentials")
+    base_url = data["url"].rstrip("/")
+    folder_parts = [p for p in data["folder"].split("/") if p]
+    prefix_parts = folder_parts + [job_id]
+    output = []
+    client_options = {
+        "timeout": httpx.Timeout(60.0, connect=15.0),
+        "auth": (data["username"], data["password"]),
+        "follow_redirects": False,
+    }
+    if transport is not None:
+        client_options["transport"] = transport
+    async with httpx.AsyncClient(**client_options) as client:
+        current = base_url
+        for segment in prefix_parts:
+            current += "/" + quote(segment, safe="")
+            response = await client.request("MKCOL", current)
+            if response.status_code not in {201, 405}:
+                raise DeliveryError(f"WebDAV directory creation failed ({response.status_code})")
+        for source in files:
+            if not source.is_file():
+                raise DeliveryError(f"Output disappeared before delivery: {source.name}")
+            target = current + "/" + quote(source.name, safe="")
+
+            async def file_chunks(path: Path):
+                with path.open("rb") as stream:
+                    while True:
+                        chunk = await asyncio.to_thread(stream.read, 1024 * 1024)
+                        if not chunk:
+                            break
+                        yield chunk
+
+            response = await client.put(
+                target,
+                content=file_chunks(source),
+                headers={"Content-Type": "application/octet-stream"},
+            )
+            if response.status_code not in {200, 201, 204}:
+                raise DeliveryError(f"WebDAV PUT failed for {source.name} ({response.status_code})")
+            verify = await client.request(
+                "PROPFIND",
+                target,
+                headers={"Depth": "0", "Content-Type": "application/xml"},
+                content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>',
+            )
+            if verify.status_code != 207:
+                raise DeliveryError(f"WebDAV verification failed for {source.name} ({verify.status_code})")
+            remote_size = None
+            try:
+                root = ET.fromstring(verify.content)
+                for element in root.iter():
+                    if element.tag.endswith("getcontentlength") and element.text:
+                        remote_size = int(element.text)
+                        break
+            except (ET.ParseError, ValueError):
+                remote_size = None
+            expected_size = source.stat().st_size
+            if remote_size != expected_size:
+                raise DeliveryError(f"WebDAV size verification failed for {source.name}: expected {expected_size}, got {remote_size}")
+            output.append({
+                "filename": source.name,
+                "size_bytes": expected_size,
+                "path": target,
+                "delivery": "webdav",
+                "verified": True,
+            })
+    return output
