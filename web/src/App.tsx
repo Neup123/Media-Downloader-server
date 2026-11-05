@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl';
+type EngineSelection = 'auto' | Engine;
+type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string };
+type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
 type Job = {
   id: string; url: string; engine: Engine; status: string;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
@@ -24,11 +27,16 @@ const ariaDefaults: AriaSettings = {
 const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy: '' };
 
 function parseOptionsJson(value: string): Record<string, string> {
+  const parsed = parseJsonObject(value);
+  return parsed as Record<string, string>;
+}
+
+function parseJsonObject(value: string): Record<string, unknown> {
   const parsed: unknown = JSON.parse(value);
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error('Extractor options must be a JSON object.');
+    throw new Error('Settings must be a JSON object.');
   }
-  return parsed as Record<string, string>;
+  return parsed as Record<string, unknown>;
 }
 
 function bytes(value: unknown): string {
@@ -46,8 +54,12 @@ function label(value: string): string {
 
 export default function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
-  const [tab, setTab] = useState<'downloads' | 'engines' | 'delivery'>('downloads');
-  const [engine, setEngine] = useState<Engine>('yt-dlp');
+  const [tab, setTab] = useState<'downloads' | 'engines' | 'routing' | 'delivery'>('downloads');
+  const [engine, setEngine] = useState<EngineSelection>('auto');
+  const [selectedPresetId, setSelectedPresetId] = useState('');
+  const [presets, setPresets] = useState<Preset[]>([]);
+  const [engineRules, setEngineRules] = useState<EngineRule[]>([]);
+  const [batchUrls, setBatchUrls] = useState('');
   const [url, setUrl] = useState('');
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -68,6 +80,15 @@ export default function App() {
   const [davPassword, setDavPassword] = useState('');
   const [davFolder, setDavFolder] = useState('Downloader');
   const [passwordConfigured, setPasswordConfigured] = useState(false);
+  const [presetName, setPresetName] = useState('');
+  const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
+  const [presetDescription, setPresetDescription] = useState('');
+  const [presetSettingsText, setPresetSettingsText] = useState('{}');
+  const [ruleHost, setRuleHost] = useState('');
+  const [rulePath, setRulePath] = useState('/');
+  const [ruleEngine, setRuleEngine] = useState<Engine>('yt-dlp');
+  const [rulePriority, setRulePriority] = useState('100');
+  const [ruleDescription, setRuleDescription] = useState('');
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', 'X-API-Key': apiKey }), [apiKey]);
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -111,6 +132,8 @@ export default function App() {
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
+    void request(API + '/presets').then(setPresets).catch(error => setMessage(String(error)));
+    void request(API + '/engine-rules').then(setEngineRules).catch(error => setMessage(String(error)));
   }, [apiKey, request]);
 
   useEffect(() => {
@@ -171,24 +194,110 @@ export default function App() {
     return () => controller.abort();
   }, [apiKey, selected]);
 
+  function currentOverrides(): object {
+    if (engine === 'yt-dlp') return ytOverride;
+    if (engine === 'aria2c') return ariaOverride;
+    if (engine === 'gallery-dl') {
+      return { ...galleryOverride, options: parseOptionsJson(galleryOverrideOptionsText) };
+    }
+    return {};
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true);
     try {
-      let overrides: YtSettings | AriaSettings | GallerySettings;
-      if (engine === 'yt-dlp') {
-        overrides = ytOverride;
-      } else if (engine === 'aria2c') {
-        overrides = ariaOverride;
-      } else {
-        overrides = { ...galleryOverride, options: parseOptionsJson(galleryOverrideOptionsText) };
-      }
       const job = await request(API + '/jobs', {
-        method: 'POST', body: JSON.stringify({ url, engine, overrides }),
+        method: 'POST',
+        body: JSON.stringify({
+          url, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
+        }),
       });
       setSelected(job.id); setUrl(''); setMessage('Job queued.'); await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not submit job');
     } finally { setBusy(false); }
+  }
+
+  async function submitBatch() {
+    setBusy(true);
+    try {
+      const urls = batchUrls.split(/\r?\n/).map(value => value.trim()).filter(Boolean);
+      if (urls.length === 0) throw new Error('Add at least one URL to the batch.');
+      if (urls.length > 50) throw new Error('A batch can contain at most 50 URLs.');
+      const response = await request(API + '/jobs/batch', {
+        method: 'POST',
+        body: JSON.stringify({
+          items: urls.map(itemUrl => ({
+            url: itemUrl, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
+          })),
+        }),
+      });
+      setSelected(response.jobs?.[0]?.id ?? null);
+      setBatchUrls('');
+      setMessage(response.created + ' jobs added to the queue.');
+      await refresh();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not submit batch');
+    } finally { setBusy(false); }
+  }
+
+  async function loadRoutingSettings() {
+    setPresets(await request(API + '/presets'));
+    setEngineRules(await request(API + '/engine-rules'));
+  }
+
+  async function createPreset(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      const settings = parseJsonObject(presetSettingsText);
+      const created = await request(API + '/presets', {
+        method: 'POST',
+        body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription, settings }),
+      });
+      setPresets(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
+      setPresetName(''); setPresetDescription(''); setMessage('Preset saved.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save preset');
+    }
+  }
+
+  async function deletePreset(id: string) {
+    try {
+      await request(API + '/presets/' + id, { method: 'DELETE' });
+      setPresets(current => current.filter(item => item.id !== id));
+      if (selectedPresetId === id) setSelectedPresetId('');
+      setMessage('Preset deleted.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not delete preset');
+    }
+  }
+
+  async function createEngineRule(event: React.FormEvent) {
+    event.preventDefault();
+    try {
+      const created = await request(API + '/engine-rules', {
+        method: 'POST',
+        body: JSON.stringify({
+          host_suffix: ruleHost, path_prefix: rulePath, engine: ruleEngine,
+          priority: Number(rulePriority), enabled: true, description: ruleDescription,
+        }),
+      });
+      setEngineRules(current => [...current, created].sort((a, b) => b.priority - a.priority));
+      setRuleHost(''); setRulePath('/'); setRulePriority('100'); setRuleDescription('');
+      setMessage('URL engine rule saved.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not save URL rule');
+    }
+  }
+
+  async function deleteEngineRule(id: string) {
+    try {
+      await request(API + '/engine-rules/' + id, { method: 'DELETE' });
+      setEngineRules(current => current.filter(item => item.id !== id));
+      setMessage('URL engine rule deleted.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not delete URL rule');
+    }
   }
 
   async function saveEngine(name: Engine) {
