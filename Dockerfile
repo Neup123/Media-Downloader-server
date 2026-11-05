@@ -6,8 +6,8 @@ RUN go install github.com/gan-of-culture/get-sauce@v1.10.0
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
 WORKDIR /web
-COPY web/package.json ./package.json
-RUN npm install --no-audit --no-fund
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --no-audit --no-fund
 COPY web/ ./
 RUN npm test && npm run build
 
