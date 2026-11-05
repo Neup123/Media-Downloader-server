@@ -80,12 +80,12 @@ def test_aria2_settings_allowlist_rejects_rpc_exposure():
 def test_gallery_dl_adapter_uses_managed_output_and_discovers_downloads(tmp_path: Path):
     executable = tmp_path / "fake-gallery-dl"
     executable.write_text(
-        "#!/usr/bin/env python3\\n"
-        "import pathlib\\n"
-        "print('16%   1.01MB 337.19kB/s', flush=True)\\n"
-        "output = pathlib.Path.cwd() / 'sample.jpg'\\n"
-        "output.write_bytes(b'image-bytes')\\n"
-        "print(str(output), flush=True)\\n"
+        "#!/usr/bin/env python3\n"
+        "import pathlib\n"
+        "print('16%   1.01MB 337.19kB/s', flush=True)\n"
+        "output = pathlib.Path.cwd() / 'sample.jpg'\n"
+        "output.write_bytes(b'image-bytes')\n"
+        "print(str(output), flush=True)\n"
     )
     executable.chmod(0o755)
     events = []
