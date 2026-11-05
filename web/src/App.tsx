@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl';
+type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic';
 type EngineSelection = 'auto' | Engine;
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
@@ -20,6 +20,7 @@ type MediaPreview = {
 };
 type AriaSettings = { options: Record<string, string> };
 type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
+type GenericSettings = { filename: string; follow_redirects: boolean; max_redirects: number; retry_count: number; user_agent: string };
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
 
@@ -56,6 +57,7 @@ const ariaDefaults: AriaSettings = {
   options: { 'max-connection-per-server': '4', split: '4', 'max-tries': '5', 'retry-wait': '5' },
 };
 const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy: '' };
+const genericDefaults: GenericSettings = { filename: '', follow_redirects: false, max_redirects: 5, retry_count: 2, user_agent: '' };
 
 function parseOptionsJson(value: string): Record<string, string> {
   const parsed = parseJsonObject(value);
@@ -104,7 +106,9 @@ export default function App() {
   const [ariaOverride, setAriaOverride] = useState<AriaSettings>(ariaDefaults);
   const [gallery, setGallery] = useState<GallerySettings>(galleryDefaults);
   const [galleryOverride, setGalleryOverride] = useState<GallerySettings>(galleryDefaults);
-  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [] });
+  const [generic, setGeneric] = useState<GenericSettings>(genericDefaults);
+  const [genericOverride, setGenericOverride] = useState<GenericSettings>(genericDefaults);
+  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [] });
   const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
   const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
@@ -160,6 +164,10 @@ export default function App() {
       const saved = { ...ariaDefaults, ...data.settings };
       setAria(saved); setAriaOverride(saved);
     }).catch(error => setMessage(String(error)));
+    void request(API + '/engines/generic/settings').then(data => {
+      const saved = { ...genericDefaults, ...data.settings };
+      setGeneric(saved); setGenericOverride(saved);
+    }).catch(error => setMessage(String(error)));
     void request(API + '/engines/gallery-dl/settings').then(data => {
       const saved = { ...galleryDefaults, ...data.settings };
       setGallery(saved); setGalleryOverride(saved);
@@ -167,7 +175,7 @@ export default function App() {
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines').then(setEngineStatus).catch(error => setMessage(String(error)));
-    for (const name of ['yt-dlp', 'aria2c', 'gallery-dl'] as Engine[]) {
+    for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic'] as Engine[]) {
       void request(API + '/engines/' + name + '/options').then(data =>
         setOptionCatalog(current => ({ ...current, [name]: data.fields }))
       ).catch(error => setMessage(String(error)));
@@ -241,6 +249,7 @@ export default function App() {
     if (engine === 'gallery-dl') {
       return { ...galleryOverride, options: parseOptionsJson(galleryOverrideOptionsText) };
     }
+    if (engine === 'generic') return genericOverride;
     return {};
   }
 
@@ -287,6 +296,19 @@ export default function App() {
       return { options };
     };
     if (global) setAria(edit); else setAriaOverride(edit);
+  }
+
+  function updateGenericOption(key: string, value: string, global: boolean) {
+    const setValue = global ? setGeneric : setGenericOverride;
+    setValue(previous => ({
+      ...previous,
+      [key]: key === 'follow_redirects' ? value === 'true' :
+        key === 'max_redirects' || key === 'retry_count' ? Number(value) : value,
+    }));
+  }
+
+  function genericOptionValues(value: GenericSettings): Record<string, string> {
+    return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, String(field)]));
   }
 
   function updateGalleryOption(key: string, value: string, global: boolean) {
@@ -425,6 +447,12 @@ export default function App() {
           method: 'PUT', body: JSON.stringify({ settings }),
         });
         setAriaOverride(settings);
+      } else if (name === 'generic') {
+        const settings = generic;
+        await request(API + '/engines/generic/settings', {
+          method: 'PUT', body: JSON.stringify({ settings }),
+        });
+        setGenericOverride(settings);
       } else {
         const settings = { ...gallery, options: parseOptionsJson(galleryOptionsText) };
         await request(API + '/engines/gallery-dl/settings', {
@@ -516,6 +544,7 @@ export default function App() {
             <option value="yt-dlp">yt-dlp — websites and media</option>
             <option value="aria2c">aria2c — direct, torrent, magnet</option>
             <option value="gallery-dl">gallery-dl — image galleries</option>
+            <option value="generic">generic / curl — direct file URLs</option>
           </select></label>
           <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
             <option value="">No preset</option>
@@ -562,6 +591,9 @@ export default function App() {
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
             <label>Proxy URL<input value={galleryOverride.proxy ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, proxy: event.target.value }))} placeholder="Optional proxy" /></label>
+          </div> : engine === 'generic' ? <div className="options-block">
+            <div className="field-title">Direct download overrides</div>
+            <CommonOptionFields fields={optionCatalog.generic} values={genericOptionValues(genericOverride)} onChange={(key, value) => updateGenericOption(key, value, false)} />
           </div> : <div className="options-block">
             <div className="field-title">Automatic selection</div>
             <p className="muted">The service chooses the engine from your saved host/path rules. FTP and magnet links default to aria2c; unmatched URLs default to yt-dlp. A selected preset provides engine defaults when no URL rule matches.</p>
@@ -641,6 +673,12 @@ export default function App() {
         <button className="secondary" onClick={() => { setGallery(galleryDefaults); setGalleryOptionsText('{}'); }}>Reset shown defaults</button>
         <button className="primary" onClick={() => void saveEngine('gallery-dl')}>Save gallery-dl defaults</button>
       </section>
+      <section className="panel">
+        <div className="eyebrow">ENGINE DEFAULTS</div><h2>generic / curl</h2>
+        <p className="muted">{engineVersion('generic')}. For direct HTTP(S) links. Redirects are disabled by default.</p>
+        <CommonOptionFields fields={optionCatalog.generic} values={genericOptionValues(generic)} onChange={(key, value) => updateGenericOption(key, value, true)} />
+        <button className="primary" onClick={() => void saveEngine('generic')}>Save generic defaults</button>
+      </section>
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
     </div>}
 
@@ -651,7 +689,7 @@ export default function App() {
         <form onSubmit={createPreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
           <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>
@@ -676,7 +714,7 @@ export default function App() {
           <label>Host suffix<input value={ruleHost} onChange={event => setRuleHost(event.target.value)} placeholder="example.com" required /></label>
           <label>Path prefix<input value={rulePath} onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
           <label>Engine<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option>
           </select></label>
           <label>Priority (0–1000)<input type="number" min="0" max="1000" value={rulePriority} onChange={event => setRulePriority(event.target.value)} /></label>
           <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
