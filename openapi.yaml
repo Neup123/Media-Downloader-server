@@ -362,6 +362,6 @@ components:
       properties:
         mode: { type: string, enum: [local, webdav] }
         webdav_url: { type: [string, 'null'], maxLength: 2048 }
-        username: { type: [string, 'null'] }
+        username: { type: [string, 'null'], maxLength: 255 }
         app_password: { type: [string, 'null'], maxLength: 1024, description: Write-only. Stored encrypted on the service. }
         folder: { type: string, maxLength: 512, default: Downloader }
