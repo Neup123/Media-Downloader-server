@@ -27,7 +27,7 @@ from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
 from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
-from app.security import UnsafeUrlError, validate_target_url
+from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
 
@@ -88,6 +88,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
         try:
             url = validate_target_url(payload.url, "yt-dlp", config.allow_private_targets)
+            if not config.allow_private_targets:
+                await asyncio.to_thread(preflight_source_dns, url)
             return await inspect_ytdlp(url, max_entries=payload.max_entries)
         except (UnsafeUrlError, ValueError, PreviewError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
