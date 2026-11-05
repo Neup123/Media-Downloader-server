@@ -135,11 +135,14 @@ export default function App() {
   const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
   const [presetDescription, setPresetDescription] = useState('');
   const [presetSettingsText, setPresetSettingsText] = useState('{}');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [ruleHost, setRuleHost] = useState('');
   const [rulePath, setRulePath] = useState('/');
   const [ruleEngine, setRuleEngine] = useState<Engine>('yt-dlp');
   const [rulePriority, setRulePriority] = useState('100');
   const [ruleDescription, setRuleDescription] = useState('');
+  const [ruleEnabled, setRuleEnabled] = useState(true);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', 'X-API-Key': apiKey }), [apiKey]);
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -443,16 +446,38 @@ export default function App() {
     setEngineRules(await request(API + '/engine-rules'));
   }
 
-  async function createPreset(event: React.FormEvent) {
+  function resetPresetEditor() {
+    setEditingPresetId(null);
+    setPresetName('');
+    setPresetEngine('yt-dlp');
+    setPresetDescription('');
+    setPresetSettingsText('{}');
+  }
+
+  function editPreset(preset: Preset) {
+    setEditingPresetId(preset.id);
+    setPresetName(preset.name);
+    setPresetEngine(preset.engine);
+    setPresetDescription(preset.description);
+    setPresetSettingsText(JSON.stringify(preset.settings, null, 2));
+    document.getElementById('preset-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function savePreset(event: React.FormEvent) {
     event.preventDefault();
     try {
       const settings = parseJsonObject(presetSettingsText);
-      const created = await request(API + '/presets', {
-        method: 'POST',
+      const editingId = editingPresetId;
+      const saved = await request(API + '/presets' + (editingId ? '/' + editingId : ''), {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription, settings }),
-      });
-      setPresets(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setPresetName(''); setPresetDescription(''); setMessage('Preset saved.');
+      }) as Preset;
+      setPresets(await request(API + '/presets'));
+      if (selectedPresetId === saved.id && engine !== 'auto' && engine !== saved.engine) {
+        setSelectedPresetId('');
+      }
+      resetPresetEditor();
+      setMessage(editingId ? 'Preset updated.' : 'Preset saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save preset');
     }
@@ -463,25 +488,48 @@ export default function App() {
       await request(API + '/presets/' + id, { method: 'DELETE' });
       setPresets(current => current.filter(item => item.id !== id));
       if (selectedPresetId === id) setSelectedPresetId('');
+      if (editingPresetId === id) resetPresetEditor();
       setMessage('Preset deleted.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not delete preset');
     }
   }
 
-  async function createEngineRule(event: React.FormEvent) {
+  function resetRuleEditor() {
+    setEditingRuleId(null);
+    setRuleHost('');
+    setRulePath('/');
+    setRuleEngine('yt-dlp');
+    setRulePriority('100');
+    setRuleDescription('');
+    setRuleEnabled(true);
+  }
+
+  function editEngineRule(rule: EngineRule) {
+    setEditingRuleId(rule.id);
+    setRuleHost(rule.host_suffix);
+    setRulePath(rule.path_prefix);
+    setRuleEngine(rule.engine);
+    setRulePriority(String(rule.priority));
+    setRuleDescription(rule.description);
+    setRuleEnabled(rule.enabled);
+    document.getElementById('rule-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function saveEngineRule(event: React.FormEvent) {
     event.preventDefault();
     try {
-      const created = await request(API + '/engine-rules', {
-        method: 'POST',
+      const editingId = editingRuleId;
+      await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           host_suffix: ruleHost, path_prefix: rulePath, engine: ruleEngine,
-          priority: Number(rulePriority), enabled: true, description: ruleDescription,
+          priority: Number(rulePriority), enabled: ruleEnabled, description: ruleDescription,
         }),
       });
-      setEngineRules(current => [...current, created].sort((a, b) => b.priority - a.priority));
-      setRuleHost(''); setRulePath('/'); setRulePriority('100'); setRuleDescription('');
-      setMessage('URL engine rule saved.');
+      setEngineRules(await request(API + '/engine-rules'));
+      resetRuleEditor();
+      setMessage(editingId ? 'URL engine rule updated.' : 'URL engine rule saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save URL rule');
     }
@@ -491,6 +539,7 @@ export default function App() {
     try {
       await request(API + '/engine-rules/' + id, { method: 'DELETE' });
       setEngineRules(current => current.filter(item => item.id !== id));
+      if (editingRuleId === id) resetRuleEditor();
       setMessage('URL engine rule deleted.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not delete URL rule');
