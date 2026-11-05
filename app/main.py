@@ -80,7 +80,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def list_engines(_: bool = Depends(authenticate)):
         result = []
         for item in ENGINE_DESCRIPTIONS:
-            binary = "yt-dlp" if item["name"] == "yt-dlp" else "aria2c"
+            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl"}[item["name"]]
             result.append({**item, "installed": shutil.which(binary) is not None, "defaults": ENGINE_DEFAULTS[item["name"]]})
         return result
 
@@ -306,6 +306,41 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
             elif key == "extra_args":
                 from app.security import validate_extra_args
                 result[key] = validate_extra_args(value)
+        return result
+    if engine == "gallery-dl":
+        allowed = {"options", "cookies_file", "proxy"}
+        unknown = set(values) - allowed
+        if unknown:
+            raise ValueError(f"Unknown gallery-dl setting(s): {', '.join(sorted(unknown))}")
+        result = {}
+        if "options" in values:
+            options = values["options"]
+            if not isinstance(options, dict) or len(options) > 100:
+                raise ValueError("gallery-dl options must be an object with at most 100 entries")
+            blocked = {
+                "output.directory", "output.base-directory", "output.mode",
+                "output.shorten", "extractor.base-directory",
+            }
+            normalized = {}
+            for key, value in options.items():
+                if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z0-9_.-]{1,160}", key):
+                    raise ValueError(f"Invalid gallery-dl option name: {key!r}")
+                if key in blocked:
+                    raise ValueError(f"gallery-dl option {key} is managed by the service")
+                if isinstance(value, (dict, list)) or value is None or len(str(value)) > 2048 or "\x00" in str(value):
+                    raise ValueError(f"Invalid gallery-dl option value: {key}")
+                normalized[key] = str(value)
+            result["options"] = normalized
+        for key in ("cookies_file", "proxy"):
+            if key in values:
+                value = values[key]
+                if not isinstance(value, str) or len(value) > 2048 or "\x00" in value:
+                    raise ValueError(f"Invalid gallery-dl {key}")
+                if key == "cookies_file" and value and (
+                    Path(value).name != value or value in {".", ".."} or "\\" in value
+                ):
+                    raise ValueError("cookies_file must be a filename inside the service cookies directory")
+                result[key] = value
         return result
     if engine == "aria2c":
         unknown = set(values) - {"options"}
