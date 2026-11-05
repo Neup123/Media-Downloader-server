@@ -16,6 +16,7 @@ concurrency:
 
 jobs:
   release-watch:
+    if: github.repository == 'Neup123/Media-Downloader-server'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
