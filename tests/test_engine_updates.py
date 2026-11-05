@@ -137,20 +137,26 @@ def test_pypi_auto_upgrade_allowlist_requires_real_e2e_engine_coverage():
     assert "unsupported = sorted(item[\"engine\"]" in workflow
 
 
-def test_e2e_fixtures_prefer_preinstalled_ffmpeg_with_bounded_apt_fallback():
+def test_e2e_fixtures_use_exact_production_or_candidate_docker_ffmpeg():
     from pathlib import Path
     import yaml
 
     root = Path(__file__).resolve().parents[1]
-    for workflow_path in (
-        ".github/workflows/live-nextcloud-e2e.yml",
-        ".github/workflows/pinned-engine-updates.yml",
+    for workflow_path, image in (
+        (".github/workflows/live-nextcloud-e2e.yml", "downloader-server:local"),
+        (".github/workflows/pinned-engine-updates.yml", "downloader-server:engine-candidate"),
     ):
         workflow = yaml.safe_load((root / workflow_path).read_text(encoding="utf-8"))
         steps = next(iter(workflow["jobs"].values()))["steps"]
-        fixture = next(step["run"] for step in steps if "fixture" in step.get("name", "").lower() and "ffmpeg -hide_banner" in step.get("run", ""))
-        assert "command -v ffmpeg" in fixture, workflow_path
-        assert "command -v ffprobe" in fixture, workflow_path
-        assert "Acquire::Retries=3" in fixture, workflow_path
-        assert "mkdir -p fixture" in fixture
-        assert "ffmpeg -hide_banner" in fixture
+        fixture = next(
+            step["run"] for step in steps
+            if "fixture" in step.get("name", "").lower()
+            and "--entrypoint ffmpeg" in step.get("run", "")
+        )
+        assert "mkdir -p fixture" in fixture, workflow_path
+        assert "--entrypoint ffmpeg " + image in fixture
+        assert "--entrypoint ffprobe " + image in fixture
+        assert "/fixtures/sample.mp4" in fixture
+        assert "ffmpeg -hide_banner" not in fixture
+        assert "sudo apt-get" not in fixture, workflow_path
+
