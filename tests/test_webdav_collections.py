@@ -54,13 +54,13 @@ def test_collection_property_requires_matching_resource_and_successful_propstat(
     url = "https://cloud.example.test/dav/Folder"
     assert _webdav_is_collection(_dav_response("/dav/Folder/"), url)
     assert not _webdav_is_collection(_duplicate_dav_response(_dav_response("/dav/Folder/")), url)
-    assert _webdav_is_collection(
-        _dav_response("/dav/Folder/").replace(
-            b"</d:multistatus>",
-            _dav_response("/dav/Other/", status=404).split(b"<d:response>", 1)[1].split(b"</d:multistatus>", 1)[0].join((b"<d:response>", b"</d:multistatus>")),
-        ),
-        url,
+    unrelated = _dav_response("/dav/Other/", status=404)
+    unrelated_body = unrelated.split(b"<d:response>", 1)[1].split(b"</d:response>", 1)[0]
+    with_unrelated_failure = _dav_response("/dav/Folder/").replace(
+        b"</d:multistatus>",
+        b"<d:response>" + unrelated_body + b"</d:response></d:multistatus>",
     )
+    assert _webdav_is_collection(with_unrelated_failure, url)
     assert not _webdav_is_collection(_dav_response("/dav/Folder/", collection=False), url)
     assert not _webdav_is_collection(_dav_response("/dav/Folder/", status=404), url)
     assert not _webdav_is_collection(_dav_response("/dav/Other/"), url)
