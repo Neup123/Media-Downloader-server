@@ -42,16 +42,26 @@ def _shape(value, document):
 
     result = {key: value[key] for key in CONSTRAINTS if key in value}
 
-    # OpenAPI 3.1 allows both type: [string, null] and the Pydantic
-    # anyOf: [{type: string}, {type: null}] representation of nullability.
+    # Pydantic expresses nullable constrained strings as anyOf with a
+    # constraint on the string branch; OpenAPI 3.1 can instead put that
+    # constraint on a union of types. They validate the same inputs.
     if "anyOf" in value:
         variants = [_shape(item, document) for item in value["anyOf"]]
-        if all(set(item) == {"type"} and isinstance(item["type"], str) for item in variants):
+        nullable = next((item for item in variants if item == {"type": "null"}), None)
+        others = [item for item in variants if item != {"type": "null"}]
+        if nullable is not None and len(others) == 1 and isinstance(others[0].get("type"), str):
+            result.update(others[0])
+            result["type"] = sorted([others[0]["type"], "null"])
+        elif all(set(item) == {"type"} and isinstance(item["type"], str) for item in variants):
             result["type"] = sorted(item["type"] for item in variants)
         else:
             result["anyOf"] = variants
     if isinstance(result.get("type"), list):
         result["type"] = sorted(result["type"])
+    # An explicitly null informational default and an omitted default
+    # are equivalent for these nullable optional request fields.
+    if result.get("default", object()) is None:
+        del result["default"]
 
     if "required" in value:
         result["required"] = sorted(value["required"])
