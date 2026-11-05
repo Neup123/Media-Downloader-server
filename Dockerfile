@@ -9,7 +9,7 @@ WORKDIR /web
 COPY web/package.json ./package.json
 RUN npm install --no-audit --no-fund
 COPY web/ ./
-RUN npm run build
+RUN npm test && npm run build
 
 # The service container is self-contained and does not require Nextcloud.
 FROM python:3.13-slim-trixie AS runtime

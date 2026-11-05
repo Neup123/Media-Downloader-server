@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { apiErrorMessage } from './api-errors';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -149,7 +150,7 @@ export default function App() {
     if (!apiKey.trim()) throw new Error('Enter the API key to connect.');
     const response = await fetch(path, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
     const data = await response.json().catch(() => ({}));
-    if (!response.ok) throw new Error(data.detail || 'Request failed (' + response.status + ')');
+    if (!response.ok) throw new Error(apiErrorMessage(data, response.status));
     return data;
   }, [apiKey, headers]);
 
