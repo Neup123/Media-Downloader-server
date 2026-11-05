@@ -18,9 +18,10 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.discovery import PreviewError, inspect_ytdlp
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
-from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate
+from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, MediaPreviewIn
 from app.security import UnsafeUrlError, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -77,6 +78,14 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     @app.get("/healthz", tags=["system"])
     def healthz():
         return {"status": "ok", "service": "downloader-server"}
+
+    @app.post("/api/v1/preview", tags=["jobs"])
+    async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
+        try:
+            url = validate_target_url(payload.url, "yt-dlp", config.allow_private_targets)
+            return await inspect_ytdlp(url, max_entries=payload.max_entries)
+        except (UnsafeUrlError, ValueError, PreviewError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/engines", tags=["engines"])
     def list_engines(_: bool = Depends(authenticate)):
@@ -429,7 +438,7 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
     if not isinstance(values, dict):
         raise ValueError("Engine settings must be an object")
     if engine == "yt-dlp":
-        allowed = {"format", "subtitles_lang", "write_subtitles", "embed_subtitles", "extra_args", "cookies_file"}
+        allowed = {"format", "subtitles_lang", "write_subtitles", "embed_subtitles", "extra_args", "cookies_file", "allow_playlist", "playlist_items"}
         unknown = set(values) - allowed
         if unknown:
             raise ValueError(f"Unknown yt-dlp setting(s): {', '.join(sorted(unknown))}")
@@ -441,13 +450,19 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                 if key == "cookies_file" and value and (Path(value).name != value or value in {".", ".."} or "\\" in value):
                     raise ValueError("cookies_file must be a filename inside the service cookies directory")
                 result[key] = value
-            elif key in {"write_subtitles", "embed_subtitles"}:
+            elif key in {"write_subtitles", "embed_subtitles", "allow_playlist"}:
                 if not isinstance(value, bool):
                     raise ValueError(f"{key} must be a boolean")
                 result[key] = value
             elif key == "extra_args":
                 from app.security import validate_extra_args
                 result[key] = validate_extra_args(value)
+            elif key == "playlist_items":
+                if not isinstance(value, str) or len(value) > 512 or (
+                    value and not re.fullmatch(r"[1-9]\\d{0,3}(?:-[1-9]\\d{0,3})?(?:,[1-9]\\d{0,3}(?:-[1-9]\\d{0,3})?)*", value)
+                ):
+                    raise ValueError("playlist_items must be comma-separated indices or index ranges")
+                result[key] = value
         return result
     if engine == "gallery-dl":
         allowed = {"options", "cookies_file", "proxy"}
@@ -590,6 +605,13 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
         preset_settings = validate_engine_settings(engine, preset.settings, partial=True) if preset else {}
         job_overrides = validate_engine_settings(engine, payload.overrides, partial=True)
         overrides = _merge_settings(preset_settings, job_overrides)
+        if engine == "yt-dlp":
+            allow_playlist = overrides.get("allow_playlist")
+            if allow_playlist is None:
+                saved = session.get(EngineSetting, "yt-dlp")
+                allow_playlist = bool((saved.settings if saved else {}).get("allow_playlist", False))
+            if overrides.get("playlist_items") and not allow_playlist:
+                raise ValueError("playlist_items requires allow_playlist=true")
     except (UnsafeUrlError, ValueError) as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
