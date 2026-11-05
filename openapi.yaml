@@ -299,6 +299,24 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job is not retryable }
+  /jobs/{job_id}/redeliver:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: redeliverJob
+      summary: Re-deliver completed and still-verified files to the current destination without downloading again
+      tags: [jobs]
+      responses:
+        '202':
+          description: Verified original output files queued for re-delivery
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '404': { description: Job not found }
+        '409': { description: Job is not completed or verified source files are unavailable }
   /jobs/{job_id}/events:
     parameters:
       - name: job_id

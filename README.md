@@ -51,6 +51,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Presets: `/api/v1/presets`
 - Automatic URL routing rules: `/api/v1/engine-rules`
 - Batch queue: `POST /api/v1/jobs/batch` (up to 50 items)
+- Re-deliver a completed job: `POST /api/v1/jobs/{id}/redeliver`. The service verifies the original completion manifest and unchanged workspace files before queuing a new destination transfer, without fetching the media again. If the original download is missing or modified, the API returns HTTP 409 and leaves the completed job unchanged; submit a new download instead.
 - Checked-in API contract: [openapi.yaml](openapi.yaml)
 - API contract CI compares path/method coverage, documented success statuses, and API-key requirements against the implemented FastAPI routes. Detailed schema parity remains a separate acceptance gate.
 - Health check: `/healthz`
@@ -88,6 +89,8 @@ Local delivery copies files into the job's output folder and checks the resultin
 2. Uploads using PUT.
 3. Reads remote metadata using PROPFIND.
 4. Verifies the destination file size.
+
+The dashboard offers **Re-deliver** for completed jobs. This operation uses the current local/WebDAV settings, retains the same job ID, and never removes files already present at an earlier destination. It is only available while the completed-download manifest and original source files are still valid. The previous job output list is replaced with results from the new transfer; the job log records the re-delivery request.
 
 Cancellation during delivery is cooperative: the service checks cancellation between local-copy and WebDAV upload chunks, and between remote operations. Local files are copied to temporary paths and atomically published after size verification. Completed uploads remain listed in the job record if a subsequent upload is cancelled; cancellation **cannot guarantee deletion** of files already written to a remote server, and an interrupted WebDAV PUT may leave a partial remote file. Retrying a cancelled job attempts delivery again.
 
