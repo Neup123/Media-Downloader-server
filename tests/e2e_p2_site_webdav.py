@@ -54,8 +54,8 @@ for path in files:
         with path.open("rb") as stream:
             header = stream.read(16)
         media_verified = (
-            header.startswith(b"\\xff\\xd8\\xff") if suffix in {".jpg", ".jpeg"}
-            else header.startswith(b"\\x89PNG\\r\\n\\x1a\\n") if suffix == ".png"
+            header.startswith(b"\xff\xd8\xff") if suffix in {".jpg", ".jpeg"}
+            else header.startswith(b"\x89PNG\r\n\x1a\n") if suffix == ".png"
             else header.startswith((b"GIF87a", b"GIF89a")) if suffix == ".gif"
             else header[:4] == b"RIFF" and header[8:12] == b"WEBP"
         )
