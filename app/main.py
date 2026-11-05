@@ -98,11 +98,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             version = None
             if executable:
                 try:
+                    version_flag = "-v" if item["name"] == "get-sauce" else "--version"
                     completed = subprocess.run(
-                        [executable, "--version"], capture_output=True, text=True,
+                        [executable, version_flag], capture_output=True, text=True,
                         timeout=4, check=False,
                     )
-                    version = (completed.stdout or completed.stderr).splitlines()[0][:160]
+                    lines = (completed.stdout or completed.stderr).splitlines()
+                    version = lines[0][:160] if completed.returncode == 0 and lines else "unknown"
                 except (OSError, subprocess.TimeoutExpired, IndexError):
                     version = "unknown"
             result.append({
