@@ -100,3 +100,63 @@ def test_media_preview_subprocess_cannot_inherit_proxy_configuration(tmp_path, m
         "https://example.com/media", executable=str(executable)
     ))
     assert data["title"] == "clean"
+
+
+def test_webdav_credentials_never_use_inherited_http_proxy(settings, monkeypatch):
+    import httpx
+    from cryptography.fernet import Fernet
+    from app import delivery
+    from app.db import DeliverySetting, initialize_database, make_engine, make_session_factory
+
+    _suspicious_environment(monkeypatch)
+    engine = make_engine(settings.database_url)
+    initialize_database(engine)
+    sessions = make_session_factory(engine)
+    filename = settings.data_dir / "jobs" / "proxy-test" / "clip.bin"
+    filename.parent.mkdir(parents=True, exist_ok=True)
+    filename.write_bytes(b"media")
+    secret = Fernet(settings.encryption_key.encode("ascii")).encrypt(b"private-nextcloud-password").decode("ascii")
+    with sessions() as session:
+        session.add(DeliverySetting(
+            id=1, mode="webdav",
+            webdav_url="https://cloud.example.test/remote.php/dav/files/user",
+            username="user", password_encrypted=secret, folder="Downloader",
+        ))
+        session.commit()
+
+    async def handler(request: httpx.Request):
+        if request.method == "MKCOL":
+            return httpx.Response(201)
+        if request.method == "PUT":
+            assert await request.aread() == b"media"
+            return httpx.Response(201)
+        if request.method == "PROPFIND":
+            xml = (
+                "<d:multistatus xmlns:d='DAV:'><d:response>"
+                "<d:href>" + request.url.path + "</d:href>"
+                "<d:propstat><d:prop><d:getcontentlength>5</d:getcontentlength>"
+                "</d:prop><d:status>HTTP/1.1 200 OK</d:status>"
+                "</d:propstat></d:response></d:multistatus>"
+            )
+            return httpx.Response(207, content=xml)
+        return httpx.Response(405)
+
+    original = delivery.httpx.AsyncClient
+    observed = []
+
+    def guarded_client(*args, **kwargs):
+        observed.append(kwargs.get("trust_env"))
+        assert kwargs.get("trust_env") is False
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(delivery.httpx, "AsyncClient", guarded_client)
+    try:
+        output = asyncio.run(delivery.deliver_files(
+            [filename], "proxy-test", sessions, settings,
+            transport=httpx.MockTransport(handler),
+        ))
+        assert len(output) == 1
+        assert output[0]["verified"]
+        assert observed == [False]
+    finally:
+        engine.dispose()
