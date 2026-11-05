@@ -2,18 +2,76 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Literal
+import re
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 EngineName = Literal["yt-dlp", "aria2c", "gallery-dl"]
+EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl"]
 
 
 class JobCreate(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
-    engine: EngineName = "yt-dlp"
+    engine: EngineSelection = "auto"
+    preset_id: str | None = Field(default=None, max_length=36)
     overrides: dict[str, Any] = Field(default_factory=dict)
+
+
+class JobBatchCreate(BaseModel):
+    items: list[JobCreate] = Field(min_length=1, max_length=50)
+
+
+class PresetInput(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    engine: EngineName
+    settings: dict[str, Any] = Field(default_factory=dict)
+    description: str = Field(default="", max_length=1000)
+
+    @field_validator("name")
+    @classmethod
+    def trim_name(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Preset name cannot be blank")
+        return value
+
+
+class EngineRuleInput(BaseModel):
+    host_suffix: str = Field(min_length=3, max_length=255)
+    path_prefix: str = Field(default="/", max_length=1024)
+    engine: EngineName
+    priority: int = Field(default=100, ge=0, le=1000)
+    enabled: bool = True
+    description: str = Field(default="", max_length=255)
+
+    @field_validator("host_suffix")
+    @classmethod
+    def normalize_host_suffix(cls, value: str) -> str:
+        value = value.strip().lower().rstrip(".")
+        if "://" in value or "/" in value or ":" in value or "*" in value or not value:
+            raise ValueError("Use a hostname suffix only, without scheme, path, port, or wildcard")
+        try:
+            value = value.encode("idna").decode("ascii")
+        except UnicodeError as exc:
+            raise ValueError("Invalid internationalized hostname") from exc
+        labels = value.split(".")
+        if any(not label or len(label) > 63 or not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", label) for label in labels):
+            raise ValueError("Invalid hostname suffix")
+        if len(value) > 255:
+            raise ValueError("Hostname suffix is too long")
+        return value
+
+    @field_validator("path_prefix")
+    @classmethod
+    def normalize_path_prefix(cls, value: str) -> str:
+        value = value.strip() or "/"
+        if not value.startswith("/"):
+            value = "/" + value
+        if "\\" in value or "\x00" in value or "?" in value or "#" in value or ".." in value.split("/"):
+            raise ValueError("Path prefix must be a safe URL path without query, fragment, or parent segments")
+        return value
 
 
 class JobOut(BaseModel):
