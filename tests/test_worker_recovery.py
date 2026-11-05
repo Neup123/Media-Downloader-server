@@ -81,3 +81,92 @@ def test_worker_reuses_manifest_after_delivery_only_failure(settings, monkeypatc
         assert job.output_files[0]["verified"] is True
     assert (settings.output_dir / job_id / "video.mp4").read_bytes() == b"already downloaded"
     engine.dispose()
+
+
+def test_restarted_delivery_preserves_verified_records_without_duplicates(settings, monkeypatch):
+    engine, sessions, job_id, worker = _new_worker(settings, status="delivering")
+    workdir = settings.data_dir / "jobs" / job_id
+    workdir.mkdir(parents=True)
+    first = workdir / "first.bin"
+    second = workdir / "second.bin"
+    first.write_bytes(b"first")
+    second.write_bytes(b"second")
+    save_completed_files(workdir, [first, second])
+
+    first_record = {
+        "filename": "first.bin", "size_bytes": 5,
+        "path": "https://cloud.example/downloader/" + job_id + "/first.bin",
+        "delivery": "webdav", "verified": True,
+    }
+    second_record = {
+        "filename": "second.bin", "size_bytes": 6,
+        "path": "https://cloud.example/downloader/" + job_id + "/second.bin",
+        "delivery": "webdav", "verified": True,
+    }
+    with sessions() as session:
+        current = session.get(Job, job_id)
+        current.output_files = [first_record]
+        session.commit()
+
+    worker._recover_jobs()
+
+    async def unexpected_download(**kwargs):
+        raise AssertionError("A verified completion manifest must skip another download")
+
+    async def interrupted_delivery(files, job_id, session_factory, settings, **kwargs):
+        with session_factory() as session:
+            current = session.get(Job, job_id)
+            assert current.output_files == [first_record]
+        # A restart may upload a previously verified file again. That must
+        # replace its old record, not duplicate it.
+        await kwargs["on_delivered"](dict(first_record))
+        with session_factory() as session:
+            current = session.get(Job, job_id)
+            assert current.output_files == [first_record]
+        await kwargs["on_delivered"](dict(second_record))
+        raise RuntimeError("Simulated delivery interruption after second upload")
+
+    monkeypatch.setattr("app.worker.run_ytdlp", unexpected_download)
+    monkeypatch.setattr("app.worker.deliver_files", interrupted_delivery)
+    asyncio.run(worker._execute(job_id))
+
+    with sessions() as session:
+        current = session.get(Job, job_id)
+        assert current.status == "failed"
+        assert current.output_files == [first_record, second_record]
+        assert all(item["verified"] for item in current.output_files)
+    engine.dispose()
+
+
+def test_stale_records_are_cleared_before_an_unverified_redownload(settings, monkeypatch):
+    engine, sessions, job_id, worker = _new_worker(settings)
+    with sessions() as session:
+        current = session.get(Job, job_id)
+        current.output_files = [{
+            "filename": "previous.bin", "size_bytes": 1,
+            "path": "https://cloud.example/previous.bin",
+            "delivery": "webdav", "verified": True,
+        }]
+        session.commit()
+    workdir = settings.data_dir / "jobs" / job_id
+    workdir.mkdir(parents=True)
+    (workdir / "previous.bin").write_bytes(b"partial without completion manifest")
+
+    async def fake_download(**kwargs):
+        with sessions() as session:
+            current = session.get(Job, job_id)
+            assert current.output_files == []
+        assert not (workdir / "previous.bin").exists()
+        output = workdir / "new.bin"
+        output.write_bytes(b"new completed media")
+        return [output]
+
+    monkeypatch.setattr("app.worker.run_ytdlp", fake_download)
+    asyncio.run(worker._execute(job_id))
+    with sessions() as session:
+        current = session.get(Job, job_id)
+        assert current.status == "completed", current.error
+        assert len(current.output_files) == 1
+        assert current.output_files[0]["filename"] == "new.bin"
+        assert "Cleared prior delivery records" in current.log_text
+    engine.dispose()
