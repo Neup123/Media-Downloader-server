@@ -14,9 +14,25 @@ download engines. It never runs in the downloader service at runtime.
 | svtplay-dl | svtplay-dl | Candidate PR is blocked until a real site-specific E2E smoke is added |
 | aria2c | Debian system package | Not yet automated; separate update track |
 | generic / curl | Debian system package | Not yet automated; separate update track |
-| get-sauce | Pinned Go source tag | Bundled; Go update and checksum-validation track not yet automated |
+| get-sauce | Pinned Go source tag | Weekly release detection and smoke-blocked candidate PR; no unattended merge until live site-specific acceptance |
 
-`get-sauce` is bundled through a pinned Go source tag in the multi-stage Docker build. Automated discovery and checksum verification of new Go releases remain a separate unfinished update track.
+`get-sauce` is compiled from the pinned Go module tag in the multi-stage Docker
+build. `.github/workflows/get-sauce-release-watch.yml` checks GitHub's
+published stable releases weekly (and manually after it reaches `main`).
+`scripts/get_sauce_updates.py` refuses malformed or prerelease versions,
+requires exactly one pinned module tag and the upstream release checksum
+manifest, and prepares a Dockerfile-only candidate when a newer version
+exists. It opens a candidate PR and an `engine-update-blocked` issue.
+
+**This is discovery and candidate preparation only.** Release asset checksums
+are not Go module installation hashes, and their presence is not verification
+of the compiled binary. The normal Go module checksum database supplies Go
+module integrity checks when the toolchain builds, but there is no currently
+accepted live get-sauce site-specific smoke fixture. The watcher must never
+merge or publish a candidate based solely on the other engines' tests.
+Likewise, a GitHub-token-created PR does not reliably trigger separate PR CI.
+Full automated get-sauce upgrades remain blocked until that smoke and the
+complete candidate gate have been implemented and demonstrated.
 
 The detector ignores prerelease and yanked releases and requires an upstream
 artifact SHA-256 digest. Python dependency versions are updated as exact
@@ -60,6 +76,7 @@ unmerged and an issue records the blocker.
 
 - `python -m pytest -q tests/test_engine_updates.py` validates offline
   version selection, yanked-release filtering, pin updates, and workflow structure.
+- Both scheduled engine-update workflows require installation on the default branch before they can run. The get-sauce watcher has only offline parser and workflow tests while in the core review branch.
 - The workflow's live red and green branches still require a real dispatch
   after its installation on the default branch. A YAML parse test is not a
   substitute for that acceptance.
