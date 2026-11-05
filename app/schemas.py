@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl"]
+EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
+EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
 
 
 class MediaPreviewIn(BaseModel):
