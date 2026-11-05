@@ -1,4 +1,5 @@
 from app.options_catalog import get_catalog
+from app.worker import ENGINE_DEFAULTS
 
 
 def test_option_catalog_exposes_typed_fields_for_all_p0_engines(client, auth_headers):
@@ -28,7 +29,7 @@ def test_gallery_output_templates_cannot_traverse_directory(client, auth_headers
 def test_list_engines_reports_installation_status(client, auth_headers):
     result = client.get("/api/v1/engines", headers=auth_headers)
     assert result.status_code == 200
-    assert len(result.json()) == 5
+    assert len(result.json()) == len(ENGINE_DEFAULTS)
     for item in result.json():
         assert isinstance(item["installed"], bool)
         assert "version" in item

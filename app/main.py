@@ -93,7 +93,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def list_engines(_: bool = Depends(authenticate)):
         result = []
         for item in ENGINE_DESCRIPTIONS:
-            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get"}[item["name"]]
+            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl"}[item["name"]]
             executable = shutil.which(binary)
             version = None
             if executable:
@@ -485,6 +485,14 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                     raise ValueError("playlist_items must be comma-separated indices or index ranges")
                 result[key] = value
         return result
+    if engine == "svtplay-dl":
+        allowed = {"resolution", "quality", "subtitles", "all_subtitles", "all_episodes", "output_format"}
+        unknown = set(values) - allowed
+        if unknown:
+            raise ValueError(f"Unknown svtplay-dl setting(s): {', '.join(sorted(unknown))}")
+        from app.adapters.svtplay import effective_settings
+        validated = effective_settings(ENGINE_DEFAULTS["svtplay-dl"], values)
+        return {key: validated[key] for key in values}
     if engine == "you-get":
         allowed = {"format", "cookies_file", "no_proxy"}
         unknown = set(values) - allowed
