@@ -225,8 +225,11 @@ jobs:
           docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
           rm -f .env.e2e
 
+      # Until the real-site and red/green acceptance requirements are signed off,
+      # leave green candidates as reviewable PRs instead of publishing releases.
+      # An absent repository variable fails CLOSED.
       - name: Merge green candidate (normal branch protection still applies)
-        if: success() && steps.detect.outputs.changed == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -234,7 +237,7 @@ jobs:
           gh pr merge "$number" --squash --delete-branch --match-head-commit "${{ steps.open_pr.outputs.head_sha }}"
 
       - name: Cut a patch release from the tested merged main
-        if: success() && steps.detect.outputs.changed == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
