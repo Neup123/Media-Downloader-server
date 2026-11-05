@@ -383,7 +383,7 @@ def _redact(message: str) -> str:
     content, including uncommon credential names and URL-embedded passwords.
     """
     message = re.sub(
-        r"(?i)(authorization|cookie|set-cookie|app_password|rpc-secret)(\s*[:=]\s*)[^\s,;]+",
+        r"(?i)(authorization|cookie|set-cookie|app_password|rpc-secret|token|password|secret|api_key)(\s*[:=]\s*)[^\s,;]+",
         r"\1\2[REDACTED]", message,
     )
 
