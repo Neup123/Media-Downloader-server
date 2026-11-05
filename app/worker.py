@@ -8,6 +8,7 @@ from typing import Any
 from sqlalchemy import select
 
 from app.adapters.aria2 import Aria2Rpc
+from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.yt_dlp import run_ytdlp
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
@@ -22,6 +23,11 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         "embed_subtitles": False,
         "extra_args": [],
     },
+    "gallery-dl": {
+        "options": {},
+        "cookies_file": "",
+        "proxy": "",
+    },
     "aria2c": {
         "options": {
             "max-connection-per-server": "4",
@@ -35,6 +41,7 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
 ENGINE_DESCRIPTIONS = [
     {"name": "yt-dlp", "label": "yt-dlp", "role": "Site extraction and media downloads", "priority": "P0", "available": True},
     {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
+    {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
 ]
 
 
@@ -181,6 +188,13 @@ class JobWorker:
             elif engine == "yt-dlp":
                 files = await run_ytdlp(
                     executable="yt-dlp", url=url, workdir=workdir,
+                    global_settings=global_settings, overrides=overrides,
+                    cookie_dir=self.settings.data_dir / "cookies",
+                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                )
+            elif engine == "gallery-dl":
+                files = await run_gallery_dl(
+                    executable="gallery-dl", url=url, workdir=workdir,
                     global_settings=global_settings, overrides=overrides,
                     cookie_dir=self.settings.data_dir / "cookies",
                     on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
