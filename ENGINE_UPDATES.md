@@ -49,6 +49,18 @@ artifact SHA-256 digest. Python dependency versions are updated as exact
 **pip is not yet configured with a complete hash-locked dependency graph**.
 Do not describe this as checksum-enforced installation.
 
+## Promotion to the default branch
+
+The workflows can run from `main` for candidate discovery and acceptance, but **green
+update PRs are not merged and releases are not published by default**. The merge
+and release steps additionally require the repository Actions variable
+`DOWNLOADER_AUTOMATED_RELEASES_APPROVED` to equal the literal `true`. An absent
+variable fails closed. Do not set this approval flag until the red-gate/green-gate
+release scenarios, necessary real-site engine acceptance and deployment-security
+review have been demonstrated. A green candidate may still be reviewed and merged
+manually after independent approval. This makes source promotion to `main` a
+*development milestone*, not a production-release declaration.
+
 ## Workflow behavior
 
 1. Runs weekly and can be dispatched manually after the workflow reaches the default branch.
