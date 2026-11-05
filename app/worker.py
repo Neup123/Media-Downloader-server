@@ -169,6 +169,7 @@ class JobWorker:
             if not job or job.status != "queued":
                 return
             job.status = "starting"
+            job.output_files = []
             job.updated_at = utcnow()
             append_log(job, f"Job started with engine {job.engine}")
             url, engine, overrides = job.url, job.engine, dict(job.overrides or {})
@@ -200,6 +201,15 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 return not current or current.cancel_requested
+
+        async def on_delivered(item: dict[str, Any]) -> None:
+            # Keep verified partial results if cancellation interrupts a
+            # multi-file delivery; remote writes cannot be rolled back safely.
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    current.output_files = [*(current.output_files or []), item]
+                    session.commit()
 
         try:
             existing_files = load_completed_files(workdir)
@@ -246,7 +256,12 @@ class JobWorker:
                     current.status = "delivering"
                     append_log(current, "Download complete; delivering output files")
                     session.commit()
-            delivered = await deliver_files(files, job_id, self.session_factory, self.settings)
+            delivered = await deliver_files(
+                files, job_id, self.session_factory, self.settings,
+                is_cancelled=is_cancelled, on_delivered=on_delivered,
+            )
+            if await is_cancelled():
+                raise asyncio.CancelledError
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
@@ -265,9 +280,17 @@ class JobWorker:
                         current.cancel_requested = False
                         append_log(current, "Service is stopping; unfinished job returned to the queue")
                     else:
+                        was_delivering = current.status == "delivering"
                         current.status = "cancelled"
                         current.finished_at = utcnow()
-                        append_log(current, "Job cancelled")
+                        if was_delivering:
+                            append_log(
+                                current,
+                                "Delivery cancelled; some files may already exist at the destination. "
+                                "Verified completed uploads remain listed in output_files.",
+                            )
+                        else:
+                            append_log(current, "Job cancelled")
                     session.commit()
         except Exception as exc:
             message = _redact(str(exc))
