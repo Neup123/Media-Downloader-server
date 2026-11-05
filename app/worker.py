@@ -10,7 +10,7 @@ from sqlalchemy import select
 from app.adapters.aria2 import Aria2Rpc
 from app.adapters.yt_dlp import run_ytdlp
 from app.config import Settings
-from app.db import EngineSetting, Job, append_log, get_queued_ids, utcnow
+from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.delivery import deliver_files
 
 
@@ -45,6 +45,7 @@ class JobWorker:
         self.aria2: Aria2Rpc | None = None
         self._task: asyncio.Task | None = None
         self._active: set[asyncio.Task] = set()
+        self._active_engines: dict[str, str] = {}
         self._stopping = False
 
     async def start(self) -> None:
@@ -93,17 +94,41 @@ class JobWorker:
                 append_log(job, "Service restarted; job returned to the queue for recovery.")
             session.commit()
 
+    def _select_queued_jobs(self, queued_jobs: list[Job], slots: int) -> list[Job]:
+        engine_counts: dict[str, int] = {}
+        for engine_name in self._active_engines.values():
+            engine_counts[engine_name] = engine_counts.get(engine_name, 0) + 1
+
+        selected: list[Job] = []
+        for job in queued_jobs:
+            if len(selected) >= slots:
+                break
+            limit = self.settings.max_concurrent_per_engine.get(job.engine, 1)
+            if engine_counts.get(job.engine, 0) >= limit:
+                continue
+            selected.append(job)
+            engine_counts[job.engine] = engine_counts.get(job.engine, 0) + 1
+        return selected
+
+    def _task_done(self, job_id: str, task: asyncio.Task) -> None:
+        self._active.discard(task)
+        self._active_engines.pop(job_id, None)
+
     async def _run_loop(self) -> None:
         while not self._stopping:
             try:
                 slots = max(0, self.settings.max_concurrent_downloads - len(self._active))
                 if slots:
                     with self.session_factory() as session:
-                        job_ids = get_queued_ids(session, slots)
-                    for job_id in job_ids:
+                        queued = get_queued_jobs(session, max(100, slots))
+                    for job in self._select_queued_jobs(queued, slots):
+                        job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
                         self._active.add(task)
-                        task.add_done_callback(self._active.discard)
+                        self._active_engines[job_id] = job.engine
+                        task.add_done_callback(
+                            lambda done, identifier=job_id: self._task_done(identifier, done)
+                        )
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
