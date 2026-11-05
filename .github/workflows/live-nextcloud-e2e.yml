@@ -72,7 +72,7 @@ jobs:
       - name: Start disposable Nextcloud and Downloader Server containers
         run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml up -d --build
 
-      - name: Verify real yt-dlp and aria2 delivery to Nextcloud
+      - name: Verify real P0 engine downloads and delivery to Nextcloud
         run: python tests/e2e_live_webdav.py
         env:
           DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
