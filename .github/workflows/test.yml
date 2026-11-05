@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      DATA_DIR: ${{ runner.temp }}/downloader-test-data
+      DATA_DIR: /tmp/downloader-test-data
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
