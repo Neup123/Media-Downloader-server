@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.adapters.process_env import downloader_environment
 from app.security import validate_extra_args
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -143,6 +144,7 @@ async def run_ytdlp(
         cwd=str(workdir),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        env=downloader_environment(),
     )
     reported_files: list[Path] = []
     assert process.stdout is not None
