@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -74,35 +75,63 @@ def configure_webdav(client: httpx.Client) -> None:
         fail("The WebDAV credential was not stored")
 
 
-def submit_and_wait(client: httpx.Client, engine: str) -> dict:
-    response = client.post("/jobs", json={"url": SOURCE_URL, "engine": engine})
-    if response.status_code != 202:
-        fail(f"{engine} job submission failed: {response.status_code} {response.text}")
-    job_id = response.json()["id"]
-    print(f"Submitted {engine} job {job_id}", flush=True)
-
+def wait_for_job(client: httpx.Client, job_id: str, engine: str, action: str) -> dict:
     deadline = time.monotonic() + 240
     last = None
     while time.monotonic() < deadline:
         current = client.get(f"/jobs/{job_id}")
         if current.status_code != 200:
-            fail(f"Could not read {engine} job: {current.status_code} {current.text}")
+            fail(f"Could not read {engine} job: HTTP {current.status_code}")
         last = current.json()
         status = last["status"]
         progress = last.get("progress") or {}
         print(
-            f"{engine} job {job_id}: {status} "
+            f"{engine} {action} job {job_id}: {status} "
             f"{progress.get('percent', 'unknown')}%",
             flush=True,
         )
         if status == "completed":
             return last
         if status in {"failed", "cancelled"}:
-            fail(f"{engine} job {job_id} ended {status}: {last.get('error')}\n{last.get('log_text')}")
+            fail(f"{engine} {action} job {job_id} ended {status}: {last.get('error')}\\n{last.get('log_text')}")
         time.sleep(2)
-    fail(
-        f"{engine} job {job_id} did not finish within 240 seconds: "
-        f"{json.dumps(last, default=str)[:3000]}"
+    fail(f"{engine} {action} job {job_id} did not complete in 240 seconds: {str(last)[:1200]}")
+
+
+def submit_and_wait(client: httpx.Client, engine: str) -> dict:
+    response = client.post("/jobs", json={"url": SOURCE_URL, "engine": engine})
+    if response.status_code != 202:
+        fail(f"{engine} job submission failed: HTTP {response.status_code}")
+    job_id = response.json()["id"]
+    print(f"Submitted {engine} job {job_id}", flush=True)
+    return wait_for_job(client, job_id, engine, "download")
+
+
+def check_persisted_job(previous: dict, restored: dict) -> None:
+    """Require the same completed job/output audit record after a real restart."""
+    if previous.get("id") != restored.get("id") or previous.get("engine") != restored.get("engine"):
+        fail("Completed job identity changed across service restart")
+    if previous.get("status") != "completed" or restored.get("status") != "completed":
+        fail("A completed job was not preserved across service restart")
+    def summary(job: dict):
+        return sorted(
+            (item.get("filename"), item.get("path"), item.get("size_bytes"), item.get("verified"))
+            for item in (job.get("output_files") or [])
+        )
+    if not summary(previous) or summary(previous) != summary(restored):
+        fail("Verified delivery file records changed across service restart")
+    old_log = previous.get("log_text") or ""
+    if old_log and not (restored.get("log_text") or "").startswith(old_log):
+        fail("Job execution logs were lost across service restart")
+
+
+def restart_downloader_compose() -> None:
+    """Restart only the actual downloader container, keeping data and Nextcloud."""
+    subprocess.run(
+        ["docker", "compose", "--env-file", ".env.e2e",
+         "-f", "compose.yaml", "-f", "compose.integration.yaml",
+         "restart", "downloader-server"],
+        check=True, timeout=120,
     )
 
 
@@ -149,13 +178,50 @@ def main() -> None:
     if not FIXTURE.is_file():
         fail(f"Media fixture not found: {FIXTURE}")
     wait_for_services()
+    completed = []
     with api_client() as client:
         configure_webdav(client)
         for engine in ("yt-dlp", "aria2c", "gallery-dl", "generic", "you-get"):
             job = submit_and_wait(client, engine)
             verify_downloaded_files(job)
+            completed.append(job)
             print(f"{engine} -> Nextcloud WebDAV: PASS", flush=True)
-    print("REAL NEXTCLOUD WEBDAV E2E: PASS", flush=True)
+
+    # This is a real Docker Compose restart, not a TestClient recreation.
+    # The same persisted job IDs, logs and verified file records must survive.
+    restart_downloader_compose()
+    wait_for_services()
+    with api_client() as client:
+        delivery = client.get("/delivery")
+        if delivery.status_code != 200:
+            fail("WebDAV configuration was lost after Docker Compose restart")
+        stored = delivery.json()
+        if stored.get("mode") != "webdav" or stored.get("password_configured") is not True:
+            fail("Encrypted WebDAV credentials did not persist across restart")
+        if NC_PASSWORD in delivery.text:
+            fail("Delivery settings returned a stored WebDAV secret")
+
+        for saved in completed:
+            response = client.get(f"/jobs/{saved['id']}")
+            if response.status_code != 200:
+                fail(f"Completed {saved['engine']} job disappeared after restart")
+            restored = response.json()
+            check_persisted_job(saved, restored)
+            verify_downloaded_files(restored)
+            print(f"{saved['engine']} persistence after Compose restart: PASS", flush=True)
+
+        # Re-delivery proves the persisted workspace and completion manifest can
+        # be reused without re-downloading the media or changing the job ID.
+        original = completed[0]
+        response = client.post(f"/jobs/{original['id']}/redeliver")
+        if response.status_code != 202:
+            fail(f"Completed job re-delivery failed: HTTP {response.status_code}")
+        redelivered = wait_for_job(client, original["id"], original["engine"], "re-delivery")
+        verify_downloaded_files(redelivered)
+        if redelivered["id"] != original["id"]:
+            fail("Re-delivery unexpectedly replaced the durable job ID")
+
+    print("REAL NEXTCLOUD WEBDAV + RESTART + RE-DELIVERY E2E: PASS", flush=True)
 
 
 if __name__ == "__main__":
