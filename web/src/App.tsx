@@ -117,11 +117,19 @@ export default function App() {
 
   async function saveEngine(name: Engine) {
     try {
-      const settings = name === 'yt-dlp' ? yt : aria;
-      await request(API + '/engines/' + name + '/settings', {
-        method: 'PUT', body: JSON.stringify({ settings }),
-      });
-      if (name === 'yt-dlp') setYtOverride(settings); else setAriaOverride(settings);
+      if (name === 'yt-dlp') {
+        const settings = yt;
+        await request(API + '/engines/yt-dlp/settings', {
+          method: 'PUT', body: JSON.stringify({ settings }),
+        });
+        setYtOverride(settings);
+      } else {
+        const settings = aria;
+        await request(API + '/engines/aria2c/settings', {
+          method: 'PUT', body: JSON.stringify({ settings }),
+        });
+        setAriaOverride(settings);
+      }
       setMessage(name + ' defaults saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save settings');
