@@ -97,3 +97,41 @@ def test_update_workflow_is_gated_and_has_blocked_issue_path():
             assert "success()" in item["if"]
         if "blocked-update issue" in item.get("name", ""):
             assert "failure()" in item["if"]
+
+
+def test_pypi_auto_upgrade_allowlist_requires_real_e2e_engine_coverage():
+    """Prevent a version-updater allowlist entry without real SHA-256 delivery."""
+    import ast
+    from pathlib import Path
+
+    from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED
+
+    root = Path(__file__).resolve().parents[1]
+    e2e = ast.parse((root / "tests/e2e_live_webdav.py").read_text(encoding="utf-8"))
+    covered = set()
+    for node in ast.walk(e2e):
+        if (
+            isinstance(node, ast.For)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == "engine"
+            and isinstance(node.iter, (ast.Tuple, ast.List))
+        ):
+            called = {
+                item.func.id for item in ast.walk(node)
+                if isinstance(item, ast.Call) and isinstance(item.func, ast.Name)
+            }
+            if {"submit_and_wait", "verify_downloaded_files"} <= called:
+                covered.update(
+                    item.value for item in node.iter.elts
+                    if isinstance(item, ast.Constant) and isinstance(item.value, str)
+                )
+    assert PYPI_ENGINE_SMOKE_VERIFIED <= covered, (
+        "Pinned-update allowlist claims engines not exercised by real WebDAV E2E: "
+        f"{PYPI_ENGINE_SMOKE_VERIFIED - covered}"
+    )
+    assert {"yt-dlp", "gallery-dl", "you-get"} <= PYPI_ENGINE_SMOKE_VERIFIED
+    assert "svtplay-dl" not in PYPI_ENGINE_SMOKE_VERIFIED
+
+    workflow = (root / ".github/workflows/pinned-engine-updates.yml").read_text(encoding="utf-8")
+    assert "from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED" in workflow
+    assert "unsupported = sorted(item[\"engine\"]" in workflow
