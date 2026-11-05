@@ -10,6 +10,7 @@ import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
@@ -328,6 +329,8 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                     raise ValueError(f"Invalid gallery-dl option name: {key!r}")
                 if key in blocked:
                     raise ValueError(f"gallery-dl option {key} is managed by the service")
+                if any(part in key.lower() for part in ("password", "token", "secret", "api-key", "cookie")):
+                    raise ValueError(f"Sensitive gallery-dl option {key} cannot be stored as plain text; use an uploaded cookie file")
                 if isinstance(value, (dict, list)) or value is None or len(str(value)) > 2048 or "\x00" in str(value):
                     raise ValueError(f"Invalid gallery-dl option value: {key}")
                 normalized[key] = str(value)
@@ -341,6 +344,10 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                     Path(value).name != value or value in {".", ".."} or "\\" in value
                 ):
                     raise ValueError("cookies_file must be a filename inside the service cookies directory")
+                if key == "proxy" and value:
+                    parsed_proxy = urlsplit(value)
+                    if parsed_proxy.scheme not in {"http", "https", "socks4", "socks5", "socks5h"} or not parsed_proxy.hostname or parsed_proxy.username or parsed_proxy.password:
+                        raise ValueError("gallery-dl proxy must be an HTTP(S)/SOCKS URL without embedded credentials")
                 result[key] = value
         return result
     if engine == "aria2c":
