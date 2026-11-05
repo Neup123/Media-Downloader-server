@@ -249,6 +249,7 @@ class JobWorker:
                     executable="curl", url=url, workdir=workdir,
                     global_settings=global_settings, overrides=overrides,
                     on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    allow_private_targets=self.settings.allow_private_targets,
                 )
             elif engine == "you-get":
                 files = await run_you_get(
