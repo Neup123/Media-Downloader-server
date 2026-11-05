@@ -101,6 +101,59 @@ class JobBatchOut(BaseModel):
     jobs: list[JobOut]
 
 
+class EngineStatusOut(BaseModel):
+    name: EngineName
+    label: str
+    role: str
+    priority: str
+    available: bool
+    installed: bool
+    version: str | None
+    defaults: dict[str, Any]
+
+
+class EngineOptionFieldOut(BaseModel):
+    key: str
+    label: str
+    category: str
+    type: str
+    description: str
+    minimum: int | None = None
+    maximum: int | None = None
+
+
+class EngineOptionsOut(BaseModel):
+    engine: EngineName
+    fields: list[EngineOptionFieldOut]
+
+
+class EngineSettingsOut(BaseModel):
+    engine: EngineName
+    settings: dict[str, Any]
+
+
+class CookieFileOut(BaseModel):
+    filename: str
+    size_bytes: int = Field(ge=0)
+
+
+class CookieUploadedOut(CookieFileOut):
+    stored: bool
+
+
+class CookieDeletedOut(BaseModel):
+    deleted: bool
+    filename: str
+
+
+class DeliverySettingsOut(BaseModel):
+    mode: Literal["local", "webdav"]
+    folder: str
+    password_configured: bool
+    webdav_url: str | None = None
+    username: str | None = None
+
+
 class EngineSettingsIn(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 

@@ -26,7 +26,7 @@ from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
-from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -94,7 +94,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         except (UnsafeUrlError, ValueError, PreviewError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
-    @app.get("/api/v1/engines", tags=["engines"])
+    @app.get("/api/v1/engines", response_model=list[EngineStatusOut], tags=["engines"])
     def list_engines(_: bool = Depends(authenticate)):
         result = []
         for item in ENGINE_DESCRIPTIONS:
@@ -118,18 +118,18 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             })
         return result
 
-    @app.get("/api/v1/engines/{engine_name}/options", tags=["engines"])
+    @app.get("/api/v1/engines/{engine_name}/options", response_model=EngineOptionsOut, response_model_exclude_unset=True, tags=["engines"])
     def engine_option_catalog(engine_name: str, _: bool = Depends(authenticate)):
         _require_engine(engine_name)
         return {"engine": engine_name, "fields": get_catalog(engine_name)}
 
-    @app.get("/api/v1/engines/{engine_name}/settings", tags=["engines"])
+    @app.get("/api/v1/engines/{engine_name}/settings", response_model=EngineSettingsOut, tags=["engines"])
     def get_engine_settings(engine_name: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         _require_engine(engine_name)
         row = session.get(EngineSetting, engine_name)
         return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **(row.settings if row else {})}}
 
-    @app.put("/api/v1/engines/{engine_name}/settings", tags=["engines"])
+    @app.put("/api/v1/engines/{engine_name}/settings", response_model=EngineSettingsOut, tags=["engines"])
     def update_engine_settings(engine_name: str, payload: EngineSettingsIn, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         _require_engine(engine_name)
         try:
@@ -146,7 +146,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.commit()
         return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **normalized}}
 
-    @app.get("/api/v1/cookies", tags=["engines"])
+    @app.get("/api/v1/cookies", response_model=list[CookieFileOut], tags=["engines"])
     def list_cookie_files(_: bool = Depends(authenticate)):
         cookie_dir = config.data_dir / "cookies"
         cookie_dir.mkdir(parents=True, exist_ok=True)
@@ -156,7 +156,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             if p.is_file() and not p.is_symlink() and p.suffix.lower() in {".txt", ".cookies"}
         ]
 
-    @app.put("/api/v1/cookies/{filename}", tags=["engines"])
+    @app.put("/api/v1/cookies/{filename}", response_model=CookieUploadedOut, tags=["engines"])
     def upload_cookie_file(filename: str, payload: CookieUploadIn, _: bool = Depends(authenticate)):
         if Path(filename).name != filename or filename in {".", ".."} or Path(filename).suffix.lower() not in {".txt", ".cookies"}:
             raise HTTPException(status_code=422, detail="Cookie filename must be a simple .txt or .cookies filename")
@@ -194,7 +194,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 temporary.unlink(missing_ok=True)
         return {"filename": filename, "size_bytes": len(content), "stored": True}
 
-    @app.delete("/api/v1/cookies/{filename}", tags=["engines"])
+    @app.delete("/api/v1/cookies/{filename}", response_model=CookieDeletedOut, tags=["engines"])
     def delete_cookie_file(filename: str, _: bool = Depends(authenticate)):
         if Path(filename).name != filename or filename in {".", ".."}:
             raise HTTPException(status_code=422, detail="Invalid cookie filename")
@@ -463,11 +463,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 await asyncio.sleep(1)
         return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
-    @app.get("/api/v1/delivery", tags=["delivery"])
+    @app.get("/api/v1/delivery", response_model=DeliverySettingsOut, response_model_exclude_unset=True, tags=["delivery"])
     def get_delivery(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
         return serialize_delivery(session.get(DeliverySetting, 1))
 
-    @app.put("/api/v1/delivery", tags=["delivery"])
+    @app.put("/api/v1/delivery", response_model=DeliverySettingsOut, response_model_exclude_unset=True, tags=["delivery"])
     def update_delivery(payload: DeliverySettingsIn, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         try:
             return set_delivery_settings(session, payload, config)
