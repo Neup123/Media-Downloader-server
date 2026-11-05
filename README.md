@@ -9,6 +9,14 @@ Downloader Server is a server-side media downloader with one web interface for e
 
 The core repository owns the API, web UI, queue/worker, engine adapters, generic local/WebDAV delivery, tests, and engine update automation. The Nextcloud repository is limited to AppAPI/ExApp packaging and other Nextcloud-specific integration.
 
+## Acceptance and remaining work
+
+The [acceptance ledger](ACCEPTANCE_STATUS.md) tracks every blueprint area and
+still-open implementation issue against test evidence. Merging into `main`
+does **not** mean the service is approved for exposure to untrusted download
+sources: subprocess egress isolation, P2 real-site acceptance, and production
+deployment verification remain outstanding.
+
 ## Current status
 
 **Phase 0 blueprint is recorded and the core development implementation is now on `main`.** Merging the former review branch established the development baseline; it did not approve production exposure or a release.
