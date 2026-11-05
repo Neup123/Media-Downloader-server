@@ -1,0 +1,249 @@
+name: Pinned engine updates
+
+on:
+  schedule:
+    - cron: "41 6 * * 2"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+# Serialize the entire candidate -> gate -> merge/release transaction.
+concurrency:
+  group: pinned-engine-updates
+  cancel-in-progress: false
+
+jobs:
+  candidate-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Detect stable non-yanked PyPI releases and apply candidate pins
+        id: detect
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/engine_updates.py --report engine-update-report.json --apply | tee engine-update-detection.log
+          if git diff --quiet -- requirements.txt; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No bundled Python engine updates found."
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open a dedicated candidate PR (the remaining steps test that exact candidate)
+        if: steps.detect.outputs.changed == 'true'
+        id: open_pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch="automatic/engine-update-$GITHUB_RUN_ID"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add requirements.txt
+          git commit -m "chore: propose pinned engine version updates"
+          git push origin HEAD:"$branch"
+          sha=$(git rev-parse HEAD)
+          echo "head_sha=$sha" >> "$GITHUB_OUTPUT"
+          title="Pinned engine updates ($GITHUB_RUN_ID)"
+          {
+            echo "Candidate versions are recorded in the linked workflow artifact."
+            echo
+            echo "Full Python tests, Docker build and live disposable-Nextcloud WebDAV acceptance"
+            echo "run in this same workflow; the bot-created PR does not rely on ordinary PR CI"
+            echo "being automatically triggered by GITHUB_TOKEN."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "This PR must remain unmerged on a red gate."
+          } > engine-pr-body.md
+          gh pr create --base main --head "$branch" --title "$title" --body-file engine-pr-body.md
+          number=$(gh pr view "$branch" --json number --jq .number)
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned dependencies and test requirements
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -r requirements.txt pytest
+          python -m compileall -q app tests
+          python -m pytest -q 2>&1 | tee engine-update-tests.log
+
+      - name: Compile the production image with candidate engine versions
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --tag downloader-server:engine-candidate . 2>&1 | tee engine-update-docker.log
+
+      - name: Create a deterministic, legally generated media fixture
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y ffmpeg
+          mkdir -p fixture
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "color=c=blue:s=320x240:r=24:d=2" \
+            -f lavfi -i "sine=frequency=1000:duration=2" \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest \
+            -movflags +faststart fixture/sample.mp4
+
+      - name: Create ephemeral credentials (never committed)
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os, secrets
+          from cryptography.fernet import Fernet
+          values = {
+              "APP_API_TOKEN": secrets.token_urlsafe(48),
+              "APP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+              "NEXTCLOUD_ADMIN_PASSWORD": secrets.token_urlsafe(24),
+          }
+          with open(".env.e2e", "w", encoding="utf-8") as stream:
+              for key, value in values.items():
+                  print(f"::add-mask::{value}")
+                  stream.write(f"{key}={value}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              for key in ("APP_API_TOKEN", "NEXTCLOUD_ADMIN_PASSWORD"):
+                  stream.write(f"{key}={values[key]}\n")
+          PY
+
+      - name: Launch disposable Nextcloud and candidate downloader
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml up -d --build 2>&1 | tee engine-update-compose.log
+
+      - name: Verify real downloads and delivered SHA-256 hashes in Nextcloud
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        env:
+          DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
+          NEXTCLOUD_HTTP_URL: http://127.0.0.1:8081
+          SOURCE_URL: http://media-source:9000/sample.mp4
+          WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
+          MEDIA_FIXTURE: fixture/sample.mp4
+        run: |
+          set -euo pipefail
+          python tests/e2e_live_webdav.py 2>&1 | tee engine-update-webdav.log
+
+      - name: Collect sanitized diagnostic logs and release manifest
+        if: always() && steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import re
+          files = [
+              "engine-update-detection.log", "engine-update-tests.log",
+              "engine-update-docker.log", "engine-update-compose.log",
+              "engine-update-webdav.log",
+          ]
+          output = Path("engine-update-diagnostics.txt")
+          with output.open("w", encoding="utf-8") as stream:
+              for name in files:
+                  path = Path(name)
+                  if path.is_file():
+                      content = path.read_text(encoding="utf-8", errors="replace")
+                      content = re.sub(r"(?i)(token|password|authorization)(\\s*[:=]\\s*)[^\\s,;]+", r"\\1\\2[REDACTED]", content)
+                      stream.write(f"===== {name} =====\\n" + content[-25000:] + "\\n")
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always() && steps.detect.outputs.changed == 'true'
+        with:
+          name: engine-update-diagnostics
+          path: |
+            engine-update-report.json
+            engine-update-diagnostics.txt
+          retention-days: 30
+
+      - name: Delete disposable containers, volumes, and credential files
+        if: always() && steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
+          rm -f .env.e2e
+
+      - name: Merge green candidate (normal branch protection still applies)
+        if: success() && steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          number="${{ steps.open_pr.outputs.number }}"
+          gh pr merge "$number" --squash --delete-branch --match-head-commit "${{ steps.open_pr.outputs.head_sha }}"
+
+      - name: Cut a patch release from the tested merged main
+        if: success() && steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | python -c '
+          import re,sys
+          versions=[tuple(map(int,m.groups())) for line in sys.stdin for m in [re.fullmatch(r"v(\\d+)\\.(\\d+)\\.(\\d+)", line.strip())] if m]
+          major,minor,patch=max(versions, default=(0,1,0))
+          print(f"v{major}.{minor}.{patch+1}")
+          ')
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          changes=json.loads(Path("engine-update-report.json").read_text())["updates"]
+          Path("engine-update-release.md").write_text(
+              "Pinned engine upgrades verified by Python tests, Docker build and Nextcloud WebDAV E2E:\n"
+              + "\n".join(f"- {item['engine']}: {item['from']} -> {item['to']}" for item in changes)
+              + "\n\nSee GitHub Actions run for test and artifact provenance.\n"
+          )
+          PY
+          gh release create "$tag" --target main --title "$tag" --notes-file engine-update-release.md
+
+      - name: Open or refresh blocked-update issue on any red gate
+        if: failure() && steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set +e
+          gh label create engine-update-blocked --description "Pinned update failed acceptance" --color B60205 2>/dev/null || true
+          python - <<'PY'
+          from pathlib import Path
+          import json, os
+          changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          summary = ", ".join(f"{x['engine']} {x['from']} -> {x['to']}" for x in changes)
+          heading = f"engine-update-blocked: {summary}"[:240]
+          log = Path("engine-update-diagnostics.txt")
+          excerpt = log.read_text(encoding="utf-8", errors="replace")[-12000:] if log.is_file() else "Diagnostics not available"
+          url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+          Path("blocked-issue-title.txt").write_text(heading)
+          Path("blocked-issue-body.md").write_text(
+              f"## Candidate\n{summary}\n\n## Failed acceptance run\n{url}\n\n"
+              "Previous pinned versions remain deployed. The candidate PR is left unmerged.\n\n"
+              "## Diagnostic excerpt (full artifact attached to workflow)\n"
+              f"\u0060\u0060\u0060text\n{excerpt}\n\u0060\u0060\u0060\n"
+              "\n## First-pass interpretation\nInspect the first failed gate and compare the relevant upstream release notes; the automated gate has not assumed a root cause.\n"
+          )
+          PY
+          title=$(cat blocked-issue-title.txt)
+          existing=$(gh issue list --state open --label engine-update-blocked --json number,title --jq ".[] | select(.title == \\"$title\\") | .number" | head -n 1)
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file blocked-issue-body.md
+          else
+            gh issue create --title "$title" --label engine-update-blocked --body-file blocked-issue-body.md
+          fi
