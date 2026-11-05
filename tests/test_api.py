@@ -70,6 +70,14 @@ def test_engine_settings_are_persisted_and_validated(client, auth_headers):
         "settings": {"extra_args": ["--exec=touch /tmp/pwned"]},
     })
     assert blocked.status_code == 422
+    sensitive = client.put("/api/v1/engines/gallery-dl/settings", headers=auth_headers, json={
+        "settings": {"options": {"extractor.pixiv.refresh-token": "do-not-store"}},
+    })
+    assert sensitive.status_code == 422
+    credential_proxy = client.put("/api/v1/engines/gallery-dl/settings", headers=auth_headers, json={
+        "settings": {"proxy": "http://user:password@proxy.example:8080"},
+    })
+    assert credential_proxy.status_code == 422
 
 
 def test_delivery_secret_is_write_only(client, auth_headers):
