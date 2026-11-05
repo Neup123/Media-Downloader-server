@@ -1,3 +1,4 @@
+from app.adapters.gallery_dl import parse_progress_line as parse_gallery_progress_line
 from app.adapters.yt_dlp import parse_progress_line
 from app.security import UnsafeUrlError, validate_extra_args, validate_target_url
 
@@ -48,3 +49,12 @@ def test_magnet_is_aria2_only():
         pass
     else:
         raise AssertionError("yt-dlp should not accept magnet URIs in this API")
+
+
+def test_gallery_dl_progress_parsing_does_not_invent_total_bytes():
+    event = parse_gallery_progress_line("16%   1.01MB 337.19kB/s")
+    assert event is not None
+    assert event["percent"] == 16.0
+    assert event["downloaded_bytes"] == 1_010_000
+    assert event["speed_bytes_per_second"] == 337_190
+    assert event["total_bytes"] is None
