@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
-import shutil
+import os
+import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import Any
+from typing import Any, Awaitable, Callable
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -90,7 +91,16 @@ async def deliver_files(
     session_factory,
     settings: Settings,
     transport: httpx.AsyncBaseTransport | None = None,
+    is_cancelled: Callable[[], Awaitable[bool]] | None = None,
+    on_delivered: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
 ) -> list[dict[str, Any]]:
+    async def check_cancelled() -> None:
+        if is_cancelled is not None and await is_cancelled():
+            raise asyncio.CancelledError("Delivery cancelled")
+
+    async def record(item: dict[str, Any]) -> None:
+        if on_delivered is not None:
+            await on_delivered(item)
     with session_factory() as session:
         setting = session.get(DeliverySetting, 1)
         if setting is None or setting.mode == "local":
@@ -98,20 +108,43 @@ async def deliver_files(
             target_dir.mkdir(parents=True, exist_ok=True)
             output: list[dict[str, Any]] = []
             for source in files:
+                await check_cancelled()
                 relative = _relative_output(source, job_id, settings)
                 destination = target_dir / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                if source.resolve() != destination.resolve():
-                    shutil.copy2(source, destination)
-                output.append({
+                # Publish the local file only after all bytes are copied.
+                temporary: Path | None = None
+                try:
+                    with tempfile.NamedTemporaryFile(
+                        dir=destination.parent, prefix=".downloader-", suffix=".part", delete=False
+                    ) as handle:
+                        temporary = Path(handle.name)
+                        with source.open("rb") as stream:
+                            while True:
+                                await check_cancelled()
+                                chunk = await asyncio.to_thread(stream.read, 1024 * 1024)
+                                if not chunk:
+                                    break
+                                await asyncio.to_thread(handle.write, chunk)
+                    await check_cancelled()
+                    if temporary.stat().st_size != source.stat().st_size:
+                        raise DeliveryError(f"Local copy was truncated: {source.name}")
+                    os.replace(temporary, destination)
+                finally:
+                    if temporary is not None:
+                        temporary.unlink(missing_ok=True)
+                item = {
                     "filename": destination.name,
                     "size_bytes": destination.stat().st_size,
                     "path": str(destination),
                     "delivery": "local",
                     "verified": destination.is_file() and destination.stat().st_size == source.stat().st_size,
-                })
-            if not all(item["verified"] for item in output):
-                raise DeliveryError("Local delivery verification failed")
+                }
+                if not item["verified"]:
+                    raise DeliveryError("Local delivery verification failed")
+                output.append(item)
+                await record(item)
+            await check_cancelled()
             return output
         data = {
             "url": setting.webdav_url,
@@ -139,15 +172,18 @@ async def deliver_files(
     async with httpx.AsyncClient(**client_options) as client:
         current = base_url
         for segment in prefix_parts:
+            await check_cancelled()
             current += "/" + quote(segment, safe="")
             response = await client.request("MKCOL", current)
             if response.status_code not in {201, 405}:
                 raise DeliveryError(f"WebDAV directory creation failed ({response.status_code})")
         created_folders = set()
         for source in files:
+            await check_cancelled()
             relative = _relative_output(source, job_id, settings)
             parent_url = current
             for segment in relative.parts[:-1]:
+                await check_cancelled()
                 parent_url += "/" + quote(segment, safe="")
                 if parent_url not in created_folders:
                     response = await client.request("MKCOL", parent_url)
@@ -159,6 +195,7 @@ async def deliver_files(
             async def file_chunks(path: Path):
                 with path.open("rb") as stream:
                     while True:
+                        await check_cancelled()
                         chunk = await asyncio.to_thread(stream.read, 1024 * 1024)
                         if not chunk:
                             break
@@ -171,6 +208,7 @@ async def deliver_files(
             )
             if response.status_code not in {200, 201, 204}:
                 raise DeliveryError(f"WebDAV PUT failed for {source.name} ({response.status_code})")
+            await check_cancelled()
             verify = await client.request(
                 "PROPFIND",
                 target,
@@ -191,11 +229,14 @@ async def deliver_files(
             expected_size = source.stat().st_size
             if remote_size != expected_size:
                 raise DeliveryError(f"WebDAV size verification failed for {source.name}: expected {expected_size}, got {remote_size}")
-            output.append({
+            item = {
                 "filename": source.name,
                 "size_bytes": expected_size,
                 "path": target,
                 "delivery": "webdav",
                 "verified": True,
-            })
+            }
+            output.append(item)
+            await record(item)
+    await check_cancelled()
     return output
