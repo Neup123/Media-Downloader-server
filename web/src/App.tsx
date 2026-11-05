@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl';
+type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
@@ -23,6 +23,7 @@ type GallerySettings = { options: Record<string, string>; cookies_file?: string;
 type GenericSettings = { filename: string; follow_redirects: boolean; max_redirects: number; retry_count: number; user_agent: string };
 type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean };
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
+type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
 
@@ -62,6 +63,7 @@ const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy:
 const genericDefaults: GenericSettings = { filename: '', follow_redirects: false, max_redirects: 5, retry_count: 2, user_agent: '' };
 const youGetDefaults: YouGetSettings = { format: '', cookies_file: '', no_proxy: false };
 const svtDefaults: SvtSettings = { resolution: '', quality: '', subtitles: false, all_subtitles: false, all_episodes: false, output_format: 'mp4' };
+const getSauceDefaults: GetSauceSettings = { stream_index: 0, amount: 0, workers: 4, merge: 'default', pages: '', subdirectory: false, timeout_minutes: 15 };
 
 function parseOptionsJson(value: string): Record<string, string> {
   const parsed = parseJsonObject(value);
@@ -116,7 +118,9 @@ export default function App() {
   const [youGetOverride, setYouGetOverride] = useState<YouGetSettings>(youGetDefaults);
   const [svt, setSvt] = useState<SvtSettings>(svtDefaults);
   const [svtOverride, setSvtOverride] = useState<SvtSettings>(svtDefaults);
-  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [] });
+  const [getSauce, setGetSauce] = useState<GetSauceSettings>(getSauceDefaults);
+  const [getSauceOverride, setGetSauceOverride] = useState<GetSauceSettings>(getSauceDefaults);
+  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [], 'get-sauce': [] });
   const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
   const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
@@ -180,6 +184,10 @@ export default function App() {
       const saved = { ...svtDefaults, ...data.settings };
       setSvt(saved); setSvtOverride(saved);
     }).catch(error => setMessage(String(error)));
+    void request(API + '/engines/get-sauce/settings').then(data => {
+      const saved = { ...getSauceDefaults, ...data.settings };
+      setGetSauce(saved); setGetSauceOverride(saved);
+    }).catch(error => setMessage(String(error)));
     void request(API + '/engines/generic/settings').then(data => {
       const saved = { ...genericDefaults, ...data.settings };
       setGeneric(saved); setGenericOverride(saved);
@@ -191,7 +199,7 @@ export default function App() {
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines').then(setEngineStatus).catch(error => setMessage(String(error)));
-    for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic', 'you-get', 'svtplay-dl'] as Engine[]) {
+    for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic', 'you-get', 'svtplay-dl', 'get-sauce'] as Engine[]) {
       void request(API + '/engines/' + name + '/options').then(data =>
         setOptionCatalog(current => ({ ...current, [name]: data.fields }))
       ).catch(error => setMessage(String(error)));
@@ -268,6 +276,7 @@ export default function App() {
     if (engine === 'generic') return genericOverride;
     if (engine === 'you-get') return youGetOverride;
     if (engine === 'svtplay-dl') return svtOverride;
+    if (engine === 'get-sauce') return getSauceOverride;
     return {};
   }
 
@@ -322,6 +331,19 @@ export default function App() {
       ...previous,
       [key]: key === 'no_proxy' ? value === 'true' : value,
     }));
+  }
+
+  function updateGetSauceOption(key: string, value: string, global: boolean) {
+    const setValue = global ? setGetSauce : setGetSauceOverride;
+    setValue(previous => ({
+      ...previous,
+      [key]: key === 'subdirectory' ? value === 'true' :
+        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value,
+    }));
+  }
+
+  function getSauceOptionValues(value: GetSauceSettings): Record<string, string> {
+    return Object.fromEntries(Object.entries(value).map(([key, field]) => [key, String(field)]));
   }
 
   function updateSvtOption(key: string, value: string, global: boolean) {
@@ -495,6 +517,12 @@ export default function App() {
           method: 'PUT', body: JSON.stringify({ settings }),
         });
         setYouGetOverride(settings);
+      } else if (name === 'get-sauce') {
+        const settings = getSauce;
+        await request(API + '/engines/get-sauce/settings', {
+          method: 'PUT', body: JSON.stringify({ settings }),
+        });
+        setGetSauceOverride(settings);
       } else if (name === 'svtplay-dl') {
         const settings = svt;
         await request(API + '/engines/svtplay-dl/settings', {
@@ -601,6 +629,7 @@ export default function App() {
             <option value="generic">generic / curl — direct file URLs</option>
             <option value="you-get">you-get — fallback site extractor</option>
             <option value="svtplay-dl">svtplay-dl — Nordic broadcasters</option>
+            <option value="get-sauce">get-sauce — specialized galleries/media</option>
           </select></label>
           <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
             <option value="">No preset</option>
@@ -650,6 +679,9 @@ export default function App() {
           </div> : engine === 'you-get' ? <div className="options-block">
             <div className="field-title">you-get overrides</div>
             <CommonOptionFields fields={optionCatalog['you-get']} values={youGetOptionValues(youGetOverride)} onChange={(key, value) => updateYouGetOption(key, value, false)} />
+          </div> : engine === 'get-sauce' ? <div className="options-block">
+            <div className="field-title">get-sauce per-download overrides</div>
+            <CommonOptionFields fields={optionCatalog['get-sauce']} values={getSauceOptionValues(getSauceOverride)} onChange={(key, value) => updateGetSauceOption(key, value, false)} />
           </div> : engine === 'svtplay-dl' ? <div className="options-block">
             <div className="field-title">svtplay-dl per-download overrides</div>
             <CommonOptionFields fields={optionCatalog['svtplay-dl']} values={svtOptionValues(svtOverride)} onChange={(key, value) => updateSvtOption(key, value, false)} />
@@ -754,6 +786,13 @@ export default function App() {
         <button className="secondary" onClick={() => setSvt(svtDefaults)}>Reset shown defaults</button>
         <button className="primary" onClick={() => void saveEngine('svtplay-dl')}>Save svtplay-dl defaults</button>
       </section>
+      <section className="panel">
+        <div className="eyebrow">ENGINE DEFAULTS</div><h2>get-sauce</h2>
+        <p className="muted">{engineVersion('get-sauce')}. Specialized media/gallery downloads, managed output directory.</p>
+        <CommonOptionFields fields={optionCatalog['get-sauce']} values={getSauceOptionValues(getSauce)} onChange={(key, value) => updateGetSauceOption(key, value, true)} />
+        <button className="secondary" onClick={() => setGetSauce(getSauceDefaults)}>Reset shown defaults</button>
+        <button className="primary" onClick={() => void saveEngine('get-sauce')}>Save get-sauce defaults</button>
+      </section>
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
     </div>}
 
@@ -764,7 +803,7 @@ export default function App() {
         <form onSubmit={createPreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
           <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>

@@ -16,7 +16,7 @@ class Settings:
     encryption_key: str | None
     allow_private_targets: bool
     max_concurrent_per_engine: dict[str, int] = field(
-        default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1}
+        default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1, "get-sauce": 1}
     )
 
     @classmethod
@@ -39,6 +39,7 @@ class Settings:
                 "generic": max(1, min(8, int(os.getenv("MAX_CONCURRENT_GENERIC", "1")))),
                 "you-get": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YOU_GET", "1")))),
                 "svtplay-dl": max(1, min(8, int(os.getenv("MAX_CONCURRENT_SVTPLAY_DL", "1")))),
+                "get-sauce": max(1, min(8, int(os.getenv("MAX_CONCURRENT_GET_SAUCE", "1")))),
             },
         )
 
