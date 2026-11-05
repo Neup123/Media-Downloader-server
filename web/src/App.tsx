@@ -135,11 +135,14 @@ export default function App() {
   const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
   const [presetDescription, setPresetDescription] = useState('');
   const [presetSettingsText, setPresetSettingsText] = useState('{}');
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [ruleHost, setRuleHost] = useState('');
   const [rulePath, setRulePath] = useState('/');
   const [ruleEngine, setRuleEngine] = useState<Engine>('yt-dlp');
   const [rulePriority, setRulePriority] = useState('100');
   const [ruleDescription, setRuleDescription] = useState('');
+  const [ruleEnabled, setRuleEnabled] = useState(true);
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', 'X-API-Key': apiKey }), [apiKey]);
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -443,16 +446,38 @@ export default function App() {
     setEngineRules(await request(API + '/engine-rules'));
   }
 
-  async function createPreset(event: React.FormEvent) {
+  function resetPresetEditor() {
+    setEditingPresetId(null);
+    setPresetName('');
+    setPresetEngine('yt-dlp');
+    setPresetDescription('');
+    setPresetSettingsText('{}');
+  }
+
+  function editPreset(preset: Preset) {
+    setEditingPresetId(preset.id);
+    setPresetName(preset.name);
+    setPresetEngine(preset.engine);
+    setPresetDescription(preset.description);
+    setPresetSettingsText(JSON.stringify(preset.settings, null, 2));
+    document.getElementById('preset-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function savePreset(event: React.FormEvent) {
     event.preventDefault();
     try {
       const settings = parseJsonObject(presetSettingsText);
-      const created = await request(API + '/presets', {
-        method: 'POST',
+      const editingId = editingPresetId;
+      const saved = await request(API + '/presets' + (editingId ? '/' + editingId : ''), {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription, settings }),
-      });
-      setPresets(current => [...current, created].sort((a, b) => a.name.localeCompare(b.name)));
-      setPresetName(''); setPresetDescription(''); setMessage('Preset saved.');
+      }) as Preset;
+      setPresets(await request(API + '/presets'));
+      if (selectedPresetId === saved.id && engine !== 'auto' && engine !== saved.engine) {
+        setSelectedPresetId('');
+      }
+      resetPresetEditor();
+      setMessage(editingId ? 'Preset updated.' : 'Preset saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save preset');
     }
@@ -463,25 +488,48 @@ export default function App() {
       await request(API + '/presets/' + id, { method: 'DELETE' });
       setPresets(current => current.filter(item => item.id !== id));
       if (selectedPresetId === id) setSelectedPresetId('');
+      if (editingPresetId === id) resetPresetEditor();
       setMessage('Preset deleted.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not delete preset');
     }
   }
 
-  async function createEngineRule(event: React.FormEvent) {
+  function resetRuleEditor() {
+    setEditingRuleId(null);
+    setRuleHost('');
+    setRulePath('/');
+    setRuleEngine('yt-dlp');
+    setRulePriority('100');
+    setRuleDescription('');
+    setRuleEnabled(true);
+  }
+
+  function editEngineRule(rule: EngineRule) {
+    setEditingRuleId(rule.id);
+    setRuleHost(rule.host_suffix);
+    setRulePath(rule.path_prefix);
+    setRuleEngine(rule.engine);
+    setRulePriority(String(rule.priority));
+    setRuleDescription(rule.description);
+    setRuleEnabled(rule.enabled);
+    document.getElementById('rule-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  async function saveEngineRule(event: React.FormEvent) {
     event.preventDefault();
     try {
-      const created = await request(API + '/engine-rules', {
-        method: 'POST',
+      const editingId = editingRuleId;
+      await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
+        method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           host_suffix: ruleHost, path_prefix: rulePath, engine: ruleEngine,
-          priority: Number(rulePriority), enabled: true, description: ruleDescription,
+          priority: Number(rulePriority), enabled: ruleEnabled, description: ruleDescription,
         }),
       });
-      setEngineRules(current => [...current, created].sort((a, b) => b.priority - a.priority));
-      setRuleHost(''); setRulePath('/'); setRulePriority('100'); setRuleDescription('');
-      setMessage('URL engine rule saved.');
+      setEngineRules(await request(API + '/engine-rules'));
+      resetRuleEditor();
+      setMessage(editingId ? 'URL engine rule updated.' : 'URL engine rule saved.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save URL rule');
     }
@@ -491,6 +539,7 @@ export default function App() {
     try {
       await request(API + '/engine-rules/' + id, { method: 'DELETE' });
       setEngineRules(current => current.filter(item => item.id !== id));
+      if (editingRuleId === id) resetRuleEditor();
       setMessage('URL engine rule deleted.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not delete URL rule');
@@ -802,17 +851,18 @@ export default function App() {
     </div>}
 
     {tab === 'routing' && <div className="settings-layout">
-      <section className="panel">
-        <div className="eyebrow">SAVED OPTIONS</div><h2>Create a preset</h2>
+      <section className="panel" id="preset-editor">
+        <div className="eyebrow">SAVED OPTIONS</div><h2>{editingPresetId ? 'Edit preset' : 'Create a preset'}</h2>
         <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
-        <form onSubmit={createPreset}>
+        <form onSubmit={savePreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
             <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
           <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>
-          <button className="primary">Save preset</button>
+          <button className="primary">{editingPresetId ? 'Update preset' : 'Create preset'}</button>
+          {editingPresetId && <button type="button" className="secondary" onClick={resetPresetEditor}>Cancel editing</button>}
         </form>
       </section>
       <section className="panel">
@@ -822,31 +872,39 @@ export default function App() {
             <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span><strong>{preset.name}</strong></div></div>
             {preset.description && <p className="muted">{preset.description}</p>}
             <pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre>
-            <div className="job-actions"><button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button></div>
+            <div className="job-actions">
+              <button className="small" onClick={() => editPreset(preset)}>Edit</button>
+              <button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button>
+            </div>
           </article>)}
         </div>}
       </section>
-      <section className="panel">
-        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>Add a URL rule</h2>
+      <section className="panel" id="rule-editor">
+        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>{editingRuleId ? 'Edit URL rule' : 'Add a URL rule'}</h2>
         <p className="muted">Host suffix matches the exact host and its subdomains. A more specific path or higher priority wins.</p>
-        <form onSubmit={createEngineRule}>
+        <form onSubmit={saveEngineRule}>
           <label>Host suffix<input value={ruleHost} onChange={event => setRuleHost(event.target.value)} placeholder="example.com" required /></label>
           <label>Path prefix<input value={rulePath} onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
           <label>Engine<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option>
+            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Priority (0–1000)<input type="number" min="0" max="1000" value={rulePriority} onChange={event => setRulePriority(event.target.value)} /></label>
+          <label className="check"><input type="checkbox" checked={ruleEnabled} onChange={event => setRuleEnabled(event.target.checked)} /> Rule enabled</label>
           <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
-          <button className="primary">Save URL rule</button>
+          <button className="primary">{editingRuleId ? 'Update URL rule' : 'Create URL rule'}</button>
+          {editingRuleId && <button type="button" className="secondary" onClick={resetRuleEditor}>Cancel editing</button>}
         </form>
       </section>
       <section className="panel">
         <div className="eyebrow">URL RULES</div><h2>Routing table</h2>
         {!engineRules.length ? <div className="empty">No URL rules configured. Automatic selection defaults to yt-dlp, or aria2c for FTP/magnet links.</div> : <div className="job-list">
           {engineRules.map(rule => <article key={rule.id} className="job">
-            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">Priority {rule.priority}</span></div>
+            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">{rule.enabled ? 'Enabled' : 'Disabled'} · Priority {rule.priority}</span></div>
             {rule.description && <p className="muted">{rule.description}</p>}
-            <div className="job-actions"><button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button></div>
+            <div className="job-actions">
+              <button className="small" onClick={() => editEngineRule(rule)}>Edit</button>
+              <button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button>
+            </div>
           </article>)}
         </div>}
       </section>
