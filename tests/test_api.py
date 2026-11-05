@@ -219,6 +219,13 @@ def test_url_engine_rule_priority_and_auto_defaults(client, auth_headers):
     assert routed.status_code == 202
     assert routed.json()["engine"] == "aria2c"
 
+    prefix_near_miss = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://www.example.com/files-old/video.mp4",
+        "engine": "auto",
+    })
+    assert prefix_near_miss.status_code == 202
+    assert prefix_near_miss.json()["engine"] == "yt-dlp"
+
     defaulted = client.post("/api/v1/jobs", headers=auth_headers, json={
         "url": "https://unmatched.example.net/video",
     })
