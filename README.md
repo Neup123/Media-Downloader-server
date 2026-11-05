@@ -17,6 +17,7 @@ The core repository owns the API, web UI, queue/worker, engine adapters, generic
 - The current Phase 1 branch includes the API, persistent queue, restart recovery, yt-dlp, aria2c, and gallery-dl adapters, the web UI, global engine settings, per-job overrides, cookie upload, saved presets, URL-to-engine rules, batch submission (up to 50 URLs), local/WebDAV delivery, and standalone Docker packaging.
 - Automatic engine selection uses saved host-suffix/path-prefix rules with priority and specificity ordering. FTP/magnet URLs default to aria2c; unmatched URLs default to yt-dlp unless a selected preset supplies the engine.
 - Saved presets store validated engine-specific settings. Job-level options override preset settings.
+- The **Presets & routing** dashboard tab lets administrators create, edit and delete saved presets and URL rules. Editing preserves the record ID, and routing rules can be temporarily disabled without deleting them. Rule changes affect future automatic engine selection; already queued jobs keep their resolved engine and options.
 - The per-engine graphical settings catalog is exposed at `/api/v1/engines/{engine}/options`. The dashboard groups common options into typed controls; site-specific gallery-dl options remain available in an advanced editor. The engines API reports installed versions.
 - Batch submission is atomic: one invalid URL rejects the entire batch, so no partial set of jobs is queued.
 - All three currently implemented engines are classified P0 in the blueprint: yt-dlp, aria2c, and gallery-dl.
