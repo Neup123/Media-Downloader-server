@@ -82,7 +82,7 @@ def test_webdav_delivery_mkcol_put_and_size_verification(settings):
             return httpx.Response(201)
         if request.method == "PROPFIND":
             size = len(remote[str(request.url)])
-            xml = f"<d:multistatus xmlns:d='DAV:'><d:response><d:propstat><d:prop><d:getcontentlength>{size}</d:getcontentlength></d:prop></d:propstat></d:response></d:multistatus>"
+            xml = f"<d:multistatus xmlns:d='DAV:'><d:response><d:href>{request.url.path}</d:href><d:propstat><d:prop><d:getcontentlength>{size}</d:getcontentlength></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>"
             return httpx.Response(207, content=xml, headers={"Content-Type": "application/xml"})
         return httpx.Response(405)
 
