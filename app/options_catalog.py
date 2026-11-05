@@ -17,6 +17,15 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
 
 
 OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "get-sauce": [
+        field("stream_index", "Stream/quality index", "Media", "integer", "0 selects the best stream", minimum=0, maximum=10000),
+        field("amount", "Limit image downloads", "Media", "integer", "0 uses engine default", minimum=0, maximum=100000),
+        field("pages", "Page indices/ranges", "Media", "text", "Comma-separated indices and ranges"),
+        field("workers", "Download workers", "Concurrency", "integer", minimum=1, maximum=32),
+        field("timeout_minutes", "HTTP timeout (minutes)", "Network", "integer", minimum=1, maximum=120),
+        field("merge", "Output merge mode", "Files", "text", "default, none or cbz"),
+        field("subdirectory", "Create media subfolder", "Files", "boolean"),
+    ],
     "svtplay-dl": [
         field("quality", "Quality selector", "Media", "text", "svtplay-dl --quality"),
         field("resolution", "Preferred resolutions", "Media", "text", "Comma-separated values such as 480,720,1080"),
