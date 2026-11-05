@@ -81,3 +81,44 @@ def test_generic_redirects_cannot_bypass_safe_dns_pin(tmp_path, monkeypatch):
             on_log=on_log,
             is_cancelled=is_cancelled,
         ))
+
+
+def test_real_curl_download_uses_pinned_local_target_when_explicitly_trusted(tmp_path):
+    import http.server
+    import shutil
+    import threading
+
+    if shutil.which("curl") is None:
+        pytest.skip("curl CLI not available")
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            assert self.path == "/sample.bin"
+            payload = b"verified real curl transfer"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_):
+            return
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    runner = threading.Thread(target=server.serve_forever, daemon=True)
+    runner.start()
+    try:
+        async def on_progress(_): pass
+        async def on_log(_): pass
+        async def is_cancelled(): return False
+        output = asyncio.run(run_generic(
+            executable="curl", url=f"http://localhost:{server.server_port}/sample.bin",
+            workdir=tmp_path / "download",
+            global_settings={}, overrides={},
+            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+            allow_private_targets=True,
+        ))
+        assert len(output) == 1
+        assert output[0].read_bytes() == b"verified real curl transfer"
+    finally:
+        server.shutdown()
+        server.server_close()
+        runner.join(timeout=2)
