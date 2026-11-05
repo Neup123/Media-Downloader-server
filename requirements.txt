@@ -5,3 +5,4 @@ httpx==0.28.1
 cryptography==46.0.4
 PyYAML==6.0.3
 yt-dlp==2026.10.26
+gallery-dl==1.32.19
