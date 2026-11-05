@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 
@@ -15,6 +15,9 @@ class Settings:
     aria2_rpc_port: int
     encryption_key: str | None
     allow_private_targets: bool
+    max_concurrent_per_engine: dict[str, int] = field(
+        default_factory=lambda: {"yt-dlp": 1, "aria2c": 1}
+    )
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -29,6 +32,10 @@ class Settings:
             aria2_rpc_port=int(os.getenv("ARIA2_RPC_PORT", "16800")),
             encryption_key=os.getenv("APP_ENCRYPTION_KEY") or None,
             allow_private_targets=os.getenv("ALLOW_PRIVATE_TARGETS", "false").lower() == "true",
+            max_concurrent_per_engine={
+                "yt-dlp": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YTDLP", "1")))),
+                "aria2c": max(1, min(8, int(os.getenv("MAX_CONCURRENT_ARIA2", "1")))),
+            },
         )
 
     def prepare_directories(self) -> None:
