@@ -84,11 +84,18 @@ def test_webdav_upload_cancelled_during_request_stream(settings):
             return httpx.Response(201)
         raise AssertionError("Cancelled upload should never reach metadata verification")
 
+    # MockTransport consumes the request body eagerly before its handler runs.
+    # Use a streaming transport so the cancellation occurs in the uploader's
+    # async iterator, before the second chunk is read.
+    class StreamingTransport(httpx.AsyncBaseTransport):
+        async def handle_async_request(self, request):
+            return await handler(request)
+
     async def run():
         with pytest.raises(asyncio.CancelledError):
             await deliver_files(
                 [source], "mid-transfer", sessions, settings,
-                transport=httpx.MockTransport(handler),
+                transport=StreamingTransport(),
                 is_cancelled=is_cancelled, on_delivered=on_delivered,
             )
 
