@@ -23,7 +23,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl] }
     get:
       operationId: getEngineSettings
       summary: Read global settings for one engine
@@ -191,7 +191,7 @@ components:
       required: [url]
       properties:
         url: { type: string, minLength: 8, maxLength: 4096 }
-        engine: { type: string, enum: [yt-dlp, aria2c], default: yt-dlp }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl], default: yt-dlp }
         overrides: { type: object, additionalProperties: true }
     EngineSettingsInput:
       type: object
