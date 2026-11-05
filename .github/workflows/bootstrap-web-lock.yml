@@ -1,0 +1,51 @@
+name: Bootstrap frontend npm lockfile (temporary)
+
+on:
+  push:
+    branches:
+      - build/lock-web-deps
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bootstrap-web-lock
+  cancel-in-progress: false
+
+jobs:
+  generate-lock:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Resolve exact transitive versions and verify the resulting install
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd web
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm test
+          npm run build
+
+      - name: Commit generated package-lock.json to the implementation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add web/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Existing lockfile is unchanged"
+          else
+            git commit -m "build: commit npm-resolved frontend dependency lock"
+            git push origin HEAD:build/lock-web-deps
+          fi
