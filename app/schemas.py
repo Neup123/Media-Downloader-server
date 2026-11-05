@@ -110,7 +110,7 @@ class DeliverySettingsIn(BaseModel):
     @classmethod
     def safe_folder(cls, value: str) -> str:
         value = value.strip().strip("/")
-        if any(segment in {"", ".", ".."} for segment in value.split("/")) or "\\" in value or "\x00" in value:
+        if (value and any(segment in {"", ".", ".."} for segment in value.split("/"))) or "\\" in value or "\x00" in value:
             raise ValueError("Delivery folder must contain nonempty path segments without dot traversal")
         return value
 
