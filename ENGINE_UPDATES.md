@@ -1,19 +1,20 @@
 # Pinned engine update automation
 
 The weekly GitHub Actions workflow `.github/workflows/pinned-engine-updates.yml`
-checks the public PyPI JSON API for newer stable releases of bundled Python
-download engines. It never runs in the downloader service at runtime.
+checks the public PyPI JSON API for bundled Python engines and queries the
+Debian trixie package index for aria2 and curl inside the matching runtime
+base-image family. It never runs in the downloader service at runtime.
 
 ## Tracked engines
 
-| CLI engine | Python distribution | Update mode |
+| CLI engine | Release source | Update mode |
 | --- | --- | --- |
 | yt-dlp | yt-dlp | Candidate PR + automated gate |
 | gallery-dl | gallery-dl | Candidate PR + automated gate |
 | you-get | you-get | Candidate PR + automated gate |
 | svtplay-dl | svtplay-dl | Candidate PR is blocked until a real site-specific E2E smoke is added |
-| aria2c | Debian system package | Not yet automated; separate update track |
-| generic / curl | Debian system package | Not yet automated; separate update track |
+| aria2c | Debian trixie package | Exact apt pin + candidate PR, Docker/Nextcloud WebDAV gate |
+| generic / curl | Debian trixie package | Initialize an exact curl apt pin, then gated candidate updates |
 | get-sauce | Pinned Go source tag | Weekly release detection and smoke-blocked candidate PR; no unattended merge until live site-specific acceptance |
 
 `get-sauce` is compiled from the pinned Go module tag in the multi-stage Docker
@@ -34,6 +35,14 @@ Likewise, a GitHub-token-created PR does not reliably trigger separate PR CI.
 Full automated get-sauce upgrades remain blocked until that smoke and the
 complete candidate gate have been implemented and demonstrated.
 
+Debian candidates use `apt-cache policy` inside the exact trixie runtime
+distribution rather than the GitHub runner's Ubuntu apt index. Version
+comparisons use `dpkg --compare-versions`, including Debian revisions and
+security updates. System candidates receive the same Python, Docker and
+real disposable-Nextcloud WebDAV gate as Python candidates. A failed gate
+does not merge or release any pin changes. This is not a Debian snapshot
+lock or multi-architecture validation.
+
 The detector ignores prerelease and yanked releases and requires an upstream
 artifact SHA-256 digest. Python dependency versions are updated as exact
 `package==version` pins. The digest is recorded in the report for traceability;
@@ -44,7 +53,9 @@ Do not describe this as checksum-enforced installation.
 
 1. Runs weekly and can be dispatched manually after the workflow reaches the default branch.
 2. Checks PyPI with a bounded network timeout, writes `engine-update-report.json`,
-   and creates a unique candidate branch and PR only if a bundled engine changed.
+   then queries Debian's aria2/curl candidates in `python:3.13-slim-trixie` and
+   records `debian-engine-update-report.json`. The new candidate changes exact
+   `requirements.txt` and/or `Dockerfile` pins only if an engine changed.
 3. Fails closed if a changed engine lacks a real smoke fixture in the
    disposable Nextcloud test gate. Currently yt-dlp, gallery-dl and you-get
    are covered by the disposable Nextcloud E2E loop with remote SHA-256 verification;
@@ -54,8 +65,8 @@ Do not describe this as checksum-enforced installation.
 4. On the candidate commit, runs Python compilation and unit/fixture tests,
    builds the production Docker image, then uses the production Compose
    downloader alongside disposable Nextcloud and a generated legal media fixture.
-5. The E2E test verifies downloads from all P0 engines and fetches WebDAV files
-   back to compare their SHA-256 hashes and sizes.
+5. The E2E test verifies yt-dlp, aria2c, gallery-dl, generic/curl, and
+   you-get downloads and fetches WebDAV files back to compare SHA-256 and size.
 6. On a green gate, attempts a normal squash merge and patch release. The normal
    GitHub branch protection, permissions, and merge rules still apply.
 7. On any failed gate, leaves the candidate PR unmerged and opens/updates a
@@ -80,7 +91,13 @@ unmerged and an issue records the blocker.
 - The workflow's live red and green branches still require a real dispatch
   after its installation on the default branch. A YAML parse test is not a
   substitute for that acceptance.
-- A release is **not** ready until the apt/Go engine update tracks, hash locking,
+- The Debian candidate track is wired into the existing test/merge gate but its
+  scheduled red-issue/green-release paths have not been demonstrated on main.
+  The base image tag, OS dependencies and transitive Python dependencies are not
+  fully digest/hash-locked. The trixie apt policy is checked on CI's architecture;
+  this does not validate every architecture or guarantee that a package remains
+  available forever. `ffmpeg` is still not pinned and is outside the engine list.
+- A release is **not** ready until Go smoke/automation, full hash locking,
   and the red-issue/green-merge demonstrations are completed.
 - The disposable WebDAV fixture is not a guarantee that every upstream
   extractor website still works; site-specific smoke targets must be added
