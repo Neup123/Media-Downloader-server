@@ -28,7 +28,7 @@ def test_gallery_output_templates_cannot_traverse_directory(client, auth_headers
 def test_list_engines_reports_installation_status(client, auth_headers):
     result = client.get("/api/v1/engines", headers=auth_headers)
     assert result.status_code == 200
-    assert len(result.json()) == 3
+    assert len(result.json()) == 4
     for item in result.json():
         assert isinstance(item["installed"], bool)
         assert "version" in item

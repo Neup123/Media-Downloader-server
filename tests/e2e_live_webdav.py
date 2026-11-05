@@ -151,7 +151,7 @@ def main() -> None:
     wait_for_services()
     with api_client() as client:
         configure_webdav(client)
-        for engine in ("yt-dlp", "aria2c", "gallery-dl"):
+        for engine in ("yt-dlp", "aria2c", "gallery-dl", "generic"):
             job = submit_and_wait(client, engine)
             verify_downloaded_files(job)
             print(f"{engine} -> Nextcloud WebDAV: PASS", flush=True)
