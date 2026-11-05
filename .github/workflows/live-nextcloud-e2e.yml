@@ -48,20 +48,6 @@ jobs:
             -of default=noprint_wrappers=1 fixture/sample.mp4
           sha256sum fixture/sample.mp4
 
-      - name: Start a fixture HTTP server on the runner
-        run: |
-          python3 -m http.server 9000 --bind 0.0.0.0 --directory fixture             > /tmp/downloader-fixture-http.log 2>&1 &
-          echo $! > /tmp/downloader-fixture-http.pid
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:9000/sample.mp4 -o /tmp/fixture-check.mp4; then
-              cmp fixture/sample.mp4 /tmp/fixture-check.mp4
-              exit 0
-            fi
-            sleep 1
-          done
-          cat /tmp/downloader-fixture-http.log
-          exit 1
-
       - name: Create ephemeral test credentials
         run: |
           python3 - <<'PY'
@@ -88,8 +74,8 @@ jobs:
         env:
           DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
           NEXTCLOUD_HTTP_URL: http://127.0.0.1:8081
-          SOURCE_URL: http://host.docker.internal:9000/sample.mp4
-          WEBDAV_BASE_URL: http://host.docker.internal:8081/remote.php/dav/files/admin
+          SOURCE_URL: http://media-source:9000/sample.mp4
+          WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
           MEDIA_FIXTURE: fixture/sample.mp4
 
       - name: Collect container logs on failure
@@ -101,6 +87,3 @@ jobs:
         run: |
           docker compose --env-file .env.e2e -f compose.integration.yaml down --volumes --remove-orphans || true
           rm -f .env.e2e
-          if [ -f /tmp/downloader-fixture-http.pid ]; then
-            kill "$(cat /tmp/downloader-fixture-http.pid)" || true
-          fi
