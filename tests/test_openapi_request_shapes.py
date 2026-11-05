@@ -119,6 +119,7 @@ JOB_RESPONSE_OPERATIONS = [
     ("get", "/jobs/{job_id}", "200"),
     ("post", "/jobs/{job_id}/cancel", "200"),
     ("post", "/jobs/{job_id}/retry", "202"),
+    ("post", "/jobs/{job_id}/redeliver", "202"),
 ]
 
 
