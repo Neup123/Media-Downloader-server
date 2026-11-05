@@ -218,6 +218,7 @@ async def deliver_files(
         "timeout": httpx.Timeout(60.0, connect=15.0),
         "auth": (data["username"], data["password"]),
         "follow_redirects": False,
+        "trust_env": False,
     }
     if transport is not None:
         client_options["transport"] = transport

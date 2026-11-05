@@ -8,6 +8,8 @@ from typing import Any, Awaitable, Callable
 
 import httpx
 
+from app.adapters.process_env import downloader_environment
+
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
 CancelCallback = Callable[[], Awaitable[bool]]
@@ -45,7 +47,7 @@ class Aria2Rpc:
         self.executable = executable
         self.secret = secrets.token_urlsafe(32)
         self.process: subprocess.Popen | None = None
-        self.client = httpx.AsyncClient(timeout=5.0)
+        self.client = httpx.AsyncClient(timeout=5.0, trust_env=False)
         self.endpoint = f"http://127.0.0.1:{port}/jsonrpc"
         self._counter = 0
 
@@ -68,7 +70,10 @@ class Aria2Rpc:
             "--console-log-level=warn",
             "--summary-interval=0",
         ]
-        self.process = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, close_fds=True)
+        self.process = subprocess.Popen(
+            args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            close_fds=True, env=downloader_environment(),
+        )
         for _ in range(40):
             if self.process.poll() is not None:
                 raise RuntimeError("aria2c exited during startup; check that aria2c is installed and the RPC port is available")

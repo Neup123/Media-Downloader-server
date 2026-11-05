@@ -5,6 +5,8 @@ import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.adapters.process_env import downloader_environment
+
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
 CancelCallback = Callable[[], Awaitable[bool]]
@@ -148,6 +150,7 @@ async def run_gallery_dl(
         cwd=str(workdir),
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        env=downloader_environment(),
     )
     assert process.stdout is not None
     try:

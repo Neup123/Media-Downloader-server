@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from app.adapters.process_env import downloader_environment
+
 MAX_PREVIEW_OUTPUT = 2_000_000
 PREVIEW_TIMEOUT_SECONDS = 45
 
@@ -73,6 +75,7 @@ async def inspect_ytdlp(
     ]
     process = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        env=downloader_environment(),
     )
     assert process.stdout is not None
 

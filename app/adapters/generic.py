@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import unquote, urlsplit
 
+from app.adapters.process_env import downloader_environment
 from app.security import UnsafeUrlError, resolve_http_target
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -101,6 +102,7 @@ async def run_generic(
     process = await asyncio.create_subprocess_exec(
         *argv, cwd=str(workdir),
         stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+        env=downloader_environment(),
     )
     previous_bytes = 0
     assert process.stdout is not None
