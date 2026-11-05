@@ -28,7 +28,7 @@ A feature is not complete until its behavior is tested. A successful API respons
 4. Start with `docker compose up --build -d`.
 5. Open `http://127.0.0.1:8080`, enter the API token, and submit a link.
 
-The port binds to loopback by default. Use an authenticated TLS reverse proxy before exposing the UI/API to other machines. Do not expose the API token or aria2 RPC port publicly.
+The port binds to loopback by default. Use an authenticated TLS reverse proxy before exposing the UI/API to other machines. Do not expose the API token or aria2 RPC port publicly. Total concurrency is controlled by MAX_CONCURRENT_DOWNLOADS; MAX_CONCURRENT_YTDLP and MAX_CONCURRENT_ARIA2 cap each engine independently.
 
 ## API and storage
 
