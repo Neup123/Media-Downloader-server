@@ -117,3 +117,30 @@ def test_cookie_files_are_uploadable_but_never_returned(client, auth_headers):
         json={"content_base64": base64.b64encode(content).decode("ascii")},
     )
     assert traversal.status_code in {404, 422}
+
+
+def test_gallery_dl_engine_settings_and_job_are_supported(client, auth_headers):
+    settings = client.put("/api/v1/engines/gallery-dl/settings", headers=auth_headers, json={
+        "settings": {
+            "options": {"extractor.generic.referer": "https://example.com/"},
+            "proxy": "",
+            "cookies_file": "",
+        },
+    })
+    assert settings.status_code == 200
+    fetched = client.get("/api/v1/engines/gallery-dl/settings", headers=auth_headers)
+    assert fetched.status_code == 200
+    assert fetched.json()["settings"]["options"]["extractor.generic.referer"] == "https://example.com/"
+
+    submitted = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.com/gallery",
+        "engine": "gallery-dl",
+        "overrides": {"options": {"extractor.generic.referer": "https://override.example/"}},
+    })
+    assert submitted.status_code == 202
+    assert submitted.json()["engine"] == "gallery-dl"
+
+    blocked = client.put("/api/v1/engines/gallery-dl/settings", headers=auth_headers, json={
+        "settings": {"options": {"output.directory": "/tmp/escape"}},
+    })
+    assert blocked.status_code == 422
