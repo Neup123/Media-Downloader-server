@@ -12,6 +12,11 @@ EngineName = Literal["yt-dlp", "aria2c", "gallery-dl"]
 EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl"]
 
 
+class MediaPreviewIn(BaseModel):
+    url: str = Field(min_length=8, max_length=4096)
+    max_entries: int = Field(default=50, ge=1, le=100)
+
+
 class JobCreate(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     engine: EngineSelection = "auto"
