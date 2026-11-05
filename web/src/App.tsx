@@ -102,6 +102,55 @@ export default function App() {
     }).catch(error => setMessage(String(error)));
   }, [apiKey, tab, request]);
 
+  useEffect(() => {
+    if (!apiKey || !selected) return;
+    const controller = new AbortController();
+
+    async function streamSelectedJob() {
+      try {
+        const response = await fetch(API + '/jobs/' + selected + '/events', {
+          headers: { 'X-API-Key': apiKey },
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) {
+          throw new Error('Could not open the selected job event stream');
+        }
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (!controller.signal.aborted) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+
+          let boundary = buffer.indexOf('\n\n');
+          while (boundary !== -1) {
+            const block = buffer.slice(0, boundary);
+            buffer = buffer.slice(boundary + 2);
+            const dataLine = block.split(/\r?\n/).find(line => line.startsWith('data:'));
+            if (dataLine) {
+              try {
+                const update = JSON.parse(dataLine.slice(5).trim()) as Job;
+                setJobs(previous => previous.map(job => job.id === update.id ? update : job));
+              } catch {
+                setMessage('Received an invalid job update from the service.');
+              }
+            }
+            boundary = buffer.indexOf('\n\n');
+          }
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setMessage(error instanceof Error ? error.message : 'The job event stream disconnected');
+        }
+      }
+    }
+
+    void streamSelectedJob();
+    return () => controller.abort();
+  }, [apiKey, selected]);
+
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true);
     try {
