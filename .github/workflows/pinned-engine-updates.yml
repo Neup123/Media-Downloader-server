@@ -75,6 +75,26 @@ jobs:
           number=$(gh pr view "$branch" --json number --jq .number)
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
+      - name: Require a real smoke test for every updated engine
+        if: steps.detect.outputs.changed == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          # The live WebDAV fixture currently exercises yt-dlp and gallery-dl;
+          # do not auto-merge updates of other engines on unit tests alone.
+          live_verified = {"yt-dlp", "gallery-dl"}
+          versions = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          unsupported = sorted(item["engine"] for item in versions if item["engine"] not in live_verified)
+          if unsupported:
+              raise SystemExit(
+                  "No live WebDAV engine smoke fixture exists for: " + ", ".join(unsupported)
+                  + ". Candidate must remain blocked until the smoke gate is implemented."
+              )
+          PY
+
       - name: Install pinned dependencies and test requirements
         if: steps.detect.outputs.changed == 'true'
         shell: bash
