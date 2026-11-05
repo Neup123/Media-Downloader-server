@@ -110,3 +110,70 @@ def test_checked_in_request_body_constraints_match_runtime_validation(settings):
         assert checked >= 10, "Expected to examine all request-body endpoints"
     finally:
         app.state.engine.dispose()
+
+
+JOB_RESPONSE_OPERATIONS = [
+    ("get", "/jobs", "200"),
+    ("post", "/jobs", "202"),
+    ("post", "/jobs/batch", "202"),
+    ("get", "/jobs/{job_id}", "200"),
+    ("post", "/jobs/{job_id}/cancel", "200"),
+    ("post", "/jobs/{job_id}/retry", "202"),
+]
+
+
+def test_job_response_contracts_match_fastapi_output_models(settings):
+    """Catch missing fields and response model changes before Scalar drifts."""
+    stated = yaml.safe_load(
+        (Path(__file__).resolve().parents[1] / "openapi.yaml").read_text(encoding="utf-8")
+    )
+    app = create_app(settings, start_worker=False)
+    try:
+        runtime = app.openapi()
+        for method, path, status in JOB_RESPONSE_OPERATIONS:
+            spec = stated["paths"][path][method]["responses"][status]["content"]["application/json"]["schema"]
+            actual = runtime["paths"][f"/api/v1{path}"][method]["responses"][status]["content"]["application/json"]["schema"]
+            assert _shape(spec, stated) == _shape(actual, runtime), (
+                f"{method.upper()} {path}: documented response differs from enforced FastAPI response model"
+            )
+    finally:
+        app.state.engine.dispose()
+
+
+def test_job_response_models_preserve_log_and_state(client, auth_headers):
+    job = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.com/video",
+        "engine": "yt-dlp",
+    })
+    assert job.status_code == 202
+    expected = {
+        "id", "url", "engine", "status", "overrides", "progress",
+        "output_files", "log_text", "error", "cancel_requested",
+        "created_at", "updated_at", "finished_at",
+    }
+    assert set(job.json()) == expected
+    identifier = job.json()["id"]
+
+    details = client.get(f"/api/v1/jobs/{identifier}", headers=auth_headers)
+    assert details.status_code == 200
+    assert set(details.json()) == expected
+    assert isinstance(details.json()["log_text"], str)
+
+    listing = client.get("/api/v1/jobs", headers=auth_headers)
+    assert listing.status_code == 200
+    assert any(item["id"] == identifier and set(item) == expected for item in listing.json())
+
+    cancelled = client.post(f"/api/v1/jobs/{identifier}/cancel", headers=auth_headers)
+    assert cancelled.status_code == 200
+    assert set(cancelled.json()) == expected
+    assert cancelled.json()["status"] == "cancelled"
+    retried = client.post(f"/api/v1/jobs/{identifier}/retry", headers=auth_headers)
+    assert retried.status_code == 202
+    assert set(retried.json()) == expected
+
+    batch = client.post("/api/v1/jobs/batch", headers=auth_headers, json={
+        "items": [{"url": "https://example.com/other", "engine": "yt-dlp"}],
+    })
+    assert batch.status_code == 202
+    assert batch.json()["created"] == 1
+    assert set(batch.json()["jobs"][0]) == expected
