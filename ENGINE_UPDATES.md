@@ -72,6 +72,31 @@ issues. Where an organization restricts these permissions or requires manual
 PR approval, GitHub is allowed to block the merge; the candidate remains
 unmerged and an issue records the blocker.
 
+## Manual P2 site acceptance (not automatic upgrade approval)
+
+`.github/workflows/manual-p2-site-webdav.yml` is an opt-in workflow with a
+choice of `svtplay-dl` or `get-sauce` and one **public, authorized, non-secret**
+source URL. It rejects URLs with queries, fragments or credentials, and runs
+only when manually dispatched on the default branch. GitHub workflow inputs
+are visible in the run configuration; do not supply session tokens, cookies,
+private downloads or copyrighted material without permission.
+
+The workflow starts the production downloader Compose image beside a
+disposable Nextcloud instance. After the engine finishes, it loads the
+durable completed-download manifest inside the downloader container,
+checks each local output SHA-256, validates recognized media signatures/
+archive contents or uses ffprobe for common audio/video formats, and reads
+each delivered file back from Nextcloud in bounded chunks. Every remote
+file must have the same relative path, size and SHA-256 as the corresponding
+completed local file. A partial or missing download is a failure. Neither
+the production Nextcloud instance nor its credentials are used.
+
+A green manual test is evidence only for the chosen engine, source, pinned
+version and CI environment. **Neither P2 engine is automatically approved**
+for unattended version updates until stable, legal, repeatable site-specific
+fixtures have been selected and incorporated into a required candidate gate.
+Creating this workflow does not by itself close those acceptance requirements.
+
 ## Testing and current limitations
 
 - `python -m pytest -q tests/test_engine_updates.py` validates offline
