@@ -110,8 +110,8 @@ class DeliverySettingsIn(BaseModel):
     @classmethod
     def safe_folder(cls, value: str) -> str:
         value = value.strip().strip("/")
-        if ".." in value.split("/") or "\\" in value or "\x00" in value:
-            raise ValueError("Delivery folder must be a relative path without parent segments")
+        if any(segment in {"", ".", ".."} for segment in value.split("/")) or "\\" in value or "\x00" in value:
+            raise ValueError("Delivery folder must contain nonempty path segments without dot traversal")
         return value
 
     @field_validator("webdav_url")
