@@ -81,7 +81,7 @@ def test_webdav_cancellation_stops_before_second_upload(settings):
             size = len(uploaded[str(request.url)])
             return httpx.Response(
                 207,
-                content=f"<d:multistatus xmlns:d='DAV:'><d:response><d:propstat><d:prop><d:getcontentlength>{size}</d:getcontentlength></d:prop></d:propstat></d:response></d:multistatus>",
+                content=f"<d:multistatus xmlns:d='DAV:'><d:response><d:href>{request.url.path}</d:href><d:propstat><d:prop><d:getcontentlength>{size}</d:getcontentlength></d:prop><d:status>HTTP/1.1 200 OK</d:status></d:propstat></d:response></d:multistatus>",
             )
         return httpx.Response(405)
 
