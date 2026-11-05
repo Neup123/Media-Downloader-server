@@ -372,7 +372,7 @@ class JobWorker:
                     session.commit()
 
 
-_LOG_URL = re.compile(r"(?i)\b(?:https?|ftps?)://[^\s<>\\"'\x60]+")
+_LOG_URL = re.compile(r"""(?i)\b(?:https?|ftps?)://[^\s<>"'\x60]+""")
 
 
 def _redact(message: str) -> str:
