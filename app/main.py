@@ -23,7 +23,7 @@ from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings
-from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, MediaPreviewIn
+from app.schemas import CookieUploadIn, DeliverySettingsIn, EngineSettingsIn, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -307,7 +307,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.commit()
         return {"deleted": True, "id": rule_id}
 
-    @app.post("/api/v1/jobs", status_code=202, tags=["jobs"])
+    @app.post("/api/v1/jobs", status_code=202, response_model=JobOut, tags=["jobs"])
     def submit_job(payload: JobCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = build_job(payload, session, config)
         session.add(job)
@@ -315,7 +315,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.refresh(job)
         return job_to_dict(job)
 
-    @app.post("/api/v1/jobs/batch", status_code=202, tags=["jobs"])
+    @app.post("/api/v1/jobs/batch", status_code=202, response_model=JobBatchOut, tags=["jobs"])
     def submit_batch(payload: JobBatchCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         jobs = []
         for index, item in enumerate(payload.items):
@@ -332,7 +332,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             session.refresh(job)
         return {"created": len(jobs), "jobs": [job_to_dict(job) for job in jobs]}
 
-    @app.get("/api/v1/jobs", tags=["jobs"])
+    @app.get("/api/v1/jobs", response_model=list[JobOut], tags=["jobs"])
     def list_jobs(_: bool = Depends(authenticate), session: Session = Depends(db_session), limit: int = 50, status: str | None = None):
         limit = max(1, min(200, limit))
         query = select(Job).order_by(Job.created_at.desc()).limit(limit)
@@ -342,14 +342,14 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             query = select(Job).where(Job.status == status).order_by(Job.created_at.desc()).limit(limit)
         return [job_to_dict(job) for job in session.scalars(query).all()]
 
-    @app.get("/api/v1/jobs/{job_id}", tags=["jobs"])
+    @app.get("/api/v1/jobs/{job_id}", response_model=JobOut, tags=["jobs"])
     def get_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
         return job_to_dict(job)
 
-    @app.post("/api/v1/jobs/{job_id}/cancel", tags=["jobs"])
+    @app.post("/api/v1/jobs/{job_id}/cancel", response_model=JobOut, tags=["jobs"])
     def cancel_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
         if not job:
@@ -367,7 +367,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.refresh(job)
         return job_to_dict(job)
 
-    @app.post("/api/v1/jobs/{job_id}/retry", status_code=202, tags=["jobs"])
+    @app.post("/api/v1/jobs/{job_id}/retry", status_code=202, response_model=JobOut, tags=["jobs"])
     def retry_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
         if not job:
