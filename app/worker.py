@@ -12,6 +12,7 @@ from app.adapters.aria2 import Aria2Rpc
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
 from app.adapters.you_get import run_you_get
+from app.adapters.svtplay import run_svtplay
 from app.adapters.yt_dlp import run_ytdlp
 from app.completion import load_completed_files, save_completed_files
 from app.config import Settings
@@ -22,6 +23,7 @@ from app.delivery import deliver_files
 ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
     "you-get": {"format": "", "cookies_file": "", "no_proxy": False},
+    "svtplay-dl": {"resolution": "", "quality": "", "subtitles": False, "all_subtitles": False, "all_episodes": False, "output_format": "mp4"},
     "yt-dlp": {
         "format": "bv*+ba/b",
         "subtitles_lang": "",
@@ -52,6 +54,7 @@ ENGINE_DESCRIPTIONS = [
     {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
     {"name": "generic", "label": "generic / curl", "role": "Plain direct HTTP(S) downloads", "priority": "P1", "available": True},
     {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
+    {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
 ]
 
 
@@ -256,6 +259,12 @@ class JobWorker:
                     executable="you-get", url=url, workdir=workdir,
                     global_settings=global_settings, overrides=overrides,
                     cookie_dir=self.settings.data_dir / "cookies",
+                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                )
+            elif engine == "svtplay-dl":
+                files = await run_svtplay(
+                    executable="svtplay-dl", url=url, workdir=workdir,
+                    global_settings=global_settings, overrides=overrides,
                     on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                 )
             elif engine == "aria2c":
