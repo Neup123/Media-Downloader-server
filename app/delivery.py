@@ -104,6 +104,63 @@ def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
     return sizes[0] if len(sizes) == 1 else None
 
 
+
+def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
+    """Verify a successful DAV:resourcetype collection property for this URL.
+
+    MKCOL 405 is ambiguous: the name may be occupied by a regular file,
+    or the endpoint may refuse MKCOL entirely. Only a matching collection
+    with a successful property status is safe to use as a parent folder.
+    """
+    if len(payload) > 1_000_000:
+        return False
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return False
+    ns = "{DAV:}"
+    if root.tag != ns + "multistatus":
+        return False
+    expected = urlsplit(target_url)
+    for response in root.findall(ns + "response"):
+        href = response.findtext(ns + "href")
+        if not href:
+            continue
+        found = urlsplit(urljoin(target_url.rstrip("/") + "/", href.strip()))
+        if (
+            found.scheme != expected.scheme
+            or found.netloc != expected.netloc
+            or unquote(found.path).rstrip("/") != unquote(expected.path).rstrip("/")
+            or found.query or found.fragment
+        ):
+            continue
+        for propstat in response.findall(ns + "propstat"):
+            status = (propstat.findtext(ns + "status") or "").strip()
+            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
+                continue
+            prop = propstat.find(ns + "prop")
+            resource_type = prop.find(ns + "resourcetype") if prop is not None else None
+            if resource_type is not None and resource_type.find(ns + "collection") is not None:
+                return True
+    return False
+
+
+async def _ensure_webdav_collection(client: httpx.AsyncClient, url: str, label: str) -> None:
+    """Create a WebDAV folder or verify the already-occupied path is a folder."""
+    response = await client.request("MKCOL", url)
+    if response.status_code == 201:
+        return
+    if response.status_code != 405:
+        raise DeliveryError(f"{label} ({response.status_code})")
+    verify = await client.request(
+        "PROPFIND", url.rstrip("/") + "/",
+        headers={"Depth": "0", "Content-Type": "application/xml"},
+        content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>',
+    )
+    if verify.status_code != 207 or not _webdav_is_collection(verify.content, url):
+        raise DeliveryError(f"{label}: MKCOL returned 405 but the resource is not a verified collection")
+
+
 def _fernet(settings: Settings) -> Fernet:
     if not settings.encryption_key:
         raise DeliveryError("APP_ENCRYPTION_KEY is required before storing a WebDAV app password")
@@ -255,9 +312,7 @@ async def deliver_files(
         for segment in prefix_parts:
             await check_cancelled()
             current += "/" + quote(segment, safe="")
-            response = await client.request("MKCOL", current)
-            if response.status_code not in {201, 405}:
-                raise DeliveryError(f"WebDAV directory creation failed ({response.status_code})")
+            await _ensure_webdav_collection(client, current, "WebDAV directory creation failed")
         created_folders = set()
         for source in files:
             await check_cancelled()
@@ -267,9 +322,7 @@ async def deliver_files(
                 await check_cancelled()
                 parent_url += "/" + quote(segment, safe="")
                 if parent_url not in created_folders:
-                    response = await client.request("MKCOL", parent_url)
-                    if response.status_code not in {201, 405}:
-                        raise DeliveryError(f"WebDAV nested directory creation failed ({response.status_code})")
+                    await _ensure_webdav_collection(client, parent_url, "WebDAV nested directory creation failed")
                     created_folders.add(parent_url)
             target = parent_url + "/" + quote(relative.name, safe="")
 
