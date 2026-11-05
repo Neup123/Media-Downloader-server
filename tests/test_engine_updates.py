@@ -95,6 +95,9 @@ def test_update_workflow_is_gated_and_has_blocked_issue_path():
     for item in steps:
         if "Merge green candidate" in item.get("name", ""):
             assert "success()" in item["if"]
+            assert "vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'" in item["if"]
+        if "Cut a patch release" in item.get("name", ""):
+            assert "vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'" in item["if"]
         if "blocked-update issue" in item.get("name", ""):
             assert "failure()" in item["if"]
 
