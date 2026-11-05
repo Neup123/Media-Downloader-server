@@ -27,7 +27,7 @@ def _multistatus(*responses: str) -> bytes:
     return ("<d:multistatus xmlns:d='DAV:'>" + "".join(responses) + "</d:multistatus>").encode()
 
 
-@pytest.mark.parametrize("href", [TARGET, PATH, PATH.replace("%20", "%20")])
+@pytest.mark.parametrize("href", [TARGET, PATH, PATH.replace("%20", " ")])
 def test_accepts_successful_property_only_for_target(href):
     assert _webdav_uploaded_size(_multistatus(_response(href, size=17)), TARGET) == 17
 
