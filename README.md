@@ -49,6 +49,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Automatic URL routing rules: `/api/v1/engine-rules`
 - Batch queue: `POST /api/v1/jobs/batch` (up to 50 items)
 - Checked-in API contract: [openapi.yaml](openapi.yaml)
+- API contract CI compares path/method coverage, documented success statuses, and API-key requirements against the implemented FastAPI routes. Detailed schema parity remains a separate acceptance gate.
 - Health check: `/healthz`
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
