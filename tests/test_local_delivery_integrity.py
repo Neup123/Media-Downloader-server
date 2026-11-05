@@ -69,7 +69,7 @@ def test_local_copy_rejects_source_changed_during_transfer(settings, monkeypatch
         with real_named_temporary_file(*args, **kwargs) as handle:
             yield handle
         # Keep the file length, but make the source stat change unambiguous.
-        source.write_bytes(b"modified original payload")
+        source.write_bytes(b"M" * before.st_size)
         os.utime(source, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
 
     monkeypatch.setattr("app.delivery.tempfile.NamedTemporaryFile", change_source_after_copy)
