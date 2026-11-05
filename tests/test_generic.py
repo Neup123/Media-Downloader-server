@@ -17,6 +17,12 @@ def test_generic_options_and_filename_are_safe():
         effective_settings({}, {"filename": "/tmp/file"})
     with pytest.raises(ValueError):
         effective_settings({}, {"max_redirects": 100})
+    with pytest.raises(ValueError, match="Unknown generic setting"):
+        effective_settings({"unrecognized_option": True}, {})
+    with pytest.raises(ValueError, match="Unknown generic setting"):
+        effective_settings({}, {"follow_redirect": True})
+    with pytest.raises(ValueError, match="must be objects"):
+        effective_settings([], ["unexpected"])
 
 
 def test_generic_cli_uses_service_managed_output(tmp_path: Path, monkeypatch):
