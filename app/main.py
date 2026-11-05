@@ -5,6 +5,7 @@ import base64
 import binascii
 import json
 import os
+import re
 import shutil
 from contextlib import asynccontextmanager
 from pathlib import Path
