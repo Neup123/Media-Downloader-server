@@ -11,7 +11,12 @@ type Job = {
 };
 type YtSettings = {
   format: string; subtitles_lang: string; write_subtitles: boolean; embed_subtitles: boolean;
-  extra_args: string[]; cookies_file?: string;
+  extra_args: string[]; cookies_file?: string; allow_playlist: boolean; playlist_items: string;
+};
+type MediaPreview = {
+  title: string; kind: 'video' | 'playlist'; entry_count: number;
+  entries: { index: number; title: string; id: string; duration: number | null }[];
+  formats: { format_id: string; ext: string; resolution: string; filesize: number | null }[];
 };
 type AriaSettings = { options: Record<string, string> };
 type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
@@ -19,7 +24,7 @@ type GallerySettings = { options: Record<string, string>; cookies_file?: string;
 const API = '/api/v1';
 const ytDefaults: YtSettings = {
   format: 'bv*+ba/b', subtitles_lang: '', write_subtitles: false,
-  embed_subtitles: false, extra_args: [],
+  embed_subtitles: false, extra_args: [], allow_playlist: false, playlist_items: '',
 };
 const ariaDefaults: AriaSettings = {
   options: { 'max-connection-per-server': '4', split: '4', 'max-tries': '5', 'retry-wait': '5' },
@@ -61,6 +66,8 @@ export default function App() {
   const [engineRules, setEngineRules] = useState<EngineRule[]>([]);
   const [batchUrls, setBatchUrls] = useState('');
   const [url, setUrl] = useState('');
+  const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
+  const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<number[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState('');
@@ -203,6 +210,41 @@ export default function App() {
     return {};
   }
 
+  async function inspectUrl() {
+    if (!url.trim()) return;
+    setBusy(true);
+    setMediaPreview(null);
+    try {
+      const result = await request(API + '/preview', {
+        method: 'POST',
+        body: JSON.stringify({ url, max_entries: 50 }),
+      }) as MediaPreview;
+      setMediaPreview(result);
+      if (result.kind === 'playlist') {
+        const entries = result.entries.map(entry => entry.index);
+        setSelectedPlaylistEntries(entries);
+        setYtOverride(value => ({
+          ...value, allow_playlist: true, playlist_items: entries.join(','),
+        }));
+      }
+      setMessage('Media information loaded. Review formats or playlist selections before downloading.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Media inspection failed');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function togglePreviewEntry(index: number, enabled: boolean) {
+    const next = enabled
+      ? [...new Set([...selectedPlaylistEntries, index])].sort((a, b) => a - b)
+      : selectedPlaylistEntries.filter(value => value !== index);
+    setSelectedPlaylistEntries(next);
+    setYtOverride(value => ({
+      ...value, allow_playlist: true, playlist_items: next.join(','),
+    }));
+  }
+
   async function submit(event: React.FormEvent) {
     event.preventDefault(); setBusy(true);
     try {
@@ -212,7 +254,7 @@ export default function App() {
           url, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
         }),
       });
-      setSelected(job.id); setUrl(''); setMessage('Job queued.'); await refresh();
+      setSelected(job.id); setUrl(''); setMediaPreview(null); setMessage('Job queued.'); await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not submit job');
     } finally { setBusy(false); }
@@ -416,6 +458,23 @@ export default function App() {
             <div className="field-title">Per-download overrides</div>
             <label>Format<input value={ytOverride.format} onChange={event => setYtOverride(value => ({ ...value, format: event.target.value }))} /></label>
             <label>Subtitle languages<input value={ytOverride.subtitles_lang} onChange={event => setYtOverride(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+            <div className="checks"><label className="check"><input type="checkbox" checked={ytOverride.allow_playlist} onChange={event => setYtOverride(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Allow playlist downloads</label></div>
+            {ytOverride.allow_playlist && <label>Playlist entries (e.g. 1,3,5-7)<input value={ytOverride.playlist_items} onChange={event => setYtOverride(value => ({ ...value, playlist_items: event.target.value }))} placeholder="Leave empty for entire playlist" /></label>}
+            <button type="button" className="secondary" disabled={busy || !url.trim()} onClick={() => void inspectUrl()}>Inspect media formats / playlist</button>
+            {mediaPreview && <div className="options-block">
+              <div className="field-title">{mediaPreview.title}</div>
+              {mediaPreview.kind === 'video'
+                ? <label>Available formats<select value={ytOverride.format} onChange={event => setYtOverride(value => ({ ...value, format: event.target.value }))}>
+                    <option value={ytOverride.format}>Current: {ytOverride.format}</option>
+                    {mediaPreview.formats.map(format => <option key={format.format_id} value={format.format_id}>{format.format_id} · {format.ext} · {format.resolution}</option>)}
+                  </select></label>
+                : <div><p className="muted">Select entries to download ({mediaPreview.entries.length} previewed).</p>
+                    <div className="preview-list">{mediaPreview.entries.map(entry =>
+                      <label className="check" key={entry.index}><input type="checkbox" checked={selectedPlaylistEntries.includes(entry.index)} onChange={event => togglePreviewEntry(entry.index, event.target.checked)} /> {entry.index}. {entry.title}</label>
+                    )}</div>
+                  </div>}
+            </div>}
+
             <label>Cookie file<select value={ytOverride.cookies_file ?? ''} onChange={event => setYtOverride(value => ({ ...value, cookies_file: event.target.value }))}>
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
@@ -481,6 +540,9 @@ export default function App() {
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">Global defaults apply to new jobs; per-download options take precedence.</p>
         <label>Format selector<input value={yt.format} onChange={event => setYt(value => ({ ...value, format: event.target.value }))} /></label>
         <label>Subtitle languages<input value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div>
+        {yt.allow_playlist && <label>Default playlist selection (optional)<input value={yt.playlist_items} onChange={event => setYt(value => ({ ...value, playlist_items: event.target.value }))} placeholder="e.g. 1-5 or leave empty for all" /></label>}
+
         <label>Default cookie file<select value={yt.cookies_file ?? ''} onChange={event => setYt(value => ({ ...value, cookies_file: event.target.value }))}><option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}</select></label>
         <label>Upload browser-exported cookies<input type="file" accept=".txt,.cookies,text/plain" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadCookie(file); event.target.value = ''; }} /></label>
         <div className="muted">Cookie files remain in the private service data volume.</div>
