@@ -94,3 +94,23 @@ def test_webdav_delivery_mkcol_put_and_size_verification(settings):
     assert delivered[0]["size_bytes"] == len(b"webdav payload")
     assert methods == ["MKCOL", "MKCOL", "MKCOL", "PUT", "PROPFIND"]
     engine.dispose()
+
+
+def test_scheduler_applies_per_engine_caps_without_starving_other_engines(settings):
+    from types import SimpleNamespace
+
+    settings.max_concurrent_per_engine.update({"yt-dlp": 1, "aria2c": 1})
+    worker = JobWorker(lambda: None, settings)
+    worker._active_engines["already-running"] = "yt-dlp"
+
+    queued = [
+        SimpleNamespace(id="yt-2", engine="yt-dlp"),
+        SimpleNamespace(id="aria-1", engine="aria2c"),
+        SimpleNamespace(id="yt-3", engine="yt-dlp"),
+    ]
+    selected = worker._select_queued_jobs(queued, slots=2)
+    assert [job.id for job in selected] == ["aria-1"]
+
+    worker._active_engines.clear()
+    selected = worker._select_queued_jobs(queued, slots=3)
+    assert [job.id for job in selected] == ["yt-2", "aria-1"]
