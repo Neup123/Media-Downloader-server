@@ -569,8 +569,12 @@ export default function App() {
     }
   }
 
-  async function jobAction(id: string, action: 'cancel' | 'retry') {
-    try { await request(API + '/jobs/' + id + '/' + action, { method: 'POST' }); await refresh(); }
+  async function jobAction(id: string, action: 'cancel' | 'retry' | 'redeliver') {
+    try {
+      await request(API + '/jobs/' + id + '/' + action, { method: 'POST' });
+      if (action === 'redeliver') setMessage('Re-delivery queued using the existing verified download files.');
+      await refresh();
+    }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Job action failed'); }
   }
 
@@ -714,6 +718,7 @@ export default function App() {
               {selected === job.id && <div className="job-actions" onClick={event => event.stopPropagation()}>
                 {['queued', 'starting', 'extracting', 'downloading', 'post-processing', 'delivering'].includes(job.status) && <button className="small danger" onClick={() => void jobAction(job.id, 'cancel')}>Cancel</button>}
                 {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Retry</button>}
+                {job.status === 'completed' && <button className="small secondary" title="Deliver existing verified files again to the currently configured destination" onClick={() => void jobAction(job.id, 'redeliver')}>Re-deliver</button>}
               </div>}
             </article>;
           })}
