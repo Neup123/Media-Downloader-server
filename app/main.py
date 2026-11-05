@@ -556,7 +556,8 @@ def _resolve_job_engine(url: str, requested: str, session: Session, preset: Pres
     if host:
         for rule in session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all():
             suffix_match = host == rule.host_suffix or host.endswith("." + rule.host_suffix)
-            path_match = rule.path_prefix == "/" or path.startswith(rule.path_prefix)
+            prefix = rule.path_prefix.rstrip("/") or "/"
+            path_match = prefix == "/" or path == prefix or path.startswith(prefix + "/")
             if suffix_match and path_match:
                 matches.append(rule)
     if matches:
