@@ -17,8 +17,10 @@ on:
 permissions:
   contents: read
 
+# Every PR head commit must get its own independent disposable acceptance.
+# Older slow attempts on the same PR must not block testing a corrected SHA.
 concurrency:
-  group: nextcloud-webdav-e2e-${{ github.ref }}
+  group: nextcloud-webdav-e2e-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: false
 
 jobs:
