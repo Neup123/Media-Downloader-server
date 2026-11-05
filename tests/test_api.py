@@ -152,3 +152,145 @@ def test_gallery_dl_engine_settings_and_job_are_supported(client, auth_headers):
         "settings": {"options": {"output.directory": "/tmp/escape"}},
     })
     assert blocked.status_code == 422
+
+
+def test_presets_and_url_engine_rules_are_persistent_and_applied(client, auth_headers):
+    preset = client.post("/api/v1/presets", headers=auth_headers, json={
+        "name": "Gallery image defaults",
+        "engine": "gallery-dl",
+        "description": "Options for the gallery extractor",
+        "settings": {"options": {"extractor.generic.enabled": "true"}},
+    })
+    assert preset.status_code == 201
+    preset_id = preset.json()["id"]
+
+    rule = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "example.com",
+        "path_prefix": "/gallery",
+        "engine": "gallery-dl",
+        "priority": 200,
+        "description": "Gallery URLs use gallery-dl",
+    })
+    assert rule.status_code == 201
+
+    rules = client.get("/api/v1/engine-rules", headers=auth_headers)
+    assert rules.status_code == 200
+    assert rules.json()[0]["host_suffix"] == "example.com"
+
+    job = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://sub.example.com/gallery/123",
+        "engine": "auto",
+        "preset_id": preset_id,
+        "overrides": {"options": {"extractor.generic.referer": "https://example.com/"}},
+    })
+    assert job.status_code == 202
+    assert job.json()["engine"] == "gallery-dl"
+    assert job.json()["overrides"]["options"]["extractor.generic.enabled"] == "true"
+    assert job.json()["overrides"]["options"]["extractor.generic.referer"] == "https://example.com/"
+
+    mismatch = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.com/gallery/123",
+        "engine": "yt-dlp",
+        "preset_id": preset_id,
+    })
+    assert mismatch.status_code == 422
+
+
+def test_url_engine_rule_priority_and_auto_defaults(client, auth_headers):
+    low = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "example.com",
+        "path_prefix": "/",
+        "engine": "yt-dlp",
+        "priority": 10,
+    })
+    high = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "example.com",
+        "path_prefix": "/files",
+        "engine": "aria2c",
+        "priority": 20,
+    })
+    assert low.status_code == 201
+    assert high.status_code == 201
+
+    routed = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://www.example.com/files/video.mp4",
+        "engine": "auto",
+    })
+    assert routed.status_code == 202
+    assert routed.json()["engine"] == "aria2c"
+
+    defaulted = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://unmatched.example.net/video",
+    })
+    assert defaulted.status_code == 202
+    assert defaulted.json()["engine"] == "yt-dlp"
+
+
+def test_batch_submission_is_atomic_and_respects_auto_routing(client, auth_headers):
+    response = client.post("/api/v1/jobs/batch", headers=auth_headers, json={
+        "items": [
+            {"url": "https://example.com/one.mp4", "engine": "aria2c"},
+            {"url": "https://example.net/two", "engine": "auto"},
+        ],
+    })
+    assert response.status_code == 202
+    assert response.json()["created"] == 2
+    assert [job["engine"] for job in response.json()["jobs"]] == ["aria2c", "yt-dlp"]
+
+    before = len(client.get("/api/v1/jobs", headers=auth_headers).json())
+    invalid = client.post("/api/v1/jobs/batch", headers=auth_headers, json={
+        "items": [
+            {"url": "https://example.com/valid.mp4", "engine": "aria2c"},
+            {"url": "file:///etc/passwd", "engine": "auto"},
+        ],
+    })
+    assert invalid.status_code == 422
+    after = len(client.get("/api/v1/jobs", headers=auth_headers).json())
+    assert after == before
+
+
+def test_preset_and_engine_rule_update_and_delete(client, auth_headers):
+    preset = client.post("/api/v1/presets", headers=auth_headers, json={
+        "name": "Basic yt-dlp",
+        "engine": "yt-dlp",
+        "settings": {"format": "best"},
+    }).json()
+    updated_preset = client.put(f"/api/v1/presets/{preset['id']}", headers=auth_headers, json={
+        "name": "Best video",
+        "engine": "yt-dlp",
+        "settings": {"format": "bestvideo+bestaudio/best"},
+    })
+    assert updated_preset.status_code == 200
+    assert updated_preset.json()["name"] == "Best video"
+    assert client.delete(f"/api/v1/presets/{preset['id']}", headers=auth_headers).status_code == 200
+
+    rule = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "example.org",
+        "path_prefix": "/media",
+        "engine": "aria2c",
+    }).json()
+    updated_rule = client.put(f"/api/v1/engine-rules/{rule['id']}", headers=auth_headers, json={
+        "host_suffix": "example.org",
+        "path_prefix": "/media",
+        "engine": "gallery-dl",
+        "priority": 55,
+        "enabled": True,
+        "description": "Gallery section",
+    })
+    assert updated_rule.status_code == 200
+    assert updated_rule.json()["engine"] == "gallery-dl"
+    assert client.delete(f"/api/v1/engine-rules/{rule['id']}", headers=auth_headers).status_code == 200
+
+
+def test_engine_rule_host_and_path_are_validated(client, auth_headers):
+    invalid_host = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "https://example.com/path",
+        "engine": "yt-dlp",
+    })
+    assert invalid_host.status_code == 422
+    invalid_path = client.post("/api/v1/engine-rules", headers=auth_headers, json={
+        "host_suffix": "example.com",
+        "path_prefix": "/../../etc",
+        "engine": "yt-dlp",
+    })
+    assert invalid_path.status_code == 422
