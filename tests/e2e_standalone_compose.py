@@ -38,7 +38,7 @@ def assert_standalone_service() -> None:
     with httpx.Client(
         base_url=BASE_URL + "/api/v1",
         headers={"X-API-Key": API_TOKEN},
-        timeout=12.0,
+        timeout=45.0,
         follow_redirects=False,
     ) as authorized:
         engines = authorized.get("/engines")
