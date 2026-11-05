@@ -4,7 +4,18 @@ import asyncio
 
 from app.completion import save_completed_files
 from app.db import Job, initialize_database, make_engine, make_session_factory
+import pytest
+
 from app.worker import JobWorker
+
+
+@pytest.fixture(autouse=True)
+def isolate_worker_tests_from_real_dns(monkeypatch):
+    """Worker behavior tests use synthetic example.com URLs, never real DNS."""
+    monkeypatch.setattr(
+        "app.worker.preflight_source_dns",
+        lambda url: None,
+    )
 
 
 def _new_worker(settings, status="queued", cancel_requested=False):

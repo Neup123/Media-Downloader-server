@@ -73,6 +73,7 @@ def test_preview_api_requires_auth_and_sanitizes_output(client, auth_headers, mo
         return {"title": "Test", "kind": "video", "entries": [], "formats": []}
 
     monkeypatch.setattr("app.main.inspect_ytdlp", fake_preview)
+    monkeypatch.setattr("app.main.preflight_source_dns", lambda url: None)
     assert client.post("/api/v1/preview", json={"url": "https://example.com/video"}).status_code == 401
     ok = client.post("/api/v1/preview", headers=auth_headers, json={"url": "https://example.com/video"})
     assert ok.status_code == 200

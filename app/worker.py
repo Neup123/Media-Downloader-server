@@ -19,6 +19,7 @@ from app.completion import load_completed_files, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.delivery import deliver_files
+from app.security import preflight_source_dns
 
 
 ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -255,6 +256,11 @@ class JobWorker:
                 shutil.rmtree(workdir)
                 workdir.mkdir(parents=True, exist_ok=True)
                 await on_log("Discarded unverified output left by an interrupted download")
+            if not existing_files and not self.settings.allow_private_targets and engine != "generic":
+                # Check every A/AAAA answer before the engine starts. This is
+                # defense in depth, not DNS pinning: an egress firewall is
+                # still required for redirects and engine-discovered URLs.
+                await asyncio.to_thread(preflight_source_dns, url)
             if existing_files:
                 await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
                 files = existing_files

@@ -135,6 +135,7 @@ def test_worker_marks_job_cancelled_when_delivery_is_interrupted(settings, monke
             session.commit()
         raise asyncio.CancelledError
 
+    monkeypatch.setattr("app.worker.preflight_source_dns", lambda url: None)
     monkeypatch.setattr("app.worker.run_ytdlp", completed_download)
     monkeypatch.setattr("app.worker.deliver_files", cancellation_during_delivery)
     asyncio.run(JobWorker(sessions, settings)._execute(job_id))

@@ -255,3 +255,47 @@ def resolve_http_target(url: str, allow_private: bool = False) -> str | None:
         for ip in sorted(addresses, key=lambda ip: (ip.version, int(ip)))
     )
     return f"{host}:{port}:{encoded}"
+
+
+def preflight_source_dns(url: str) -> None:
+    """Reject private DNS answers immediately before an unpinned engine starts.
+
+    For HTTP(S), reuse the curl first-hop DNS policy. Aria2's FTP/FTPS
+    sources receive equivalent A/AAAA checks. The subprocess still resolves
+    addresses independently, so redirects, DNS changes, playlists, magnets,
+    and extracted media URLs REQUIRE deployment-level egress controls.
+    """
+    parsed = _validated_urlsplit(url)
+    scheme = parsed.scheme.lower()
+    if scheme in {"http", "https"}:
+        resolve_http_target(url, False)
+        return
+    if scheme not in {"ftp", "ftps"}:
+        return
+    validate_target_url(url, "aria2c", False)
+    assert parsed.hostname is not None
+    host = _canonical_host(parsed.hostname)
+    port = parsed.port or (990 if scheme == "ftps" else 21)
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        ip = None
+    if ip is not None:
+        if not ip.is_global:
+            raise UnsafeUrlError("FTP source uses a private or reserved address")
+        return
+    try:
+        records = socket.getaddrinfo(
+            host, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP,
+        )
+    except (socket.gaierror, OSError) as exc:
+        raise UnsafeUrlError("Could not resolve FTP source hostname") from exc
+    if not records:
+        raise UnsafeUrlError("FTP source DNS returned no IP addresses")
+    for record in records:
+        try:
+            address = ipaddress.ip_address(record[4][0])
+        except (IndexError, TypeError, ValueError) as exc:
+            raise UnsafeUrlError("FTP source DNS returned an invalid address") from exc
+        if not address.is_global:
+            raise UnsafeUrlError("FTP source DNS includes a private or reserved address")
