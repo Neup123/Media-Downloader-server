@@ -61,7 +61,7 @@ def test_same_size_modified_file_cannot_be_reused_even_with_original_mtime(tmp_p
     output.write_bytes(b"legitimate")
     save_completed_files(tmp_path, [output])
     original = output.stat()
-    output.write_bytes(b"counterft")
+    output.write_bytes(b"corrupted!")
     assert output.stat().st_size == original.st_size
     os.utime(output, ns=(original.st_atime_ns, original.st_mtime_ns))
     assert output.stat().st_mtime_ns == original.st_mtime_ns
