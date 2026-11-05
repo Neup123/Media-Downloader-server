@@ -49,6 +49,20 @@ def _schema_types(schema: dict) -> set[str]:
     return set()
 
 
+def _constraint_value(schema: dict, name: str):
+    """OpenAPI 3.1 union type arrays and Pydantic anyOf express the same bounds."""
+    if name in schema:
+        return schema[name]
+    if "anyOf" in schema:
+        candidates = [
+            item[name] for item in schema["anyOf"]
+            if isinstance(item, dict) and name in item and item.get("type") != "null"
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
+    return None
+
+
 @pytest.mark.parametrize("method,path", OPERATIONS)
 def test_request_schema_matches_actual_pydantic_model(method, path):
     contract = yaml.safe_load((Path(__file__).resolve().parents[1] / "openapi.yaml").read_text())
@@ -79,9 +93,9 @@ def test_request_schema_matches_actual_pydantic_model(method, path):
             f"documented {_schema_types(spec)} vs model {_schema_types(actual)}"
         )
         for constraint in CONSTRAINTS:
-            assert spec.get(constraint) == actual.get(constraint), (
+            assert _constraint_value(spec, constraint) == _constraint_value(actual, constraint), (
                 f"{method.upper()} {path} {name}: {constraint} differs "
-                f"({spec.get(constraint)!r} vs {actual.get(constraint)!r})"
+                f"({_constraint_value(spec, constraint)!r} vs {_constraint_value(actual, constraint)!r})"
             )
         actual_enum = actual.get("enum")
         if actual_enum is None and "const" in actual:
