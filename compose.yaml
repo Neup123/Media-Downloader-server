@@ -1,0 +1,39 @@
+services:
+  downloader-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: downloader-server:local
+    container_name: downloader-server
+    init: true
+    restart: unless-stopped
+    environment:
+      APP_API_TOKEN: ${APP_API_TOKEN:?Set APP_API_TOKEN in .env before starting}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      DATA_DIR: /data
+      OUTPUT_DIR: /data/downloads
+      DATABASE_URL: sqlite:////data/downloader.db
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-2}
+      ARIA2_RPC_PORT: 16800
+      ALLOW_PRIVATE_TARGETS: ${ALLOW_PRIVATE_TARGETS:-false}
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    volumes:
+      - downloader-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  downloader-data:
+    name: downloader-server-data
