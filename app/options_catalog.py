@@ -17,6 +17,13 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
 
 
 OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "generic": [
+        field("filename", "Output filename", "File", "text", "Simple filename, leave blank to derive from URL"),
+        field("follow_redirects", "Follow HTTP redirects", "Network", "boolean", "Disabled by default until trusted egress controls are configured"),
+        field("max_redirects", "Maximum redirects", "Network", "integer", minimum=0, maximum=10),
+        field("retry_count", "Retry attempts", "Network", "integer", minimum=0, maximum=10),
+        field("user_agent", "User-Agent header", "HTTP", "text"),
+    ],
     "yt-dlp": [
         field("format", "Format selector", "Quality", "text", "yt-dlp -f selector, e.g. bv*+ba/b"),
         field("allow_playlist", "Allow playlists", "Playlists", "boolean", "Enable playlist downloads"),
