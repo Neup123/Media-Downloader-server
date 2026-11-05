@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import os
 import re
 import tempfile
@@ -13,6 +14,7 @@ import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
+from app.completion import _file_sha256
 from app.config import Settings
 from app.db import DeliverySetting
 from app.security import UnsafeUrlError, resolve_http_target, validate_target_url
@@ -238,8 +240,12 @@ async def deliver_files(
                 relative = _relative_output(source, job_id, settings)
                 destination = target_dir / relative
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                # Publish the local file only after all bytes are copied.
+                # Verify the actual bytes in the temporary copy before
+                # atomically publishing it. Matching sizes alone cannot detect
+                # same-size corruption.
                 temporary: Path | None = None
+                source_before = source.stat()
+                source_digest = hashlib.sha256()
                 try:
                     with tempfile.NamedTemporaryFile(
                         dir=destination.parent, prefix=".downloader-", suffix=".part", delete=False
@@ -251,10 +257,21 @@ async def deliver_files(
                                 chunk = await asyncio.to_thread(stream.read, 1024 * 1024)
                                 if not chunk:
                                     break
+                                source_digest.update(chunk)
                                 await asyncio.to_thread(handle.write, chunk)
                     await check_cancelled()
-                    if temporary.stat().st_size != source.stat().st_size:
+                    source_after = source.stat()
+                    if (
+                        source_before.st_size != source_after.st_size
+                        or source_before.st_mtime_ns != source_after.st_mtime_ns
+                    ):
+                        raise DeliveryError(f"Source changed during local delivery: {source.name}")
+                    if temporary.stat().st_size != source_before.st_size:
                         raise DeliveryError(f"Local copy was truncated: {source.name}")
+                    copied_digest = await asyncio.to_thread(_file_sha256, temporary)
+                    await check_cancelled()
+                    if copied_digest != source_digest.hexdigest():
+                        raise DeliveryError(f"Local copy checksum verification failed: {source.name}")
                     os.replace(temporary, destination)
                 finally:
                     if temporary is not None:
