@@ -301,3 +301,20 @@ def test_engine_rule_host_and_path_are_validated(client, auth_headers):
         "engine": "yt-dlp",
     })
     assert invalid_path.status_code == 422
+
+
+def test_webdav_folder_is_validated_before_saving(client, auth_headers):
+    for folder in ("Downloads/./private", "Downloads/../private", "Downloads//private", "."):
+        response = client.put("/api/v1/delivery", headers=auth_headers, json={
+            "mode": "webdav",
+            "webdav_url": "https://cloud.example.com/remote.php/dav/files/downloader",
+            "username": "downloader",
+            "app_password": "test-password",
+            "folder": folder,
+        })
+        assert response.status_code == 422, (folder, response.text)
+    accepted = client.put("/api/v1/delivery", headers=auth_headers, json={
+        "mode": "webdav", "webdav_url": "https://cloud.example.com/remote.php/dav/files/downloader",
+        "username": "downloader", "app_password": "test-password", "folder": "Downloads/Nested",
+    })
+    assert accepted.status_code == 200, accepted.text
