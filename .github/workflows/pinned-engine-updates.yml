@@ -83,9 +83,11 @@ jobs:
           python - <<'PY'
           import json
           from pathlib import Path
-          # The live WebDAV fixture currently exercises yt-dlp and gallery-dl;
-          # do not auto-merge updates of other engines on unit tests alone.
-          live_verified = {"yt-dlp", "gallery-dl"}
+          # The disposable Nextcloud acceptance currently downloads files
+          # with yt-dlp, gallery-dl and you-get, then verifies remote SHA-256.
+          # Never auto-merge svtplay-dl until it has its own live smoke fixture.
+          from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED
+          live_verified = PYPI_ENGINE_SMOKE_VERIFIED
           versions = json.loads(Path("engine-update-report.json").read_text())["updates"]
           unsupported = sorted(item["engine"] for item in versions if item["engine"] not in live_verified)
           if unsupported:
