@@ -63,6 +63,8 @@ def _effective_settings(global_settings: dict[str, Any], overrides: dict[str, An
         "write_subtitles": False,
         "embed_subtitles": False,
         "extra_args": [],
+        "allow_playlist": False,
+        "playlist_items": "",
     }
     result.update(global_settings or {})
     result.update(overrides or {})
@@ -73,6 +75,15 @@ def _effective_settings(global_settings: dict[str, Any], overrides: dict[str, An
     if not isinstance(lang, str) or len(lang) > 100 or "\x00" in lang:
         raise ValueError("Invalid subtitles language")
     result["extra_args"] = validate_extra_args(result.get("extra_args") or [])
+    playlist_items = result.get("playlist_items", "")
+    if not isinstance(result.get("allow_playlist"), bool):
+        raise ValueError("allow_playlist must be a boolean")
+    if not isinstance(playlist_items, str) or len(playlist_items) > 512:
+        raise ValueError("Invalid playlist items")
+    if playlist_items and not __import__("re").fullmatch(r"[1-9]\d{0,3}(?:-[1-9]\d{0,3})?(?:,[1-9]\d{0,3}(?:-[1-9]\d{0,3})?)*", playlist_items):
+        raise ValueError("playlist_items must be comma-separated indices or index ranges")
+    if playlist_items and not result["allow_playlist"]:
+        raise ValueError("playlist_items requires allow_playlist=true")
     return result
 
 
@@ -93,7 +104,7 @@ async def run_ytdlp(
     argv = [
         executable,
         "--ignore-config",
-        "--no-playlist",
+        "--yes-playlist" if effective["allow_playlist"] else "--no-playlist",
         "--newline",
         "--progress-template",
         PROGRESS_TEMPLATE,
@@ -104,6 +115,8 @@ async def run_ytdlp(
         "--print",
         "after_move:__DL_FILE__%(filepath)s",
     ]
+    if effective["playlist_items"]:
+        argv.extend(["--playlist-items", effective["playlist_items"]])
     if effective["format"]:
         argv.extend(["-f", effective["format"]])
     if effective["write_subtitles"]:
