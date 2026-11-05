@@ -77,6 +77,8 @@ Local delivery copies files into the job's output folder and checks the resultin
 3. Reads remote metadata using PROPFIND.
 4. Verifies the destination file size.
 
+Cancellation during delivery is cooperative: the service checks cancellation between local-copy and WebDAV upload chunks, and between remote operations. Local files are copied to temporary paths and atomically published after size verification. Completed uploads remain listed in the job record if a subsequent upload is cancelled; cancellation **cannot guarantee deletion** of files already written to a remote server, and an interrupted WebDAV PUT may leave a partial remote file. Retrying a cancelled job attempts delivery again.
+
 The live CI acceptance workflow uses the production downloader Compose service plus an ephemeral Nextcloud container. It runs yt-dlp, aria2c, and gallery-dl against a test fixture, retrieves each delivered file, and compares its size and SHA-256 hash. It does not connect to or modify the eventual production Nextcloud instance.
 
 ## Security notes
