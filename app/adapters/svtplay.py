@@ -34,7 +34,7 @@ def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any
     quality = result["quality"]
     if not isinstance(quality, str) or len(quality) > 80 or "\x00" in quality or quality.startswith("-"):
         raise ValueError("Invalid svtplay-dl quality")
-    if result["output_format"] not in {"mp4", "mkv"}:
+    if not isinstance(result["output_format"], str) or result["output_format"] not in {"mp4", "mkv"}:
         raise ValueError("svtplay-dl output_format must be mp4 or mkv")
     return result
 
