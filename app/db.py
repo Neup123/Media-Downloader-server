@@ -44,6 +44,32 @@ class EngineSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class Preset(Base):
+    __tablename__ = "presets"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    name: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    engine: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
+    settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
+class EngineRule(Base):
+    __tablename__ = "engine_rules"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    host_suffix: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    path_prefix: Mapped[str] = mapped_column(String(1024), nullable=False, default="/")
+    engine: Mapped[str] = mapped_column(String(40), nullable=False)
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=100, index=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, index=True)
+    description: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class DeliverySetting(Base):
     __tablename__ = "delivery_settings"
 
