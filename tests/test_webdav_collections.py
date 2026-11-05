@@ -22,6 +22,15 @@ def _dav_response(href: str, *, collection: bool = True, status: int = 200) -> b
     ).encode()
 
 
+def _duplicate_dav_response(payload: bytes) -> bytes:
+    """Repeat one response inside the same HTTP 207 Multi-Status body."""
+    response = payload.split(b"<d:response>", 1)[1].split(b"</d:response>", 1)[0]
+    return payload.replace(
+        b"</d:multistatus>",
+        b"<d:response>" + response + b"</d:response></d:multistatus>",
+    )
+
+
 def _configured_delivery(settings):
     engine = make_engine(settings.database_url)
     initialize_database(engine)
@@ -44,6 +53,14 @@ def _configured_delivery(settings):
 def test_collection_property_requires_matching_resource_and_successful_propstat():
     url = "https://cloud.example.test/dav/Folder"
     assert _webdav_is_collection(_dav_response("/dav/Folder/"), url)
+    assert not _webdav_is_collection(_duplicate_dav_response(_dav_response("/dav/Folder/")), url)
+    unrelated = _dav_response("/dav/Other/", status=404)
+    unrelated_body = unrelated.split(b"<d:response>", 1)[1].split(b"</d:response>", 1)[0]
+    with_unrelated_failure = _dav_response("/dav/Folder/").replace(
+        b"</d:multistatus>",
+        b"<d:response>" + unrelated_body + b"</d:response></d:multistatus>",
+    )
+    assert _webdav_is_collection(with_unrelated_failure, url)
     assert not _webdav_is_collection(_dav_response("/dav/Folder/", collection=False), url)
     assert not _webdav_is_collection(_dav_response("/dav/Folder/", status=404), url)
     assert not _webdav_is_collection(_dav_response("/dav/Other/"), url)
@@ -93,7 +110,7 @@ def test_existing_webdav_folders_are_verified_before_upload(settings):
         engine.dispose()
 
 
-@pytest.mark.parametrize("mode", ["not-collection", "property-404", "wrong-href", "bad-xml", "propfind-404"])
+@pytest.mark.parametrize("mode", ["not-collection", "property-404", "wrong-href", "bad-xml", "propfind-404", "duplicate-success"])
 def test_ambiguous_mkcol_405_never_authorizes_upload(settings, mode):
     engine, sessions, source = _configured_delivery(settings)
     seen = []
@@ -107,6 +124,10 @@ def test_ambiguous_mkcol_405_never_authorizes_upload(settings, mode):
                 return httpx.Response(404)
             if mode == "bad-xml":
                 return httpx.Response(207, content=b"<not-xml")
+            if mode == "duplicate-success":
+                return httpx.Response(
+                    207, content=_duplicate_dav_response(_dav_response(request.url.path)),
+                )
             return httpx.Response(
                 207, content=_dav_response(
                     "/other-resource/" if mode == "wrong-href" else request.url.path,

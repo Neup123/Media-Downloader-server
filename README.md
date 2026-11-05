@@ -59,7 +59,7 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Health check: `/healthz`
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
-- WebDAV directory creation accepts `MKCOL` 201, or a 405 only when a follow-up Depth:0 `PROPFIND` verifies that the exact resource is a `DAV:collection` with a successful property status. This applies to nested output folders.
+- WebDAV directory creation accepts `MKCOL` 201, or a 405 only when a follow-up Depth:0 `PROPFIND` verifies that the exact resource is a `DAV:collection` with a successful property status. This applies to nested output folders. A folder response with multiple successful collection properties for the requested resource is ambiguous and is rejected.
 
 ## Implemented engines
 
