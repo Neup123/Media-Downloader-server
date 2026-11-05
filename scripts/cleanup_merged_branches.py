@@ -10,9 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from pathlib import Path
 import subprocess
-from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 
@@ -21,7 +19,7 @@ def list_pages(repository: str, collection: str, token: str) -> list[dict]:
     for page in range(1, 21):
         url = (
             f"https://api.github.com/repos/{repository}/{collection}"
-            f"?per_page=100&page={page}"
+            f"{'&' if '?' in collection else '?'}per_page=100&page={page}"
         )
         request = Request(url, headers={
             "Authorization": f"Bearer {token}",
