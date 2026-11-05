@@ -187,7 +187,8 @@ jobs:
           from pathlib import Path
           import re
           files = [
-              "engine-update-detection.log", "engine-update-tests.log",
+              "engine-update-detection.log", "debian-engine-detection.log",
+              "debian-engine-policy.log", "engine-update-tests.log",
               "engine-update-docker.log", "engine-update-compose.log",
               "engine-update-webdav.log",
           ]
@@ -207,6 +208,7 @@ jobs:
           name: engine-update-diagnostics
           path: |
             engine-update-report.json
+            debian-engine-update-report.json
             engine-update-diagnostics.txt
           retention-days: 30
 
@@ -239,11 +241,15 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json
-          changes=json.loads(Path("engine-update-report.json").read_text())["updates"]
+          python_changes=json.loads(Path("engine-update-report.json").read_text())["updates"]
+          debian_changes=json.loads(Path("debian-engine-update-report.json").read_text())["updates"]
+          changes=python_changes + debian_changes
           Path("engine-update-release.md").write_text(
               "Pinned engine upgrades verified by Python tests, Docker build and Nextcloud WebDAV E2E:\n"
               + "\n".join(f"- {item['engine']}: {item['from']} -> {item['to']}" for item in changes)
-              + "\n\nSee GitHub Actions run for test and artifact provenance.\n"
+              + "\n\nDebian candidates were read from the trixie runtime-base package index on the CI architecture.\n"
+              + "System libraries, image tags and transitive dependencies are not fully hash-locked.\n"
+              + "See GitHub Actions run for test and artifact provenance.\n"
           )
           PY
           gh release create "$tag" --target main --title "$tag" --notes-file engine-update-release.md
@@ -257,7 +263,9 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json, os
-          changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          python_changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
+          debian_changes = json.loads(Path("debian-engine-update-report.json").read_text())["updates"]
+          changes = python_changes + debian_changes
           summary = ", ".join(f"{x['engine']} {x['from']} -> {x['to']}" for x in changes)
           heading = f"engine-update-blocked: {summary}"[:240]
           log = Path("engine-update-diagnostics.txt")
