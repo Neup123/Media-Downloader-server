@@ -29,14 +29,18 @@ Do not describe this as checksum-enforced installation.
 1. Runs weekly and can be dispatched manually after the workflow reaches the default branch.
 2. Checks PyPI with a bounded network timeout, writes `engine-update-report.json`,
    and creates a unique candidate branch and PR only if a bundled engine changed.
-3. On the candidate commit, runs Python compilation and unit/fixture tests,
+3. Fails closed if a changed engine lacks a real smoke fixture in the
+   disposable Nextcloud test gate. Currently only yt-dlp and gallery-dl
+   are covered; updates involving you-get or svtplay-dl remain blocked until
+   those engines have equivalent live acceptance.
+4. On the candidate commit, runs Python compilation and unit/fixture tests,
    builds the production Docker image, then uses the production Compose
    downloader alongside disposable Nextcloud and a generated legal media fixture.
-4. The E2E test verifies downloads from all P0 engines and fetches WebDAV files
+5. The E2E test verifies downloads from all P0 engines and fetches WebDAV files
    back to compare their SHA-256 hashes and sizes.
-5. On a green gate, attempts a normal squash merge and patch release. The normal
+6. On a green gate, attempts a normal squash merge and patch release. The normal
    GitHub branch protection, permissions, and merge rules still apply.
-6. On any failed gate, leaves the candidate PR unmerged and opens/updates a
+7. On any failed gate, leaves the candidate PR unmerged and opens/updates a
    labelled `engine-update-blocked` issue with versions, workflow link, and
    a diagnostic excerpt. Artifacts are retained for 30 days.
 
