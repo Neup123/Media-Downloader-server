@@ -1,0 +1,88 @@
+name: Live Nextcloud WebDAV E2E
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nextcloud-webdav-e2e
+  cancel-in-progress: false
+
+jobs:
+  live-webdav:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install FFmpeg and generate a deterministic media fixture
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          mkdir -p fixture
+          ffmpeg -hide_banner -loglevel error \
+            -f lavfi -i "color=c=blue:s=320x240:r=24:d=2" \
+            -f lavfi -i "sine=frequency=1000:duration=2" \
+            -c:v libx264 -pix_fmt yuv420p -c:a aac -shortest \
+            -movflags +faststart fixture/sample.mp4
+          ffprobe -v error -show_entries format=duration,size \
+            -of default=noprint_wrappers=1 fixture/sample.mp4
+          sha256sum fixture/sample.mp4
+
+      - name: Start a fixture HTTP server on the runner
+        run: |
+          python3 -m http.server 9000 --bind 0.0.0.0 --directory fixture             > /tmp/downloader-fixture-http.log 2>&1 &
+          echo $! > /tmp/downloader-fixture-http.pid
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:9000/sample.mp4 -o /tmp/fixture-check.mp4; then
+              cmp fixture/sample.mp4 /tmp/fixture-check.mp4
+              exit 0
+            fi
+            sleep 1
+          done
+          cat /tmp/downloader-fixture-http.log
+          exit 1
+
+      - name: Create ephemeral test credentials
+        run: |
+          python3 - <<'PY'
+          import secrets
+          from cryptography.fernet import Fernet
+          token = secrets.token_urlsafe(48)
+          password = secrets.token_urlsafe(24)
+          key = Fernet.generate_key().decode()
+          with open(".env.e2e", "w", encoding="utf-8") as stream:
+              stream.write(f"APP_API_TOKEN={token}\n")
+              stream.write(f"APP_ENCRYPTION_KEY={key}\n")
+              stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
+          with open("$GITHUB_ENV", "a", encoding="utf-8") as stream:
+              stream.write(f"APP_API_TOKEN={token}\n")
+              stream.write(f"NEXTCLOUD_ADMIN_PASSWORD={password}\n")
+          PY
+
+      - name: Start disposable Nextcloud and Downloader Server containers
+        run: docker compose --env-file .env.e2e -f compose.integration.yaml up -d --build
+
+      - name: Verify real yt-dlp and aria2 delivery to Nextcloud
+        run: python tests/e2e_live_webdav.py
+        env:
+          DOWNLOADER_API_URL: http://127.0.0.1:8080/api/v1
+          NEXTCLOUD_HTTP_URL: http://127.0.0.1:8081
+          SOURCE_URL: http://host.docker.internal:9000/sample.mp4
+          WEBDAV_BASE_URL: http://host.docker.internal:8081/remote.php/dav/files/admin
+          MEDIA_FIXTURE: fixture/sample.mp4
+
+      - name: Collect container logs on failure
+        if: failure()
+        run: docker compose --env-file .env.e2e -f compose.integration.yaml logs --no-color
+
+      - name: Stop containers and delete temporary volumes
+        if: always()
+        run: |
+          docker compose --env-file .env.e2e -f compose.integration.yaml down --volumes --remove-orphans || true
+          rm -f .env.e2e
+          if [ -f /tmp/downloader-fixture-http.pid ]; then
+            kill "$(cat /tmp/downloader-fixture-http.pid)" || true
+          fi
