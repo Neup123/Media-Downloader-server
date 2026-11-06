@@ -84,27 +84,18 @@ jobs:
           number=$(gh pr view "$branch" --json number --jq .number)
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-      - name: Require a real smoke test for every updated engine
+      - name: Require reviewed source provenance and a real smoke fixture for every updated engine
         if: steps.detect.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import json
-          from pathlib import Path
-          # The disposable Nextcloud acceptance currently downloads files
-          # with yt-dlp, gallery-dl and you-get, then verifies remote SHA-256.
-          # Never auto-merge svtplay-dl until it has its own live smoke fixture.
-          from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED
-          live_verified = PYPI_ENGINE_SMOKE_VERIFIED
-          versions = json.loads(Path("engine-update-report.json").read_text())["updates"]
-          unsupported = sorted(item["engine"] for item in versions if item["engine"] not in live_verified)
-          if unsupported:
-              raise SystemExit(
-                  "No live WebDAV engine smoke fixture exists for: " + ", ".join(unsupported)
-                  + ". Candidate must remain blocked until the smoke gate is implemented."
-              )
-          PY
+          # This is preliminary candidate eligibility, NOT production approval.
+          # PyPI SHA-256 metadata does not assert hash-enforced pip installs.
+          # Debian aria2/curl must also match the real WebDAV fixture suite.
+          python -m scripts.engine_candidate_gate \
+            --python-report engine-update-report.json \
+            --debian-report debian-engine-update-report.json \
+            --output engine-promotion-report.json
 
       - name: Install pinned dependencies and test requirements
         if: steps.detect.outputs.changed == 'true'
@@ -216,6 +207,7 @@ jobs:
           path: |
             engine-update-report.json
             debian-engine-update-report.json
+            engine-promotion-report.json
             engine-update-diagnostics.txt
           retention-days: 30
 
@@ -230,12 +222,30 @@ jobs:
       # leave green candidates as reviewable PRs instead of publishing releases.
       # An absent repository variable fails CLOSED.
       - name: Merge green candidate (normal branch protection still applies)
+        id: promote
         if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
           number="${{ steps.open_pr.outputs.number }}"
-          gh pr merge "$number" --squash --delete-branch --match-head-commit "${{ steps.open_pr.outputs.head_sha }}"
+          candidate_sha="${{ steps.open_pr.outputs.head_sha }}"
+          observed_sha=$(gh pr view "$number" --json headRefOid --jq .headRefOid)
+          if [[ "$candidate_sha" != "$observed_sha" ]]; then
+            echo "Candidate PR head changed since the accepted Python/Docker/WebDAV gate" >&2
+            exit 1
+          fi
+          gh pr merge "$number" --squash --delete-branch --match-head-commit "$candidate_sha"
+          merged_sha=$(gh pr view "$number" --json mergeCommit --jq '.mergeCommit.oid // ""')
+          if [[ ! "$merged_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Merge did not produce a complete immutable commit SHA" >&2
+            exit 1
+          fi
+          remote_main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$remote_main" != "$merged_sha" ]]; then
+            echo "main moved after candidate merge; refusing to publish a different source" >&2
+            exit 1
+          fi
+          echo "merged_sha=$merged_sha" >> "$GITHUB_OUTPUT"
 
       - name: Cut a patch release from the tested merged main
         if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
@@ -262,7 +272,18 @@ jobs:
               + "See GitHub Actions run for test and artifact provenance.\n"
           )
           PY
-          gh release create "$tag" --target main --title "$tag" --notes-file engine-update-release.md
+          merged_sha="${{ steps.promote.outputs.merged_sha }}"
+          if [[ ! "$merged_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Missing verified merge commit provenance" >&2
+            exit 1
+          fi
+          remote_main=$(git ls-remote origin refs/heads/main | cut -f1)
+          if [[ "$remote_main" != "$merged_sha" ]]; then
+            echo "main moved before tag creation; refusing stale release" >&2
+            exit 1
+          fi
+          printf '\\nExact tested merge commit: %s\\n' "$merged_sha" >> engine-update-release.md
+          gh release create "$tag" --target "$merged_sha" --title "$tag" --notes-file engine-update-release.md
 
       - name: Open or refresh blocked-update issue on any red gate
         if: failure() && steps.detect.outputs.changed == 'true'
