@@ -50,6 +50,44 @@ whose media sources and WebDAV destination are **publicly routable**.
   platform-specific acceptance, end-to-end guarded public downloads,
   other platform-specific DNS/redirect and engine-specific tests, and review\n  of non-IP exfiltration channels.
 
+## Actual WSL/Docker-host acceptance
+
+On the **same Linux/WSL host** that runs an already started guarded
+downloader, execute this read-only network probe from the original core
+checkout (use the same Compose files and environment file as the running
+stack):
+
+```sh
+python3 scripts/guarded_host_acceptance.py --env-file .env --compose-file compose.egress.yaml
+```
+
+If the optional Nextcloud network overlay is in use, pass the **same**
+overlay after the base file and make sure `NEXTCLOUD_DOCKER_NETWORK` is set
+to the actual existing network:
+
+```sh
+python3 scripts/guarded_host_acceptance.py --env-file .env \
+  --compose-file compose.egress.yaml \
+  --compose-file /path/to/downloader-server-nextcloud/compose.nextcloud-network.yaml
+```
+
+The script does not create or delete containers, files, credentials, app
+passwords, or destinations. It checks real policy chains inside the guard
+container, probes the actual downloader namespace, and requires the kernel
+`REJECT` counters to advance for DNS-override/metadata, loopback, and
+controlled redirect requests. A socket failure alone is not sufficient
+evidence; the output is sanitized JSON without credentials or media URLs.
+IPv6 probes can also fail because no route exists, so the report
+distinguishes that from a verified IPv6 packet counter.
+
+Passing on Linux CI is **not** WSL acceptance. A successful host probe
+still reports `production_approved: false` because authenticated remote
+WebDAV file readback, actual host DNS/TLS/hairpin reachability, and legally
+authorized real-site engines must be checked separately. Capture the
+sanitized JSON and deployment/health outcomes in core issues #9 and #72
+after testing the actual target; avoid copying secrets or private URLs
+into issue comments.
+
 ## CI acceptance
 
 `egress-guard-e2e.yml` builds the guarded Compose stack on an ephemeral

@@ -9,6 +9,8 @@ on:
       - "compose.egress.yaml"
       - "scripts/egress_guard.sh"
       - "tests/test_egress_guard_contract.py"
+      - "scripts/guarded_host_acceptance.py"
+      - "tests/test_guarded_host_acceptance.py"
   push:
     branches: [main]
     paths:
@@ -17,6 +19,8 @@ on:
       - "compose.egress.yaml"
       - "scripts/egress_guard.sh"
       - "tests/test_egress_guard_contract.py"
+      - "scripts/guarded_host_acceptance.py"
+      - "tests/test_guarded_host_acceptance.py"
   workflow_dispatch:
 
 permissions:
@@ -97,6 +101,12 @@ jobs:
           "${compose[@]}" exec -T egress-guard iptables -w -C OUTPUT -j DOWNLOADER_EGRESS
           "${compose[@]}" exec -T egress-guard ip6tables -w -C OUTPUT -j DOWNLOADER_EGRESS
           echo "Downloader namespace private/metadata/IPv6 egress rejection: PASS"
+
+      - name: Reproduce host acceptance using portable WSL/Linux probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/guarded_host_acceptance.py --env-file .env.egress --compose-file compose.egress.yaml
 
       - name: Collect diagnostics on failure
         if: failure()
