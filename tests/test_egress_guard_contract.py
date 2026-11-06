@@ -35,6 +35,8 @@ def test_kernel_rules_cover_metadata_docker_bridge_and_ipv6():
     assert "ip6tables -w -A DOWNLOADER_EGRESS ! -d 2000::/3 -j REJECT" in rules
     assert "iptables -w -I OUTPUT 1 -j DOWNLOADER_EGRESS" in rules
     assert "ip6tables -w -I OUTPUT 1 -j DOWNLOADER_EGRESS" in rules
+    assert "iptables -w -A DOWNLOADER_EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT" in rules
+    assert "ip6tables -w -A DOWNLOADER_EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT" in rules
     assert "exec sleep infinity" in rules
     assert "127.0.0.11/32 -p udp --dport 53" in rules
     assert "127.0.0.11/32 -p tcp --dport 53" in rules
