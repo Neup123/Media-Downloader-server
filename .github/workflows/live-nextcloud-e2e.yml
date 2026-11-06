@@ -160,7 +160,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: downloader-browser-failure-${{ github.run_id }}
-          path: /tmp/downloader-ui-failure.png
+          path: browser-failure.png
           if-no-files-found: ignore
           retention-days: 7
 
@@ -172,4 +172,4 @@ jobs:
         if: always()
         run: |
           docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
-          rm -f .env.e2e
+          rm -f .env.e2e browser-failure.png
