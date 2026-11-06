@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, select
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.types import JSON
 
@@ -23,6 +23,9 @@ class Job(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     url: Mapped[str] = mapped_column(Text, nullable=False)
+    # Trusted gateway-only fields. The encrypted token is NEVER included in JobOut.
+    owner_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    delivery_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     engine: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued", index=True)
     overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -105,6 +108,15 @@ def make_engine(database_url: str):
 
 def initialize_database(engine) -> None:
     Base.metadata.create_all(engine)
+    # Additive migration of existing pre-Nextcloud standalone databases.
+    # Never drop or recreate the jobs table: users may have active downloads.
+    columns = {column["name"] for column in inspect(engine).get_columns("jobs")}
+    with engine.begin() as connection:
+        if "owner_id" not in columns:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN owner_id VARCHAR(255)"))
+            connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_owner_id ON jobs (owner_id)"))
+        if "delivery_token" not in columns:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN delivery_token TEXT"))
 
 
 def make_session_factory(engine):

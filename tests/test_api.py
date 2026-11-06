@@ -318,3 +318,38 @@ def test_webdav_folder_is_validated_before_saving(client, auth_headers):
         "username": "downloader", "app_password": "test-password", "folder": "Downloads/Nested",
     })
     assert accepted.status_code == 200, accepted.text
+
+
+
+def test_per_user_jobs_snapshot_encrypted_webdav_and_filter_owner(client, auth_headers):
+    a = {"url": "https://example.com/video-a", "engine": "yt-dlp",
+         "owner_id": "alice", "delivery": {"mode": "webdav",
+         "webdav_url": "https://cloud.example.com/remote.php/dav/files/alice",
+         "username": "alice", "app_password": "secret-alice",
+         "folder": "Family/Downloads"}}
+    b = {"url": "https://example.com/video-b", "engine": "yt-dlp",
+         "owner_id": "bob", "delivery": {"mode": "webdav",
+         "webdav_url": "https://cloud.example.com/remote.php/dav/files/bob",
+         "username": "bob", "app_password": "secret-bob", "folder": "Downloads"}}
+    for job in (a, b):
+        r = client.post("/api/v1/jobs", headers=auth_headers, json=job)
+        assert r.status_code == 202, r.text
+        assert r.json()["owner_id"] == job["owner_id"]
+        assert "secret-" not in r.text
+    only_alice = client.get("/api/v1/jobs?owner_id=alice", headers=auth_headers).json()
+    assert len(only_alice) == 1 and only_alice[0]["owner_id"] == "alice"
+    assert "secret-" not in str(only_alice)
+    from app.db import Job
+    with client.app.state.session_factory() as session:
+        saved = session.get(Job, only_alice[0]["id"])
+        assert saved.delivery_token and "secret-alice" not in saved.delivery_token
+        assert saved.owner_id == "alice"
+    missing = client.post("/api/v1/jobs", headers=auth_headers,
+        json={"url": "https://example.com/a", "owner_id": "alice"})
+    assert missing.status_code == 422
+    spoofed = client.post("/api/v1/jobs", headers=auth_headers,
+        json={**a, "delivery": {**a["delivery"], "username": "bob"}})
+    assert spoofed.status_code == 422
+    no_owner = client.post("/api/v1/jobs", headers=auth_headers,
+        json={"url": "https://example.com/a", "delivery": a["delivery"]})
+    assert no_owner.status_code == 422

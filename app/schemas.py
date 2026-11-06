@@ -22,6 +22,9 @@ class JobCreate(BaseModel):
     engine: EngineSelection = "auto"
     preset_id: str | None = Field(default=None, max_length=36)
     overrides: dict[str, Any] = Field(default_factory=dict)
+    owner_id: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^/\\\\\x00-\x1f]+$")
+    # Trusted server-side gateway input only. Never included in JobOut.
+    delivery: dict[str, Any] | None = None
 
 
 class JobBatchCreate(BaseModel):
@@ -83,6 +86,7 @@ class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
     url: str
+    owner_id: str | None = None
     engine: str
     status: str
     overrides: dict[str, Any]

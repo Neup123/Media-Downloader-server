@@ -160,3 +160,23 @@ assets or client scripts. The guard uses Linux kernel networking; validate host
 support before granting untrusted-user access. The local default binds port 8080
 to loopback. Configure user-specific WebDAV delivery via the Nextcloud integration
 rather than writing into the Nextcloud data directory.
+
+
+## Trusted per-user job submission (Nextcloud gateway)
+
+The server-only API token may submit an owner-scoped job with `owner_id` and
+`delivery` containing `mode=webdav`, `webdav_url`, `username`,
+`app_password`, and `folder`. This is a privileged **server-to-server**
+operation: do not put the API token or WebDAV password in browser JavaScript.
+The WebDAV username and root path must match the owner; missing per-job
+delivery configuration is rejected and cannot fall back to global settings.
+The destination and credential snapshot are encrypted at rest by
+`APP_ENCRYPTION_KEY`, survive retries/restarts, and never appear in job
+responses. `GET /api/v1/jobs?owner_id=...` lets the trusted gateway filter
+jobs; the gateway must still check ownership for single-job actions.
+
+A per-user destination subfolder must already exist. Missing/unwritable
+folders and quota failures result in actionable failure messages, not
+silent local delivery. The Nextcloud adaptation must supply actual per-user
+credentials and deliver a native Nextcloud notification to the owner.
+
