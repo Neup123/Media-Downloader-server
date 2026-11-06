@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 import subprocess
 from urllib.parse import quote
 from urllib.request import Request, urlopen
@@ -169,10 +170,81 @@ def equivalent_branch_candidates(
     return sorted(candidates)
 
 
+AUDITED_SUPERSEDED_CORE_HEADS = {
+    "ops/retire-audited-core-pre-main-branches":
+        "2b86dd5709657f910effd1da2481e96690fc4ec9",
+    "contract/enforce-engine-cookie-delivery-responses":
+        "b6addeb586111b35d21e7f0a43461ee69ebb0e35",
+    "feature/svtplay-dl-engine":
+        "71bac03d1777e6a0c050f8e78ba3e99ea73705f3",
+    "test/openapi-request-parity-svtplay":
+        "16bc000d2a96099487a76a559997e8edb5af34a4",
+    "test/openapi-request-schema-parity":
+        "f8cc1a89ccc586fcf78b7d9179eebdd322d418fc",
+    "test/openapi-request-schema-parity-ready":
+        "fee7f0427562c93c0f8a4ae0922bcf51e0e7ca8d",
+    "test/openapi-request-schema-parity-v2":
+        "fee7f0427562c93c0f8a4ae0922bcf51e0e7ca8d",
+}
+
+
+def audited_core_port_verified() -> bool:
+    """Require replacement source, more complete tests and response models."""
+    root = Path(__file__).resolve().parents[1]
+    files = [
+        root / "app/main.py", root / "app/schemas.py",
+        root / "app/adapters/svtplay.py",
+        root / "tests/test_openapi_request_shapes.py",
+        root / "tests/test_typed_engine_cookie_delivery_responses.py",
+        root / "tests/test_audited_core_legacy_cleanup.py",
+    ]
+    if not all(path.is_file() for path in files):
+        return False
+    main = files[0].read_text()
+    schemas = files[1].read_text()
+    svtplay = files[2].read_text()
+    api_tests = files[3].read_text()
+    response_tests = files[4].read_text()
+    return all([
+        "response_model=list[EngineStatusOut]" in main,
+        "response_model=CookieUploadedOut" in main,
+        "response_model=DeliverySettingsOut" in main,
+        "class EngineOptionsOut(BaseModel)" in schemas,
+        "class CookieDeletedOut(BaseModel)" in schemas,
+        "class DeliverySettingsOut(BaseModel)" in schemas,
+        '"--config", "/dev/null"' in svtplay,
+        "not isinstance(result[\"output_format\"], str)" in svtplay,
+        "test_checked_in_request_body_constraints_match_runtime_validation" in api_tests,
+        "test_job_response_contracts_match_fastapi_output_models" in api_tests,
+        "test_all_documented_response_models_match_runtime_openapi" in response_tests,
+    ])
+
+
+def audited_core_candidates(
+    branches: list[dict], pulls: list[dict], *, replacements_verified: bool,
+) -> list[tuple[str, str]]:
+    """One-off SHA-locked retirement; no guessing about divergent work."""
+    if not replacements_verified:
+        return []
+    open_heads = {
+        (pr.get("head") or {}).get("ref")
+        for pr in pulls if pr.get("state") == "open"
+    }
+    return sorted(
+        (name, AUDITED_SUPERSEDED_CORE_HEADS[name])
+        for branch in branches
+        if (name := branch.get("name")) in AUDITED_SUPERSEDED_CORE_HEADS
+        and name not in open_heads and not branch.get("protected")
+        and (branch.get("commit") or {}).get("sha") == AUDITED_SUPERSEDED_CORE_HEADS[name]
+    )
+
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Delete eligible refs with a SHA lease")
     parser.add_argument("--prune-equivalent", action="store_true", help="Retire ancestor and identical-file branches, never unique work")
+    parser.add_argument("--retire-audited-core", action="store_true", help="Retire only seven reviewed, SHA-locked superseded pre-main branches")
     args = parser.parse_args()
     repository = os.environ["GITHUB_REPOSITORY"]
     token = os.environ["GH_TOKEN"]
@@ -184,8 +256,18 @@ def main() -> None:
         candidates += equivalent_branch_candidates(
             repository, branches, pulls, token, {name for name, _ in candidates}
         )
+    equivalent = len(candidates) - exact
+    if args.retire_audited_core:
+        excluded = {name for name, _ in candidates}
+        candidates += [
+            pair for pair in audited_core_candidates(
+                branches, pulls, replacements_verified=audited_core_port_verified(),
+            )
+            if pair[0] not in excluded
+        ]
     print(f"Reviewed {len(branches)} branches and {len(pulls)} PRs; "
-          f"{exact} exact merged heads and {len(candidates) - exact} content-equivalent heads eligible")
+          f"{exact} exact merged heads, {equivalent} equivalent heads "
+          f"and {len(candidates) - exact - equivalent} audited legacy heads eligible")
     failures = []
     for name, sha in candidates:
         print(f"{'Deleting' if args.apply else 'Dry run'}: {name} at {sha[:12]}")
