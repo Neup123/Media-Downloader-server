@@ -42,7 +42,7 @@ jobs:
         if: steps.check.outputs.publish == 'true'
         run: |
           set -euo pipefail
-          python3 -m pip install -r requirements.txt
+          python3 -m pip install -r requirements.txt pytest
           python3 -m compileall -q app tests
           python3 -m pytest -q
       - name: Build the production versioned image
