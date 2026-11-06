@@ -136,8 +136,10 @@ def test_pypi_auto_upgrade_allowlist_requires_real_e2e_engine_coverage():
     assert "svtplay-dl" not in PYPI_ENGINE_SMOKE_VERIFIED
 
     workflow = (root / ".github/workflows/pinned-engine-updates.yml").read_text(encoding="utf-8")
-    assert "from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED" in workflow
-    assert "unsupported = sorted(item[\"engine\"]" in workflow
+    gate = (root / "scripts/engine_candidate_gate.py").read_text(encoding="utf-8")
+    assert "from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED" in gate
+    assert "unsupported = sorted(set(approved) - allowed)" in gate
+    assert "python -m scripts.engine_candidate_gate" in workflow
 
 
 def test_e2e_fixtures_use_exact_production_or_candidate_docker_ffmpeg():
