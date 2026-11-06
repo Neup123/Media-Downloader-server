@@ -180,3 +180,8 @@ folders and quota failures result in actionable failure messages, not
 silent local delivery. The Nextcloud adaptation must supply actual per-user
 credentials and deliver a native Nextcloud notification to the owner.
 
+
+
+### Per-user Nextcloud integration (core 0.2.0)
+
+The per-user Nextcloud ExApp requires the core image `ghcr.io/neup123/media-downloader-server:0.2.0` or newer with owner-scoped jobs and encrypted per-job WebDAV delivery. The earlier core 0.1.0 remains a standalone/admin-only release and does not accept the new per-user job payload. For an upgrade using the guarded Compose deployment, set `DOWNLOADER_IMAGE=ghcr.io/neup123/media-downloader-server:0.2.0` and restart the core. The database migration is additive. Keep the original encryption key and persisted volume, and never put the service token in browser assets.
