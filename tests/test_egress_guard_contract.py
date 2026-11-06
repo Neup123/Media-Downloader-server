@@ -55,3 +55,22 @@ def test_ci_probes_real_downloader_namespace_and_fails_on_reachable_targets():
     assert "192.168.0.1" in script
     assert "2001:db8::1" in script
     assert "down --volumes --remove-orphans" in script
+
+
+def test_ci_follows_real_http_redirect_into_denied_ip_without_external_site():
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/egress-guard-e2e.yml").read_text()
+    )
+    scripts = "\\n".join(
+        step.get("run", "") for step in workflow["jobs"]["kernel-egress"]["steps"]
+    )
+    # A real HTTP 307 must first be observed from the isolated application
+    # before failure to connect to a blocked redirect is counted as success.
+    assert "http://127.0.0.1:8080/healthz/" in scripts
+    assert "--header \"Host: $target\"" in scripts
+    assert "--write-out '%{redirect_url}'" in scripts
+    assert '[[ "$location" != "http://$target/healthz" ]]' in scripts
+    assert "--location --silent" in scripts
+    assert "followed redirect into denied IPv4 destination" in scripts
+    assert "169.254.169.254 10.0.0.1 192.168.0.1 127.0.0.2" in scripts
+    assert scripts.index('[[ "$location" !=') < scripts.index("--location --silent")
