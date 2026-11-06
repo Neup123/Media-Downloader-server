@@ -85,6 +85,15 @@ jobs:
           WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
         run: python tests/e2e_p2_site_webdav.py
 
+      - name: Archive successful P2 evidence without source URL or secrets
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: legal-p2-site-acceptance
+          path: p2-smoke-attestation.json
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Remove disposable Nextcloud, downloader and temporary credentials
         if: always()
         shell: bash
