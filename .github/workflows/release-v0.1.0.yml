@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
+      DATA_DIR: /tmp/downloader-release-test-data
       IMAGE: ghcr.io/neup123/media-downloader-server
       VERSION: 0.1.0
       GH_TOKEN: ${{ github.token }}
