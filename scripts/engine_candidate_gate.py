@@ -68,7 +68,7 @@ def review_candidate(
                 raise ValueError("PyPI candidate is missing its exact artifact SHA-256")
         else:
             package = item.get("package")
-            if DEBIAN_PACKAGES.get(package) != engine:
+            if not isinstance(package, str) or DEBIAN_PACKAGES.get(package) != engine:
                 raise ValueError("Debian engine/package mapping is inconsistent")
 
         approved[engine] = {"source": source, "from": old, "to": new}
