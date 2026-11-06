@@ -108,6 +108,44 @@ def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
 
 
 
+def _nextcloud_file_id(payload: bytes, target_url: str) -> str | None:
+    """Read the stable Nextcloud file ID only from this file's successful DAV propstat.
+
+    File IDs survive rename/move within Nextcloud, unlike WebDAV URL paths.
+    Return None for generic WebDAV servers without the Nextcloud extension.
+    """
+    if len(payload) > 1_000_000:
+        return None
+    try:
+        root = ET.fromstring(payload)
+    except ET.ParseError:
+        return None
+    ns = "{DAV:}"
+    nc = "{http://owncloud.org/ns}"
+    if root.tag != ns + "multistatus":
+        return None
+    expected = urlsplit(target_url)
+    ids: list[str] = []
+    for response in root.findall(ns + "response"):
+        href = response.findtext(ns + "href")
+        if not href:
+            continue
+        found = urlsplit(urljoin(target_url, href.strip()))
+        if (found.scheme != expected.scheme or found.netloc != expected.netloc
+                or unquote(found.path) != unquote(expected.path)
+                or found.query or found.fragment):
+            continue
+        for propstat in response.findall(ns + "propstat"):
+            status = (propstat.findtext(ns + "status") or "").strip()
+            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
+                continue
+            prop = propstat.find(ns + "prop")
+            file_id = prop.findtext(nc + "fileid") if prop is not None else None
+            if file_id and file_id.isdecimal() and len(file_id) <= 32:
+                ids.append(file_id)
+    return ids[0] if len(ids) == 1 else None
+
+
 def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
     """Verify a successful DAV:resourcetype collection property for this URL.
 
@@ -426,7 +464,7 @@ async def deliver_files(
                 "PROPFIND",
                 target,
                 headers={"Depth": "0", "Content-Type": "application/xml"},
-                content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>',
+                content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns"><d:prop><d:getcontentlength/><oc:fileid/></d:prop></d:propfind>',
             )
             if verify.status_code != 207:
                 raise _delivery_failure(verify.status_code, f"WebDAV verification failed for {source.name}")
@@ -440,6 +478,7 @@ async def deliver_files(
                 "path": target,
                 "delivery": "webdav",
                 "verified": True,
+                "file_id": _nextcloud_file_id(verify.content, target) if per_user else None,
             }
             output.append(item)
             await record(item)
