@@ -126,16 +126,19 @@ def run_browser_acceptance() -> None:
 
             page.get_by_role("button", name="Downloads", exact=True).click()
             form = page.locator("section.submit-panel form")
-            form.get_by_label("Engine", exact=True).select_option("yt-dlp")
-            form.get_by_label("Media URL", exact=True).fill(SOURCE_URL)
-            form.get_by_label("Format", exact=True).fill(YTDLP_OVERRIDE)
+            assert form.count() == 1, "Downloads tab did not render a unique submission form"
+            # Native wrapped <label><select> fields can have an accessible name
+            # expanded by the option list; target the real form structure.
+            form.locator("select").first.select_option("yt-dlp")
+            form.locator('input[type="url"]').fill(SOURCE_URL)
+            form.locator(".options-block > label input").first.fill(YTDLP_OVERRIDE)
             yt_job = submitted_job(page, api, "yt-dlp", {"format": YTDLP_OVERRIDE})
             verify_webdav_bytes(yt_job)
             print("Real Chromium: yt-dlp global + per-job settings + WebDAV PASS", flush=True)
 
-            form.get_by_label("Engine", exact=True).select_option("aria2c")
-            form.get_by_label("Media URL", exact=True).fill(SOURCE_URL)
-            form.get_by_label("Connections per server", exact=True).fill(ARIA_OVERRIDE)
+            form.locator("select").first.select_option("aria2c")
+            form.locator('input[type="url"]').fill(SOURCE_URL)
+            form.locator(".common-options input[type='number']").first.fill(ARIA_OVERRIDE)
             aria_job = submitted_job(
                 page, api, "aria2c",
                 {"options.max-connection-per-server": ARIA_OVERRIDE},
