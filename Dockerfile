@@ -5,7 +5,7 @@ RUN go install github.com/gan-of-culture/get-sauce@v1.10.0 \
     && go version -m /go/bin/get-sauce \
         | awk '$1 == "mod" && $2 == "github.com/gan-of-culture/get-sauce" {print $3}' \
         > /go/get-sauce.version \
-    && grep -Eq '^v[0-9]+\\.[0-9]+\\.[0-9]+
+    && grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+
 
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
