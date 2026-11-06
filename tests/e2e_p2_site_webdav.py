@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -16,8 +17,13 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from app.security import preflight_source_dns
-from scripts.p2_smoke_support import validate_site_smoke_source, verify_output_sets
-from e2e_live_webdav import api_client, configure_webdav, wait_for_services, NC_USER, NC_PASSWORD
+from scripts.p2_smoke_support import (
+    validate_site_smoke_source, verify_output_sets, build_p2_smoke_attestation,
+)
+from e2e_live_webdav import (
+    api_client, configure_webdav, wait_for_services, restart_downloader_compose,
+    check_persisted_job, NC_USER, NC_PASSWORD,
+)
 
 INSPECT_COMPLETED = r"""
 import json
@@ -76,6 +82,12 @@ def submit_and_wait_p2(client: httpx.Client, engine: str, url: str) -> dict:
     if response.status_code != 202:
         raise RuntimeError(f"P2 job submission failed: HTTP {response.status_code}")
     job_id = response.json()["id"]
+    return wait_for_p2_completion(client, job_id)
+
+
+def wait_for_p2_completion(client: httpx.Client, job_id: str) -> dict:
+    # A site extractor may put source URLs/tokens in its logs; never print logs,
+    # error payloads, response bodies or credentials on CI failure.
     deadline = time.monotonic() + 900
     while time.monotonic() < deadline:
         response = client.get(f"/jobs/{job_id}")
@@ -85,10 +97,19 @@ def submit_and_wait_p2(client: httpx.Client, engine: str, url: str) -> dict:
         if job["status"] == "completed":
             return job
         if job["status"] in {"failed", "cancelled"}:
-            # Do not print arbitrary engine logs/URLs/response bodies here.
-            raise RuntimeError(f"P2 job {job_id} ended {job['status']}; inspect sanitized logs privately")
+            raise RuntimeError(f"P2 job {job_id} ended {job['status']}; inspect private diagnostics")
         time.sleep(5)
-    raise RuntimeError("P2 site download timed out after 900 seconds")
+    raise RuntimeError("P2 site job did not complete within 900 seconds")
+
+
+def assert_same_completed_manifest(before: list[dict], after: list[dict]) -> None:
+    def exact_files(items: list[dict]) -> list[tuple[str, int, str]]:
+        return sorted(
+            (file["relative"], file["size"], file["sha256"])
+            for file in items
+        )
+    if not before or exact_files(before) != exact_files(after):
+        raise RuntimeError("P2 completed-download files changed across restart/re-delivery")
 
 
 def inspect_original_files(job_id: str) -> list[dict]:
@@ -144,7 +165,47 @@ def main() -> None:
         job = submit_and_wait_p2(client, engine, source)
     manifest = inspect_original_files(job["id"])
     verify_remote_files(job, manifest)
-    print(f"Real {engine} site-specific P2 -> disposable Nextcloud WebDAV: PASS")
+
+    # A real container restart must preserve source content, delivery audit,
+    # job logs and encrypted WebDAV credentials. Reuse the already verified
+    # delivery manifest instead of re-downloading the licensed media.
+    restart_downloader_compose()
+    wait_for_services()
+    with api_client() as client:
+        current = client.get(f"/jobs/{job['id']}")
+        if current.status_code != 200:
+            raise RuntimeError("Verified P2 job vanished across downloader restart")
+        restored = current.json()
+        check_persisted_job(job, restored)
+        restored_manifest = inspect_original_files(job["id"])
+        assert_same_completed_manifest(manifest, restored_manifest)
+        verify_remote_files(restored, restored_manifest)
+
+        delivery = client.get("/delivery")
+        if delivery.status_code != 200 or delivery.json().get("password_configured") is not True:
+            raise RuntimeError("WebDAV credentials were not restored after P2 restart")
+        if NC_PASSWORD in delivery.text:
+            raise RuntimeError("WebDAV delivery API unexpectedly returned its secret")
+
+        retry = client.post(f"/jobs/{job['id']}/redeliver")
+        if retry.status_code != 202:
+            raise RuntimeError("Completed P2 job could not request audited re-delivery")
+        redelivered = wait_for_p2_completion(client, job["id"])
+        if redelivered["id"] != job["id"]:
+            raise RuntimeError("P2 re-delivery changed the durable job identity")
+        final_manifest = inspect_original_files(job["id"])
+        assert_same_completed_manifest(manifest, final_manifest)
+        verify_remote_files(redelivered, final_manifest)
+
+    # Emit a source-URL-free, credential-free artifact only after ALL checks
+    # pass. Never publish raw source URLs, extractor logs or private filenames.
+    attestation = build_p2_smoke_attestation(
+        engine, final_manifest, os.environ["GITHUB_SHA"]
+    )
+    Path("p2-smoke-attestation.json").write_text(
+        json.dumps(attestation, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    print(f"Real {engine} P2 site -> Nextcloud WebDAV, restart and re-delivery: PASS")
 
 
 if __name__ == "__main__":

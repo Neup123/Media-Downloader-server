@@ -176,6 +176,22 @@ file must have the same relative path, size and SHA-256 as the corresponding
 completed local file. A partial or missing download is a failure. Neither
 the production Nextcloud instance nor its credentials are used.
 
+After remote integrity is proved, the manual acceptance now restarts the
+actual downloader Docker Compose service without deleting its volume.
+It verifies that the same P2 job, local SHA-256 manifest, execution record
+and encrypted WebDAV connection remain available, then re-delivers the job
+from its existing workspace and performs full remote streaming SHA-256
+readback again. Source media is not re-downloaded during the re-delivery.
+
+Only when **all** checks pass, the manual job publishes a 30-day
+`legal-p2-site-acceptance` evidence artifact. Its JSON includes the exact
+core commit SHA, selected P2 engine, number of verified files, total byte
+count and a deterministic SHA-256 digest of the completed file manifest,
+plus restart/re-delivery pass flags. It intentionally excludes the source
+URL, downloaded filenames, credentials and extractor logs. The artifact
+does not certify a production Nextcloud target, approve P2 auto-upgrades or
+make the source content itself publicly available.
+
 A green manual test is evidence only for the chosen engine, source, pinned
 version and CI environment. **Neither P2 engine is automatically approved**
 for unattended version updates until stable, legal, repeatable site-specific
