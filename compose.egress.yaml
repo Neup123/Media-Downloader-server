@@ -26,7 +26,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: downloader-server:local
+    image: ${DOWNLOADER_IMAGE:-downloader-server:local}
     init: true
     restart: unless-stopped
     network_mode: service:egress-guard

@@ -141,3 +141,22 @@ python -m pytest -q
 ```
 
 See [BLUEPRINT.md](BLUEPRINT.md) for the complete implementation sequence and acceptance criteria.
+
+
+## Versioned 0.1.0 GHCR installation
+
+The release image is `ghcr.io/neup123/media-downloader-server:0.1.0`.
+For a guarded Docker deployment, prepare `.env` from `.env.example`, configure
+a long random `APP_API_TOKEN` and `APP_ENCRYPTION_KEY`, and start:
+
+```sh
+docker compose -f compose.egress.yaml build egress-guard
+DOWNLOADER_IMAGE=ghcr.io/neup123/media-downloader-server:0.1.0 \
+  docker compose -f compose.egress.yaml up -d --no-build
+```
+
+Keep `APP_API_TOKEN` exclusively on the server/ExApp, not in Nextcloud browser
+assets or client scripts. The guard uses Linux kernel networking; validate host
+support before granting untrusted-user access. The local default binds port 8080
+to loopback. Configure user-specific WebDAV delivery via the Nextcloud integration
+rather than writing into the Nextcloud data directory.
