@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "41 6 * * 2"
   workflow_dispatch:
+    inputs:
+      rehearsal_only:
+        description: "Rehearse red/green candidate acceptance on current pins; never create PR/issue/release"
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -37,6 +43,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ inputs.rehearsal_only }}" == "true" ]]; then
+            python -m scripts.engine_update_rehearsal \
+              --python-report engine-update-report.json \
+              --debian-report debian-engine-update-report.json \
+              --rehearsal-report engine-update-rehearsal.json
+            git diff --exit-code -- requirements.txt Dockerfile
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Synthetic candidate only; no repository mutation."
+            exit 0
+          fi
           python scripts/engine_updates.py --report engine-update-report.json --apply | tee engine-update-detection.log
           # Query the exact runtime Debian distribution rather than the host's Ubuntu apt policy.
           # Never substitute packages from testing/sid or relax an existing pin.
@@ -54,7 +70,7 @@ jobs:
           fi
 
       - name: Open a dedicated candidate PR (the remaining steps test that exact candidate)
-        if: steps.detect.outputs.changed == 'true'
+        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
         id: open_pr
         shell: bash
         run: |
@@ -208,6 +224,7 @@ jobs:
             engine-update-report.json
             debian-engine-update-report.json
             engine-promotion-report.json
+            engine-update-rehearsal.json
             engine-update-diagnostics.txt
           retention-days: 30
 
@@ -223,7 +240,7 @@ jobs:
       # An absent repository variable fails CLOSED.
       - name: Merge green candidate (normal branch protection still applies)
         id: promote
-        if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -248,7 +265,7 @@ jobs:
           echo "merged_sha=$merged_sha" >> "$GITHUB_OUTPUT"
 
       - name: Cut a patch release from the tested merged main
-        if: success() && steps.detect.outputs.changed == 'true' && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -286,7 +303,7 @@ jobs:
           gh release create "$tag" --target "$merged_sha" --title "$tag" --notes-file engine-update-release.md
 
       - name: Open or refresh blocked-update issue on any red gate
-        if: failure() && steps.detect.outputs.changed == 'true'
+        if: failure() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
         shell: bash
         run: |
           set +e

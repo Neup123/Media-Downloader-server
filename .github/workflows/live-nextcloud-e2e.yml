@@ -16,6 +16,10 @@ on:
       - "tests/e2e_standalone_compose.py"
       - "tests/e2e_browser_engine_settings.py"
       - "tests/test_browser_option_mapping_contract.py"
+      - "scripts/engine_candidate_gate.py"
+      - "scripts/engine_update_rehearsal.py"
+      - "tests/test_engine_update_rehearsal.py"
+      - ".github/workflows/pinned-engine-updates.yml"
 
 permissions:
   contents: read
@@ -85,6 +89,30 @@ jobs:
 
       - name: Install test dependencies
         run: python -m pip install -r requirements.txt
+
+      - name: Rehearse green update, blocked P2 and blocked duplicate without publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m scripts.engine_update_rehearsal \
+            --python-report engine-update-report.json \
+            --debian-report debian-engine-update-report.json \
+            --rehearsal-report engine-update-rehearsal.json
+          python -m scripts.engine_candidate_gate \
+            --python-report engine-update-report.json \
+            --debian-report debian-engine-update-report.json \
+            --output engine-promotion-report.json
+          # A PR acceptance rehearsal must never update engine pins.
+          git diff --exit-code -- requirements.txt Dockerfile
+
+      - name: Preserve safe engine release gate rehearsal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: engine-release-rehearsal-${{ github.run_id }}
+          path: |
+            engine-update-rehearsal.json
+            engine-promotion-report.json
+          retention-days: 14
 
       - name: Build production image and generate a deterministic legal media fixture
         run: |

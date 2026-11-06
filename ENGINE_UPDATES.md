@@ -61,6 +61,34 @@ review have been demonstrated. A green candidate may still be reviewed and merge
 manually after independent approval. This makes source promotion to `main` a
 *development milestone*, not a production-release declaration.
 
+## Safe GitHub Actions red/green rehearsal
+
+The weekly `pinned-engine-updates.yml` workflow also exposes a **manual-only**
+`rehearsal_only` checkbox. When enabled, it reuses the complete candidate
+eligibility, Python/CLI tests, production Docker build and real disposable
+Nextcloud/WebDAV SHA-256 acceptance, while explicitly **skipping** candidate
+PR creation, production merge, release creation and blocked-issue creation.
+
+Its synthetic update reports represent a deliberately older placeholder
+version being replaced by the **already pinned current** yt-dlp and aria2
+versions. The yt-dlp artifact digest is retrieved from the exact official
+PyPI release metadata, and the aria2 version comes from the checked-in
+Dockerfile. There is no package bump. The green path checks that the
+PyPI/Debian combined candidate passes policy; the red paths prove that
+an unsupported svtplay-dl update and a duplicate candidate are rejected.
+
+The ordinary `live-nextcloud-e2e.yml` workflow now runs this candidate
+rehearsal before starting the downloader/Nextcloud containers and archives
+its non-secret JSON evidence. Its subsequent real download, restart,
+re-delivery and browser checks still exercise only currently pinned engines.
+
+**Interpretation:** A green rehearsal shows the policy and existing
+known-good engine binaries pass the actual GitHub Actions acceptance
+pipeline; it is *not* a green real-version-upgrade candidate, an
+end-to-end P2 site test or a production release demonstration. The
+repository variable `DOWNLOADER_AUTOMATED_RELEASES_APPROVED` remains
+untouched and the real target Nextcloud remains unverified.
+
 ## Combined candidate eligibility and exact release provenance
 
 The pinned PyPI and Debian tracks now use
