@@ -64,6 +64,8 @@ def test_manual_p2_acceptance_runs_live_restart_and_verified_redelivery():
         "inspect_original_files(job",
         'delivery.json().get("password_configured") is not True',
         "NC_PASSWORD in delivery.text",
+        "build_p2_smoke_attestation(",
+        "p2-smoke-attestation.json",
         "redelivered[\"id\"] != job[\"id\"]",
     ):
         assert required in source
@@ -94,6 +96,9 @@ def test_manual_only_p2_workflow_preserves_ephemeral_credentials_and_cleanup():
     code = "\n".join(step.get("run", "") for step in steps)
     assert "tests/e2e_p2_site_webdav.py" in code
     assert "NEXTCLOUD_ADMIN_PASSWORD" in code
+    assert "p2-smoke-attestation.json" in code
+    assert "actions/upload-artifact@v4" in [step.get("uses", "") for step in steps]
+    assert any(step.get("if") == "success()" and step.get("uses") == "actions/upload-artifact@v4" for step in steps)
     assert "down --volumes --remove-orphans" in code
     assert all("gh pr merge" not in step.get("run", "") for step in steps)
     assert all("gh release" not in step.get("run", "") for step in steps)
