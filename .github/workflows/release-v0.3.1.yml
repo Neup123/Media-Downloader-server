@@ -1,0 +1,78 @@
+name: Publish Downloader Server 0.3.1 release image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/release-v0.3.1.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: downloader-core-v0.3.1-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main' && github.repository == 'Neup123/Media-Downloader-server'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DATA_DIR: /tmp/downloader-release-test-data
+      IMAGE: ghcr.io/neup123/media-downloader-server
+      VERSION: 0.3.1
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Refuse to move an existing versioned release
+        id: check
+        run: |
+          set -euo pipefail
+          if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists; no republish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run release unit acceptance
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          python3 -m pip install -r requirements.txt pytest
+          python3 -m compileall -q app tests
+          python3 -m pytest -q
+      - name: Build the production versioned image
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          docker build --pull --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.version=$VERSION" \
+            -t "$IMAGE:$VERSION" .
+      - name: Publish to GHCR and verify it can be pulled
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          if docker manifest inspect "$IMAGE:$VERSION" >/dev/null 2>&1; then
+            docker pull "$IMAGE:$VERSION"
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.version"}}' "$IMAGE:$VERSION")" = "$VERSION"
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE:$VERSION")" = "$GITHUB_SHA"
+          else
+            docker push "$IMAGE:$VERSION"
+            docker image rm "$IMAGE:$VERSION"
+            docker pull "$IMAGE:$VERSION"
+            test "$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$IMAGE:$VERSION")" = "$GITHUB_SHA"
+          fi
+      - name: Create GitHub v0.3.1 release only after registry verification
+        if: steps.check.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Downloader Server $VERSION" \
+            --notes "Versioned standalone service image: \`$IMAGE:$VERSION\`. Run with the egress-guard Compose profile and a private server-only token; see README for installation."
