@@ -70,7 +70,7 @@ def submitted_job(page, client: httpx.Client, engine: str, expected_overrides: d
         lambda response: response.url.endswith("/api/v1/jobs")
         and response.request.method == "POST", timeout=30000
     ) as submitted:
-        page.get_by_role("button", name="Add to queue", exact=True).click()
+        page.locator("section.submit-panel form button.primary").click()
     response = submitted.value
     assert response.status == 202, f"UI job request was HTTP {response.status}"
     job = response.json()
@@ -125,9 +125,7 @@ def run_browser_acceptance() -> None:
             assert fetch_settings(api, "aria2c")["options"]["max-connection-per-server"] == ARIA_GLOBAL
 
             page.get_by_role("button", name="Downloads", exact=True).click()
-            form = page.locator("form").filter(
-                has=page.get_by_role("button", name="Add to queue", exact=True)
-            )
+            form = page.locator("section.submit-panel form")
             form.get_by_label("Engine", exact=True).select_option("yt-dlp")
             form.get_by_label("Media URL", exact=True).fill(SOURCE_URL)
             form.get_by_label("Format", exact=True).fill(YTDLP_OVERRIDE)
@@ -146,7 +144,7 @@ def run_browser_acceptance() -> None:
             print("Real Chromium: aria2c global + per-job settings + WebDAV PASS", flush=True)
             print("BROWSER ENGINE SETTINGS ACCEPTANCE: PASS", flush=True)
         except Exception:
-            page.screenshot(path="/tmp/downloader-ui-failure.png", full_page=True)
+            page.screenshot(path="browser-failure.png", full_page=True)
             raise
         finally:
             browser.close()
