@@ -121,7 +121,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                         # info. Do not label a different PATH binary using it.
                         try:
                             module_version = (ROOT / "get-sauce.version").read_text().strip()
-                            if re.fullmatch(r"v[0-9]+\\.[0-9]+\\.[0-9]+", module_version):
+                            if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", module_version):
                                 version = module_version + " (Go module)"
                         except OSError:
                             pass
