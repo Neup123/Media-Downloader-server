@@ -49,6 +49,15 @@ def assert_standalone_service() -> None:
         assert isinstance(engine_names, list) and engine_names, (
             "Standalone API did not return installed engines"
         )
+        installed = {item["name"]: item for item in engine_names}
+        # Round 1 found an empty get-sauce version despite the pinned Go
+        # executable being installed. Exercise the real production binary,
+        # not a mocked subprocess response.
+        assert installed["get-sauce"]["installed"] is True
+        version = installed["get-sauce"]["version"]
+        assert isinstance(version, str) and version.strip() and "1.10.0" in version, (
+            "Installed get-sauce did not expose its pinned 1.10.0 build version"
+        )
         jobs = authorized.get("/jobs")
         assert jobs.status_code == 200 and jobs.json() == [], (
             "New standalone Compose installation does not have a clean queue"

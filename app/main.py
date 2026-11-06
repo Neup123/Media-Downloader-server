@@ -108,8 +108,23 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                         [executable, version_flag], capture_output=True, text=True,
                         timeout=4, check=False, env=downloader_environment(),
                     )
-                    lines = (completed.stdout or completed.stderr).splitlines()
-                    version = lines[0][:160] if completed.returncode == 0 and lines else "unknown"
+                    # get-sauce's -v can exit successfully while printing
+                    # a blank line. Ignore empty lines and do not treat help,
+                    # errors or whitespace as a meaningful engine version.
+                    lines = (completed.stdout or "").splitlines() + (completed.stderr or "").splitlines()
+                    version = next((line.strip()[:160] for line in lines if line.strip()), "unknown") \
+                        if completed.returncode == 0 else "unknown"
+                    if item["name"] == "get-sauce" and version == "unknown" \
+                            and Path(executable) == Path("/usr/local/bin/get-sauce"):
+                        # The production build records the pinned Go module
+                        # version extracted from the installed binary's build
+                        # info. Do not label a different PATH binary using it.
+                        try:
+                            module_version = (ROOT / "get-sauce.version").read_text().strip()
+                            if re.fullmatch(r"v[0-9]+\.[0-9]+\.[0-9]+", module_version):
+                                version = module_version + " (Go module)"
+                        except OSError:
+                            pass
                 except (OSError, subprocess.TimeoutExpired, IndexError):
                     version = "unknown"
             result.append({

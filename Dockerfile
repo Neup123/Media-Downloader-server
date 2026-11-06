@@ -2,6 +2,7 @@
 FROM golang:1.27-alpine AS get-sauce-build
 ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN go install github.com/gan-of-culture/get-sauce@v1.10.0
+RUN go version -m /go/bin/get-sauce | awk '$1 == "mod" && $2 == "github.com/gan-of-culture/get-sauce" {print $3}' > /go/get-sauce.version && grep -Eq '^v[0-9]+[.][0-9]+[.][0-9]+$' /go/get-sauce.version
 
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
@@ -35,6 +36,8 @@ COPY app/ ./app/
 COPY openapi.yaml ./openapi.yaml
 COPY --from=web-build /web/dist ./web/dist
 COPY --from=get-sauce-build /go/bin/get-sauce /usr/local/bin/get-sauce
+# Built from the installed binary's module metadata, not a guessed CLI version.
+COPY --from=get-sauce-build /go/get-sauce.version /app/get-sauce.version
 RUN chown -R downloader:downloader /app
 USER downloader
 EXPOSE 8080
