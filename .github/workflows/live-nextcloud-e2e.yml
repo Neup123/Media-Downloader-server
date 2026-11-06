@@ -139,17 +139,21 @@ jobs:
           WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
           MEDIA_FIXTURE: fixture/sample.mp4
 
-      - name: Install pinned Chromium browser acceptance runner
-        run: |
-          set -euo pipefail
-          python -m pip install playwright==1.56.0
-          python -m playwright install --with-deps chromium
-
-      - name: Test actual React UI global/per-job engine settings against production API and Nextcloud
+      - name: Test actual React UI global/per-job settings using bundled Chromium image
         env:
           DOWNLOADER_UI_URL: http://127.0.0.1:8080
           SOURCE_URL: http://media-source:9000/sample.mp4
-        run: python tests/e2e_browser_engine_settings.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The official image includes Chromium and all OS libraries. Avoid
+          # unbounded apt mirror upgrades on each disposable acceptance run.
+          docker run --rm --network host \
+            --env APP_API_TOKEN --env NEXTCLOUD_ADMIN_PASSWORD \
+            --env DOWNLOADER_UI_URL --env SOURCE_URL \
+            --volume "$PWD:/work" --workdir /work \
+            mcr.microsoft.com/playwright/python:v1.56.0-noble \
+            bash -lc 'python -m pip install --no-cache-dir playwright==1.56.0 httpx==0.28.1 && python tests/e2e_browser_engine_settings.py'
 
       - name: Upload browser failure screenshot
         if: failure()
