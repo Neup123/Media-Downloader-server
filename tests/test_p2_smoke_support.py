@@ -6,6 +6,7 @@ import pytest
 
 from scripts.p2_smoke_support import (
     relative_webdav_output, validate_site_smoke_source, verify_output_sets,
+    build_p2_smoke_attestation,
 )
 
 JOB = str(uuid4())
@@ -71,3 +72,48 @@ def test_manual_p2_ci_does_not_enable_p2_auto_update_gate():
     assert "gh pr merge" not in code
     from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED
     assert "svtplay-dl" not in PYPI_ENGINE_SMOKE_VERIFIED
+
+
+def test_p2_attestation_proves_exact_revision_and_redacts_source_names():
+    original = [
+        {"relative": "secret-episode-name.mp4", "size": 4300, "sha256": "a" * 64, "media_verified": True},
+        {"relative": "private-cover.jpg", "size": 501, "sha256": "b" * 64, "media_verified": True},
+    ]
+    proof = build_p2_smoke_attestation("svtplay-dl", original, "c" * 40)
+    assert proof["schema_version"] == 1
+    assert proof["status"] == "verified"
+    assert proof["file_count"] == 2
+    assert proof["total_verified_bytes"] == 4801
+    assert proof["source_revision"] == "c" * 40
+    assert proof["media_parsed_or_checked"] == 2
+    assert proof["webdav_stream_sha256_verified"] is True
+    assert proof["durable_after_compose_restart"] is True
+    assert proof["redelivery_from_same_job_verified"] is True
+    assert proof["production_target_verified"] is False
+    assert proof["automatic_p2_releases_authorized"] is False
+    serialized = __import__("json").dumps(proof)
+    assert "secret-episode-name" not in serialized
+    assert "private-cover" not in serialized
+    assert "source_url" not in serialized.replace('"source_url_recorded"', "")
+    assert proof["source_url_recorded"] is False
+    assert build_p2_smoke_attestation(
+        "svtplay-dl", list(reversed(original)), "c" * 40
+    )["completion_manifest_sha256"] == proof["completion_manifest_sha256"]
+    changed = [{**original[0], "sha256": "f" * 64}, original[1]]
+    assert build_p2_smoke_attestation(
+        "svtplay-dl", changed, "c" * 40
+    )["completion_manifest_sha256"] != proof["completion_manifest_sha256"]
+
+
+@pytest.mark.parametrize("engine,manifest,sha", [
+    ("yt-dlp", [{"relative": "a", "size": 1, "sha256": "a" * 64}], "c" * 40),
+    ("get-sauce", [], "c" * 40),
+    ("get-sauce", [{"relative": "../secret", "size": 1, "sha256": "a" * 64}], "c" * 40),
+    ("get-sauce", [{"relative": "a", "size": -1, "sha256": "a" * 64}], "c" * 40),
+    ("get-sauce", [{"relative": "a", "size": 1, "sha256": "z" * 64}], "c" * 40),
+    ("get-sauce", [{"relative": "a", "size": 1, "sha256": "a" * 64}] * 2, "c" * 40),
+    ("get-sauce", [{"relative": "a", "size": 1, "sha256": "a" * 64}], "unknown"),
+])
+def test_p2_attestation_fails_closed_on_unverified_manifest(engine, manifest, sha):
+    with pytest.raises(ValueError):
+        build_p2_smoke_attestation(engine, manifest, sha)
