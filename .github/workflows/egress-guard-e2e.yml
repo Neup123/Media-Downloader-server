@@ -1,0 +1,92 @@
+name: Kernel-enforced downloader egress acceptance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/egress-guard-e2e.yml"
+      - "Dockerfile.egress"
+      - "compose.egress.yaml"
+      - "scripts/egress_guard.sh"
+      - "tests/test_egress_guard_contract.py"
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/egress-guard-e2e.yml"
+      - "Dockerfile.egress"
+      - "compose.egress.yaml"
+      - "scripts/egress_guard.sh"
+      - "tests/test_egress_guard_contract.py"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  kernel-egress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create masked ephemeral credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import secrets
+          token = secrets.token_urlsafe(48)
+          print("::add-mask::" + token)
+          with open(".env.egress", "w", encoding="utf-8") as output:
+              output.write("APP_API_TOKEN=" + token + "\n")
+          PY
+
+      - name: Validate and start isolated guarded Compose stack
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker compose --env-file .env.egress -f compose.egress.yaml config --quiet
+          docker compose --env-file .env.egress -f compose.egress.yaml up -d --build --wait
+
+      - name: Verify real kernel restrictions inside the downloader namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose --env-file .env.egress -f compose.egress.yaml)
+          "${compose[@]}" exec -T downloader-server curl --fail --silent --noproxy '*' http://127.0.0.1:8080/healthz
+          # The tested process is the downloader, NOT just the privileged guard.
+          # --resolve simulates DNS rebinding after an apparently public URL.
+          for target in 169.254.169.254 10.0.0.1 172.16.0.1 192.168.0.1 127.0.0.2 198.18.0.1; do
+            if "${compose[@]}" exec -T downloader-server curl --noproxy '*' \
+              --silent --output /dev/null --connect-timeout 2 --max-time 4 \
+              --resolve "example.org:80:$target" http://example.org/; then
+              echo "::error::Blocked IPv4 target was reachable from downloader namespace"
+              exit 1
+            fi
+          done
+          # IPv6 literal connection must also be blocked. The kernel may not
+          # have an IPv6 route; either route failure or firewall rejection is safe.
+          for target in '[::1]' '[fc00::1]' '[fe80::1]' '[2001:db8::1]'; do
+            if "${compose[@]}" exec -T downloader-server curl --noproxy '*' \
+              --silent --output /dev/null --connect-timeout 2 --max-time 4 \
+              "http://$target/"; then
+              echo "::error::Blocked IPv6 target was reachable from downloader namespace"
+              exit 1
+            fi
+          done
+          "${compose[@]}" exec -T egress-guard iptables -w -C OUTPUT -j DOWNLOADER_EGRESS
+          "${compose[@]}" exec -T egress-guard ip6tables -w -C OUTPUT -j DOWNLOADER_EGRESS
+          echo "Downloader namespace private/metadata/IPv6 egress rejection: PASS"
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        shell: bash
+        run: |
+          docker compose --env-file .env.egress -f compose.egress.yaml ps || true
+          docker compose --env-file .env.egress -f compose.egress.yaml logs --no-color || true
+
+      - name: Remove disposable containers and persistent test volume
+        if: always()
+        shell: bash
+        run: |
+          docker compose --env-file .env.egress -f compose.egress.yaml down --volumes --remove-orphans || true
+          rm -f .env.egress
