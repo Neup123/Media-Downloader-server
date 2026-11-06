@@ -243,6 +243,29 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200': { description: Rule deleted }
         '404': { description: Rule not found }
+  /provenance:
+    get:
+      operationId: getFileProvenance
+      summary: Resolve a downloaded Nextcloud file's source for its owner
+      tags: [jobs]
+      parameters:
+        - name: owner_id
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 255 }
+        - name: file_id
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: File provenance not found for this owner }
+        '422': { description: Invalid file identity }
+        '200':
+          description: Download source bound to the owner and stable Nextcloud file ID
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
   /jobs:
     get:
       operationId: listJobs

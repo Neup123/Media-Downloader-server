@@ -370,6 +370,35 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         query = query.order_by(Job.created_at.desc()).limit(limit)
         return [job_to_dict(job) for job in session.scalars(query).all()]
 
+    @app.get("/api/v1/provenance", tags=["jobs"])
+    def file_provenance(owner_id: str, file_id: str,
+                        _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        """Lookup the original download by Nextcloud's stable file ID and owner.
+
+        Only the trusted gateway can call this route. The gateway takes the
+        owner from the signed AppAPI identity, not from the browser.
+        """
+        if not owner_id or len(owner_id) > 255 or not file_id.isdecimal() or len(file_id) > 32:
+            raise HTTPException(status_code=422, detail="Invalid file identity")
+        jobs = session.scalars(
+            select(Job).where(Job.owner_id == owner_id, Job.status == "completed")
+            .order_by(Job.created_at.desc())
+        ).all()
+        for job in jobs:
+            for item in job.output_files or []:
+                if item.get("verified") and str(item.get("file_id") or "") == file_id:
+                    return {
+                        "job_id": job.id,
+                        "file_id": file_id,
+                        "owner_id": owner_id,
+                        "source_url": job.url,
+                        "engine": job.engine,
+                        "created_at": job.created_at.isoformat(),
+                        "filename": item.get("filename", ""),
+                    }
+        raise HTTPException(status_code=404, detail="This file has no download provenance")
+
+
     @app.get("/api/v1/jobs/{job_id}", response_model=JobOut, tags=["jobs"])
     def get_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
