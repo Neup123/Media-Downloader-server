@@ -11,6 +11,12 @@ iptables -w -I OUTPUT 1 -j DOWNLOADER_EGRESS
 ip6tables -w -N DOWNLOADER_EGRESS
 ip6tables -w -I OUTPUT 1 -j DOWNLOADER_EGRESS
 
+# Allow response packets for connections already permitted by this policy.
+# Without this, localhost replies use ephemeral destination ports and the
+# health check/aria2 RPC fail despite their outbound request being allowed.
+iptables -w -A DOWNLOADER_EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+ip6tables -w -A DOWNLOADER_EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+
 # The Docker embedded DNS resolver is reachable only on port 53.
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.11/32 -p udp --dport 53 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.11/32 -p tcp --dport 53 -j ACCEPT
