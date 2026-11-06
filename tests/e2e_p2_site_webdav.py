@@ -20,7 +20,10 @@ from app.security import preflight_source_dns
 from scripts.p2_smoke_support import (
     validate_site_smoke_source, verify_output_sets, build_p2_smoke_attestation,
 )
-from e2e_live_webdav import (\n    api_client, configure_webdav, wait_for_services, restart_downloader_compose,\n    check_persisted_job, NC_USER, NC_PASSWORD,\n)
+from e2e_live_webdav import (
+    api_client, configure_webdav, wait_for_services, restart_downloader_compose,
+    check_persisted_job, NC_USER, NC_PASSWORD,
+)
 
 INSPECT_COMPLETED = r"""
 import json
