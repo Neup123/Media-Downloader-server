@@ -84,7 +84,7 @@ jobs:
           number=$(gh pr view "$branch" --json number --jq .number)
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
-      - name: Require reviewed source provenance and a real smoke fixture for every updated engine
+      - name: Require a real smoke test and reviewed source provenance for every updated engine
         if: steps.detect.outputs.changed == 'true'
         shell: bash
         run: |
