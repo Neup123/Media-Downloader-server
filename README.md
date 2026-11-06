@@ -88,7 +88,7 @@ The gallery-dl options UI accepts a JSON object to expose its large and site-spe
 
 The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEPRINT.md). All seven bundled adapters are implemented; site-specific P2 smoke coverage, external-network egress enforcement, and deployment acceptance remain outstanding.
 
-The manually dispatched `Manual legal P2 site smoke into disposable Nextcloud` workflow accepts an explicitly authorized public `svtplay-dl` or `get-sauce` test URL. It verifies the actual completed output files against files read back from temporary Nextcloud by streaming SHA-256, including basic media readability checks. No legal, stable P2 site fixtures are embedded; simply adding this workflow is **not** a passing P2 site test or permission to auto-merge P2 upgrades. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md).
+The manually dispatched `Manual legal P2 site smoke into disposable Nextcloud` workflow accepts an explicitly authorized public `svtplay-dl` or `get-sauce` test URL. It verifies actual completed output files against files read back from temporary Nextcloud by streaming SHA-256, including basic media readability checks, real downloader-Compose restart persistence, and audited re-delivery without re-downloading the source. On complete success it retains a 30-day source-URL-free, filename-free exact-commit evidence artifact. No legal, stable P2 site fixtures are embedded; simply adding this workflow is **not** a passing P2 site test or permission to auto-merge P2 upgrades. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md).
 
 ## Automated Python engine updates
 
