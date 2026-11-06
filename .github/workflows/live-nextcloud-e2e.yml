@@ -14,6 +14,8 @@ on:
       - "app/**"
       - "tests/e2e_live_webdav.py"
       - "tests/e2e_standalone_compose.py"
+      - "tests/e2e_browser_engine_settings.py"
+      - "tests/test_browser_option_mapping_contract.py"
 
 permissions:
   contents: read
@@ -137,6 +139,31 @@ jobs:
           WEBDAV_BASE_URL: http://nextcloud/remote.php/dav/files/admin
           MEDIA_FIXTURE: fixture/sample.mp4
 
+      - name: Test actual React UI global/per-job settings using bundled Chromium image
+        env:
+          DOWNLOADER_UI_URL: http://127.0.0.1:8080
+          SOURCE_URL: http://media-source:9000/sample.mp4
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The official image includes Chromium and all OS libraries. Avoid
+          # unbounded apt mirror upgrades on each disposable acceptance run.
+          docker run --rm --network host \
+            --env APP_API_TOKEN --env NEXTCLOUD_ADMIN_PASSWORD \
+            --env DOWNLOADER_UI_URL --env SOURCE_URL \
+            --volume "$PWD:/work" --workdir /work \
+            mcr.microsoft.com/playwright/python:v1.56.0-noble \
+            bash -lc 'python -m pip install --no-cache-dir playwright==1.56.0 httpx==0.28.1 && python tests/e2e_browser_engine_settings.py'
+
+      - name: Upload browser failure screenshot
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downloader-browser-failure-${{ github.run_id }}
+          path: browser-failure.png
+          if-no-files-found: ignore
+          retention-days: 7
+
       - name: Collect container logs on failure
         if: failure()
         run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml logs --no-color
@@ -145,4 +172,4 @@ jobs:
         if: always()
         run: |
           docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml down --volumes --remove-orphans || true
-          rm -f .env.e2e
+          rm -f .env.e2e browser-failure.png
