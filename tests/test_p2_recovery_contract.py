@@ -96,7 +96,7 @@ def test_manual_only_p2_workflow_preserves_ephemeral_credentials_and_cleanup():
     code = "\n".join(step.get("run", "") for step in steps)
     assert "tests/e2e_p2_site_webdav.py" in code
     assert "NEXTCLOUD_ADMIN_PASSWORD" in code
-    assert "p2-smoke-attestation.json" in code
+    assert any(step.get("with", {}).get("path") == "p2-smoke-attestation.json" for step in steps)
     assert "actions/upload-artifact@v4" in [step.get("uses", "") for step in steps]
     assert any(step.get("if") == "success()" and step.get("uses") == "actions/upload-artifact@v4" for step in steps)
     assert "down --volumes --remove-orphans" in code
