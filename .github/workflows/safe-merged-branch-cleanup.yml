@@ -35,8 +35,8 @@ jobs:
           python-version: "3.13"
 
       - name: Inventory merged and equivalent stale branches (dry-run)
-        run: python scripts/cleanup_merged_branches.py --prune-equivalent
+        run: python scripts/cleanup_merged_branches.py --prune-equivalent --retire-audited-core
 
       - name: Remove eligible stale branches with SHA leases
         if: github.event_name == 'push' || inputs.apply == true
-        run: python scripts/cleanup_merged_branches.py --prune-equivalent --apply
+        run: python scripts/cleanup_merged_branches.py --prune-equivalent --retire-audited-core --apply
