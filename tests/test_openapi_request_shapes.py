@@ -148,7 +148,7 @@ def test_job_response_models_preserve_log_and_state(client, auth_headers):
     })
     assert job.status_code == 202
     expected = {
-        "id", "url", "engine", "status", "overrides", "progress",
+        "id", "url", "owner_id", "engine", "status", "overrides", "progress",
         "output_files", "log_text", "error", "cancel_requested",
         "created_at", "updated_at", "finished_at",
     }
