@@ -110,10 +110,22 @@ enabled, the workflow additionally:
    Docker and real disposable-Nextcloud SHA-256 tests passed.
 2. Squash-merges only that candidate, requiring the resulting immutable
    merge SHA to equal the current remote `main` tip.
-3. Rechecks the remote `main` immediately before publication, and
-   creates the patch release with an **exact commit SHA** target rather
-   than the mutable name `main`. A race or incomplete merge fails
-   closed without publishing a release for a different commit.
+3. Rechecks the remote `main` immediately before publication and
+   checks out the **exact merged commit SHA**; the built production image
+   is labelled with that commit and the derived immutable release version.
+4. Publishes a **pullable** versioned GHCR core image, refuses to overwrite
+   an existing version tag, pulls it back by tag and digest, and verifies the
+   source revision label. The GitHub patch release is created **only after**
+   these registry readbacks, recording the exact image digest and merged
+   source SHA rather than the mutable name `main`. A race or incomplete
+   merge fails closed without publishing a release for a different commit.
+
+These steps have static/CI contract coverage, but the **real automatic
+engine version bump -> GHCR publication -> GitHub release success path remains
+undemonstrated** because the explicit approval variable is still unset.
+A candidate that fails after pushing the image but before creating the
+release leaves a reserved GHCR tag and a blocked-update issue for operator
+reconciliation; the job intentionally refuses to mutate that tag on retry.
 
 `tests/test_engine_candidate_gate.py` exercises deterministic red and
 green PyPI/Debian cases, missing or malformed provenance, duplicates,
