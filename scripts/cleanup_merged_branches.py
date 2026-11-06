@@ -195,8 +195,8 @@ def audited_core_port_verified() -> bool:
         root / "app/main.py", root / "app/schemas.py",
         root / "app/adapters/svtplay.py",
         root / "tests/test_openapi_request_shapes.py",
-        root / "tests/test_audited_core_legacy_cleanup.py",
         root / "tests/test_typed_engine_cookie_delivery_responses.py",
+        root / "tests/test_audited_core_legacy_cleanup.py",
     ]
     if not all(path.is_file() for path in files):
         return False
