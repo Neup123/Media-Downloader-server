@@ -34,7 +34,7 @@ whose media sources and WebDAV destination are **publicly routable**.
   hostname resolving to a blocked IP, a redirect to that IP, or a late DNS
   rebinding to that IP is rejected independently of engine behavior. The
   [kernel egress CI](.github/workflows/egress-guard-e2e.yml) checks actual
-  downloader namespace connections, including simulated rebinding.
+  downloader namespace connections, including simulated rebinding and a controlled real HTTP 307 redirect to denied\n  private/metadata destinations. The redirect originates from the local\n  downloader health route using a test-only Host header; it needs no external\n  redirect website, credentials, or actual metadata-server access.
 - The guard blocks internal Nextcloud WebDAV addresses (Docker bridge, LAN,
   Tailscale private addresses) by design. Use a public HTTPS endpoint or a
   separately designed, tightly scoped authenticated delivery path; **do not
@@ -48,14 +48,14 @@ whose media sources and WebDAV destination are **publicly routable**.
 - No production release approval is implied. Host-level enforcement and
   application-level URL checks are complementary. Remaining work includes
   platform-specific acceptance, end-to-end guarded public downloads,
-  controlled DNS/redirect tests, and review of non-IP exfiltration channels.
+  other platform-specific DNS/redirect and engine-specific tests, and review\n  of non-IP exfiltration channels.
 
 ## CI acceptance
 
 `egress-guard-e2e.yml` builds the guarded Compose stack on an ephemeral
 Linux runner, waits for kernel policy installation, probes the actual
 downloader namespace (not just the sidecar) for blocked private, metadata,
-loopback and IPv6 destinations, then removes containers and volumes.
+loopback and IPv6 destinations. It also checks that an actual HTTP redirect\nfrom the local app points at a prohibited IP and that following it fails\ninside the guarded downloader namespace, then removes containers and volumes.
 
 This is the first concrete deployment boundary for issues #9 and #72;
 keep them open until platform and production acceptance are complete.
