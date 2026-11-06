@@ -17,6 +17,10 @@ does **not** mean the service is approved for exposure to untrusted download
 sources: subprocess egress isolation, P2 real-site acceptance, and production
 deployment verification remain outstanding.
 
+For Linux deployments requiring a kernel-level destination-IP boundary, see
+[guarded Compose deployment](EGRESS_GUARD.md). This separate configuration
+is not yet production-approved on Docker Desktop or other untested platforms.
+
 ## Current status
 
 **Phase 0 blueprint is recorded and the core development implementation is now on `main`.** Merging the former review branch established the development baseline; it did not approve production exposure or a release.
