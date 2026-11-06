@@ -13,6 +13,7 @@ on:
 
 permissions:
   contents: write
+  packages: write
   pull-requests: write
   issues: write
 
@@ -300,6 +301,41 @@ jobs:
             exit 1
           fi
           printf '\\nExact tested merge commit: %s\\n' "$merged_sha" >> engine-update-release.md
+          # Publish the pullable image from the same merged source SHA
+          # accepted above, not only a GitHub release note.
+          git fetch --no-tags origin main
+          git switch --detach "$merged_sha"
+          test "$(git rev-parse HEAD)" = "$merged_sha"
+          IMAGE=ghcr.io/neup123/media-downloader-server
+          version=$(printf '%s' "$tag" | sed 's/^v//')
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          if docker manifest inspect "$IMAGE:$version" >/dev/null 2>&1; then
+            echo "::error::Versioned GHCR image exists; refusing to overwrite it"
+            exit 1
+          fi
+          docker build --pull \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$merged_sha" \
+            --label "org.opencontainers.image.version=$version" \
+            -t "$IMAGE:$version" .
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker push "$IMAGE:$version"
+          docker image rm "$IMAGE:$version"
+          docker pull "$IMAGE:$version"
+          test "$(docker image inspect "$IMAGE:$version" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$merged_sha"
+          test "$(docker image inspect "$IMAGE:$version" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "$version"
+          digest_ref=$(docker image inspect "$IMAGE:$version" --format '{{json .RepoDigests}}' | python -c '
+          import json,sys,re
+          refs=json.load(sys.stdin)
+          matches=[v for v in refs if isinstance(v,str) and v.startswith("ghcr.io/neup123/media-downloader-server@sha256:")]
+          assert len(matches)==1 and re.fullmatch(r"sha256:[0-9a-f]{64}",matches[0].split("@",1)[1])
+          print(matches[0])
+          ')
+          docker pull "$digest_ref"
+          test "$(docker image inspect "$digest_ref" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$merged_sha"
+          test "$(git ls-remote origin refs/heads/main | cut -f1)" = "$merged_sha"
+          printf 'Pullable GHCR image: %s:%s\n' "$IMAGE" "$version" >> engine-update-release.md
+          printf 'Verified OCI image digest: %s\n' "$digest_ref" >> engine-update-release.md
           gh release create "$tag" --target "$merged_sha" --title "$tag" --notes-file engine-update-release.md
 
       - name: Open or refresh blocked-update issue on any red gate
