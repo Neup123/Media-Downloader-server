@@ -92,7 +92,7 @@ def test_cli_green_and_red_no_partial_acceptance_artifacts(tmp_path: Path):
     result = tmp_path / "promotion.json"
     py_file.write_text(json.dumps(pypi()))
     deb_file.write_text(json.dumps(debian()))
-    base = [sys.executable, str(ROOT / "scripts/engine_candidate_gate.py"),
+    base = [sys.executable, "-m", "scripts.engine_candidate_gate",
             "--python-report", str(py_file), "--debian-report", str(deb_file),
             "--output", str(result)]
     proc = subprocess.run(base, capture_output=True, text=True, check=False)
@@ -107,9 +107,9 @@ def test_cli_green_and_red_no_partial_acceptance_artifacts(tmp_path: Path):
 
 def test_workflow_checks_candidate_before_python_docker_webdav_and_release():
     workflow = (ROOT / ".github/workflows/pinned-engine-updates.yml").read_text()
-    assert "scripts/engine_candidate_gate.py" in workflow
+    assert "python -m scripts.engine_candidate_gate" in workflow
     assert "engine-promotion-report.json" in workflow
-    assert workflow.index("scripts/engine_candidate_gate.py") < workflow.index("python -m pytest -q")
+    assert workflow.index("python -m scripts.engine_candidate_gate") < workflow.index("python -m pytest -q")
     assert workflow.index("scripts/engine_candidate_gate.py") < workflow.index("gh pr merge")
     assert 'vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == \'true\'' in workflow
     assert "gh pr view" in workflow
