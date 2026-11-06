@@ -5,6 +5,8 @@ runs only on explicit manual dispatch and does not turn P2 auto-updates on.
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from pathlib import PurePosixPath
 from urllib.parse import unquote, urlsplit
@@ -82,3 +84,52 @@ def verify_output_sets(manifest: list[dict], deliveries: list[dict], job_id: str
     if not source or set(source) != set(delivered):
         raise ValueError("Missing or extra delivered file")
     return source
+
+
+def build_p2_smoke_attestation(engine: str, manifest: list[dict], commit_sha: str) -> dict:
+    """Produce a source-URL-free, credential-free acceptance artifact.
+
+    The digest covers path, byte size and content hash of the validated local
+    completion files without including potentially sensitive source filenames.
+    This record must be written ONLY after live remote readback, restart and
+    re-delivery have all succeeded.
+    """
+    if engine not in P2_ENGINES:
+        raise ValueError("Unsupported P2 engine in acceptance attestation")
+    if re.fullmatch(r"[0-9a-f]{40}", commit_sha) is None:
+        raise ValueError("Acceptance attestation needs an exact source revision")
+    if not isinstance(manifest, list) or not manifest:
+        raise ValueError("No P2 files to attest")
+    records = []
+    for item in manifest:
+        if not isinstance(item, dict):
+            raise ValueError("Malformed P2 attestation manifest")
+        relative, size, digest = item.get("relative"), item.get("size"), item.get("sha256")
+        if (
+            not isinstance(relative, str) or not relative
+            or PurePosixPath(relative).is_absolute()
+            or ".." in PurePosixPath(relative).parts
+            or type(size) is not int or size < 0
+            or not isinstance(digest, str) or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        ):
+            raise ValueError("Malformed P2 attestation file")
+        records.append((relative, size, digest))
+    if len(set(item[0] for item in records)) != len(records):
+        raise ValueError("Duplicate P2 attestation file")
+    compact = json.dumps(sorted(records), separators=(",", ":"), ensure_ascii=True).encode()
+    return {
+        "schema_version": 1,
+        "status": "verified",
+        "engine": engine,
+        "source_revision": commit_sha,
+        "source_url_recorded": False,
+        "file_count": len(records),
+        "total_verified_bytes": sum(item[1] for item in records),
+        "completion_manifest_sha256": hashlib.sha256(compact).hexdigest(),
+        "media_parsed_or_checked": sum(item.get("media_verified") is True for item in manifest),
+        "durable_after_compose_restart": True,
+        "webdav_stream_sha256_verified": True,
+        "redelivery_from_same_job_verified": True,
+        "production_target_verified": False,
+        "automatic_p2_releases_authorized": False,
+    }
