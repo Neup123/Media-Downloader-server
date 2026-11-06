@@ -8,6 +8,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from pathlib import Path
 import subprocess
 import sys
 import time
@@ -16,7 +17,9 @@ from urllib.parse import urlsplit, urlunsplit
 import httpx
 
 from app.security import preflight_source_dns
-from scripts.p2_smoke_support import validate_site_smoke_source, verify_output_sets
+from scripts.p2_smoke_support import (
+    validate_site_smoke_source, verify_output_sets, build_p2_smoke_attestation,
+)
 from e2e_live_webdav import (\n    api_client, configure_webdav, wait_for_services, restart_downloader_compose,\n    check_persisted_job, NC_USER, NC_PASSWORD,\n)
 
 INSPECT_COMPLETED = r"""
@@ -191,6 +194,14 @@ def main() -> None:
         assert_same_completed_manifest(manifest, final_manifest)
         verify_remote_files(redelivered, final_manifest)
 
+    # Emit a source-URL-free, credential-free artifact only after ALL checks
+    # pass. Never publish raw source URLs, extractor logs or private filenames.
+    attestation = build_p2_smoke_attestation(
+        engine, final_manifest, os.environ["GITHUB_SHA"]
+    )
+    Path("p2-smoke-attestation.json").write_text(
+        json.dumps(attestation, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
     print(f"Real {engine} P2 site -> Nextcloud WebDAV, restart and re-delivery: PASS")
 
 
