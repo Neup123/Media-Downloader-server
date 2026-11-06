@@ -110,7 +110,7 @@ def test_workflow_checks_candidate_before_python_docker_webdav_and_release():
     assert "python -m scripts.engine_candidate_gate" in workflow
     assert "engine-promotion-report.json" in workflow
     assert workflow.index("python -m scripts.engine_candidate_gate") < workflow.index("python -m pytest -q")
-    assert workflow.index("scripts/engine_candidate_gate.py") < workflow.index("gh pr merge")
+    assert workflow.index("python -m scripts.engine_candidate_gate") < workflow.index("gh pr merge")
     assert 'vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == \'true\'' in workflow
     assert "gh pr view" in workflow
     assert "git ls-remote origin refs/heads/main" in workflow
