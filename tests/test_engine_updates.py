@@ -82,7 +82,7 @@ def test_update_workflow_is_gated_and_has_blocked_issue_path():
     workflow = yaml.safe_load((root / ".github/workflows/pinned-engine-updates.yml").read_text())
     assert workflow["concurrency"]["cancel-in-progress"] is False
     assert workflow["permissions"] == {
-        "contents": "write", "pull-requests": "write", "issues": "write"
+        "contents": "write", "packages": "write", "pull-requests": "write", "issues": "write"
     }
     steps = workflow["jobs"]["candidate-gate"]["steps"]
     descriptions = [step.get("name", "") for step in steps]
