@@ -1,0 +1,72 @@
+# Alternative, production-oriented deployment: use INSTEAD of compose.yaml.
+# All downloader traffic, including subprocesses, shares the sidecar's
+# firewalled network namespace. No private Nextcloud/WebDAV target is allowed.
+services:
+  egress-guard:
+    build:
+      context: .
+      dockerfile: Dockerfile.egress
+    image: downloader-egress-guard:local
+    init: true
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    security_opt:
+      - no-new-privileges:true
+    ports:
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_PORT:-8080}:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "iptables -w -C OUTPUT -j DOWNLOADER_EGRESS && ip6tables -w -C OUTPUT -j DOWNLOADER_EGRESS && iptables -w -C DOWNLOADER_EGRESS -d 169.254.0.0/16 -j REJECT && ip6tables -w -C DOWNLOADER_EGRESS ! -d 2000::/3 -j REJECT"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+
+  downloader-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: downloader-server:local
+    init: true
+    restart: unless-stopped
+    network_mode: service:egress-guard
+    depends_on:
+      egress-guard:
+        condition: service_healthy
+    environment:
+      APP_API_TOKEN: ${APP_API_TOKEN:?Set APP_API_TOKEN in .env before starting}
+      APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY:-}
+      DATA_DIR: /data
+      OUTPUT_DIR: /data/downloads
+      DATABASE_URL: sqlite:////data/downloader.db
+      MAX_CONCURRENT_DOWNLOADS: ${MAX_CONCURRENT_DOWNLOADS:-2}
+      MAX_CONCURRENT_YTDLP: ${MAX_CONCURRENT_YTDLP:-1}
+      MAX_CONCURRENT_ARIA2: ${MAX_CONCURRENT_ARIA2:-1}
+      MAX_CONCURRENT_GALLERY_DL: ${MAX_CONCURRENT_GALLERY_DL:-1}
+      MAX_CONCURRENT_GENERIC: ${MAX_CONCURRENT_GENERIC:-1}
+      MAX_CONCURRENT_YOU_GET: ${MAX_CONCURRENT_YOU_GET:-1}
+      MAX_CONCURRENT_SVTPLAY_DL: ${MAX_CONCURRENT_SVTPLAY_DL:-1}
+      MAX_CONCURRENT_GET_SAUCE: ${MAX_CONCURRENT_GET_SAUCE:-1}
+      ARIA2_RPC_PORT: 16800
+      ALLOW_PRIVATE_TARGETS: "false"
+      ALLOW_PRIVATE_WEBDAV_TARGETS: "false"
+      ALLOW_INSECURE_WEBDAV: "false"
+    volumes:
+      - downloader-data:/data
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "http://127.0.0.1:8080/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  downloader-data:
+    name: downloader-server-egress-data
