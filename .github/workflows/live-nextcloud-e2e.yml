@@ -141,7 +141,7 @@ jobs:
           import secrets
           from cryptography.fernet import Fernet
           token = secrets.token_urlsafe(48)
-          password = secrets.token_urlsafe(24)
+          password = "nc-" + secrets.token_urlsafe(24)
           key = Fernet.generate_key().decode()
           print(f"::add-mask::{token}")
           print(f"::add-mask::{password}")
