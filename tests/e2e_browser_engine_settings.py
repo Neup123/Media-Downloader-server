@@ -101,6 +101,22 @@ def run_browser_acceptance() -> None:
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
             page.get_by_role("navigation", name="Main navigation").get_by_role("button", name="Administration", exact=True).click()
+            page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Delivery").click()
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "GET",
+                timeout=30000
+            ):
+                page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Engines").click()
+                page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Delivery").click()
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery/test")
+                and r.request.method == "POST", timeout=30000
+            ) as delivery_preflight:
+                page.get_by_role("button", name="Test delivery", exact=True).click()
+            assert delivery_preflight.value.status == 200, "Destination byte readback/cleanup failed"
+            payload = delivery_preflight.value.json()
+            assert payload["verified"] and payload["cleaned_up"]
+            page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Engines").click()
             page.get_by_role("button", name="Engines", exact=True).click()
 
             yt_panel = page.locator("section.panel").filter(
