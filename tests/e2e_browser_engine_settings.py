@@ -95,7 +95,7 @@ def run_browser_acceptance() -> None:
             assert page.locator("header input[type=password]").count() == 0
             page.get_by_role("button", name="My settings", exact=True).click()
             # Real browser locale switch exercises direction and persisted UI state.
-            page.get_by_label("Language").select_option("he")
+            page.locator(".language-settings select").select_option("he")
             assert page.locator("html").get_attribute("dir") == "rtl"
             assert page.locator("html").get_attribute("lang") == "he"
             page.get_by_role("navigation", name="Main navigation").get_by_role(
@@ -107,7 +107,7 @@ def run_browser_acceptance() -> None:
             assert page.locator("html").get_attribute("dir") == "ltr"
             assert page.locator("html").get_attribute("lang") == "el"
             page.get_by_label("Γλώσσα").select_option("en")
-            assert page.get_by_label("Language").input_value() == "en"
+            assert page.locator(".language-settings select").input_value() == "en"
             # A bad key yields a human recovery action, not a raw HTTP error.
             page.get_by_label("API key").fill("invalid-browser-key")
             page.get_by_role("button", name="Connect", exact=True).click()
@@ -251,7 +251,7 @@ def run_browser_acceptance() -> None:
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="My settings", exact=True
             ).click()
-            page.get_by_label("Language").select_option("he")
+            page.locator(".language-settings select").select_option("he")
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="הורדה", exact=True
             ).click()
