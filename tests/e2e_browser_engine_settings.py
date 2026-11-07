@@ -100,7 +100,7 @@ def run_browser_acceptance() -> None:
                 and r.request.method == "GET", timeout=30000
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
-            page.get_by_role("button", name="Administration", exact=True).click()
+            page.get_by_role("navigation", name="Main navigation").get_by_role("button", name="Administration", exact=True).click()
             page.get_by_role("button", name="Engines", exact=True).click()
 
             yt_panel = page.locator("section.panel").filter(
