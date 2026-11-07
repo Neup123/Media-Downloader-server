@@ -1106,6 +1106,22 @@ export default function App() {
         <button type="button" className="secondary" onClick={() => navigate('my-settings')}>
           Reconnect
         </button>}
+      {/^(Could not|Cannot |The downloader service|Some details|This item|Too many requests|Your connection needs attention|Media inspection failed)/i.test(message) &&
+        !message.includes('Reconnect in My settings') && !message.includes("Couldn't reach your destination folder") &&
+        <button type="button" className="secondary" onClick={() => {
+          if (tab === 'library') { void fetchLibrary(0); return; }
+          if (tab === 'download') {
+            document.querySelector<HTMLInputElement>('.url-entry input')?.focus();
+            return;
+          }
+          if (tab === 'my-settings') {
+            document.querySelector<HTMLInputElement>('.connection-settings input')?.focus();
+            return;
+          }
+          document.querySelector<HTMLElement>('.delivery-panel input, .engine-editor input, #rule-editor input')?.focus();
+        }}>
+          {tab === 'library' ? 'Refresh downloads' : tab === 'download' ? 'Check link and try again' : 'Review settings'}
+        </button>}
     </div>}
     <nav className="tabs" aria-label="Main navigation">
       {([['download','Download'],['library','Library'],['my-settings','My settings']] as const).map(([view,title]) =>
