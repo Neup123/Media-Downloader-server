@@ -1004,6 +1004,6 @@ export default function App() {
       </form>
     </section>}
 
-    <footer>Downloader Server · standalone service · <button className="footer-link" onClick={() => { navigate('administration'); setAdminArea('connection'); }}>Administration</button></footer>
+    <footer>Downloader Server · standalone service</footer>
   </div>;
 }
