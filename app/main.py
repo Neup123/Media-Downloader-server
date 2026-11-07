@@ -26,7 +26,7 @@ from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -311,6 +311,34 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.commit()
         session.refresh(row)
         return engine_rule_to_dict(row)
+
+    @app.put("/api/v1/engine-rules/order", tags=["settings"])
+    def reorder_engine_rules(
+        payload: EngineRuleOrderInput, _: bool = Depends(authenticate),
+        session: Session = Depends(db_session),
+    ):
+        """Atomically assign distinct priorities in display order.
+
+        Reordering always sends every rule ID, including disabled rules.
+        Reject stale/partial snapshots before any mutation. Priorities run from
+        1000 down to 0; this preserves the existing strict priority-first
+        routing matcher without changing the worker or URL matching contract.
+        """
+        rows = session.scalars(select(EngineRule)).all()
+        identities = {rule.id: rule for rule in rows}
+        if len(rows) > 1001:
+            raise HTTPException(status_code=422, detail="Cannot reorder more than 1001 rules")
+        if len(payload.ids) != len(rows) or set(payload.ids) != set(identities):
+            raise HTTPException(
+                status_code=409,
+                detail="The routing table has changed. Reload the rules before reordering.",
+            )
+        for position, rule_id in enumerate(payload.ids):
+            rule = identities[rule_id]
+            rule.priority = 1000 - position
+            rule.updated_at = utcnow()
+        session.commit()
+        return [engine_rule_to_dict(identities[rule_id]) for rule_id in payload.ids]
 
     @app.put("/api/v1/engine-rules/{rule_id}", tags=["settings"])
     def update_engine_rule(rule_id: str, payload: EngineRuleInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
