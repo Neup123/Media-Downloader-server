@@ -161,6 +161,10 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [libraryQuery, setLibraryQuery] = useState('');
   const [libraryFilter, setLibraryFilter] = useState<'all' | 'active' | 'delivered' | 'failed'>('all');
+  const [libraryJobs, setLibraryJobs] = useState<Job[]>([]);
+  const [libraryOffset, setLibraryOffset] = useState(0);
+  const [libraryLoading, setLibraryLoading] = useState(false);
+  const [libraryHasMore, setLibraryHasMore] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -213,11 +217,36 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setJobs(await request(API + '/jobs?limit=200'));
+      setJobs(await request(API + '/jobs?limit=200&standalone_only=true'));
     } catch (error) {
       if (apiKey) setMessage(error instanceof Error ? error.message : 'Could not load jobs');
     }
   }, [apiKey, request]);
+
+  const fetchLibrary = useCallback(async (offset: number = 0) => {
+    if (!apiKey) return;
+    setLibraryLoading(true);
+    try {
+      const params = new URLSearchParams({
+        limit: '200', offset: String(offset),
+        standalone_only: 'true', state: libraryFilter, q: libraryQuery.trim(),
+      });
+      const rows = await request(API + '/jobs?' + params.toString()) as Job[];
+      setLibraryJobs(previous => offset === 0 ? rows : [...previous, ...rows]);
+      setLibraryOffset(offset);
+      setLibraryHasMore(rows.length === 200);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not search download history.');
+    } finally {
+      setLibraryLoading(false);
+    }
+  }, [apiKey, libraryFilter, libraryQuery, request]);
+
+  useEffect(() => {
+    if (!apiKey || tab !== 'library') return;
+    const timer = window.setTimeout(() => void fetchLibrary(0), 250);
+    return () => window.clearTimeout(timer);
+  }, [apiKey, tab, fetchLibrary]);
 
   useEffect(() => {
     if (!apiKey) return;
@@ -694,8 +723,32 @@ export default function App() {
       await request(API + '/jobs/' + id + '/' + action, { method: 'POST' });
       if (action === 'redeliver') setMessage('Re-delivery queued using the existing verified download files.');
       await refresh();
+      if (tab === 'library') await fetchLibrary(0);
     }
     catch (error) { setMessage(error instanceof Error ? error.message : 'Job action failed'); }
+  }
+
+  async function retryFailedLibrary() {
+    if (!window.confirm('Retry every failed or cancelled standalone download? This may download data again.')) return;
+    setBusy(true);
+    try {
+      const result = await request(API + '/jobs/retry-failed', { method: 'POST' });
+      setMessage(result.retried + ' failed downloads queued again.');
+      await refresh(); await fetchLibrary(0);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not retry failed downloads.'); }
+    finally { setBusy(false); }
+  }
+
+  async function clearLibraryHistory() {
+    if (!window.confirm('Forget all completed, failed and cancelled standalone job records? Downloaded files remain on disk, but forgotten jobs cannot be re-delivered.')) return;
+    setBusy(true);
+    try {
+      const result = await request(API + '/jobs/history?confirm=true', { method: 'DELETE' });
+      setMessage(result.deleted + ' history records cleared. Downloaded files were not deleted.');
+      setSelected(null);
+      await refresh(); await fetchLibrary(0);
+    } catch (error) { setMessage(error instanceof Error ? error.message : 'Could not clear history.'); }
+    finally { setBusy(false); }
   }
 
   async function saveDelivery(event: React.FormEvent) {
@@ -748,16 +801,7 @@ export default function App() {
       sourceHint = 'Enter a full link beginning with https:// or another supported protocol.';
     }
   }
-  const shownJobs = jobs.filter(job => {
-    if (tab !== 'library') return true;
-    const query = libraryQuery.trim().toLocaleLowerCase();
-    const searchable = [job.url, ...(job.output_files || []).map(file => file.filename)].join(' ').toLocaleLowerCase();
-    if (query && !searchable.includes(query)) return false;
-    if (libraryFilter === 'delivered') return job.status === 'completed';
-    if (libraryFilter === 'failed') return job.status === 'failed' || job.status === 'cancelled';
-    if (libraryFilter === 'active') return !['completed', 'failed', 'cancelled'].includes(job.status);
-    return true;
-  }).slice(0, tab === 'library' ? 200 : 10);
+  const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
 
   return <div className="shell">
     <header className="topbar">
