@@ -751,6 +751,10 @@ export default function App() {
   async function toggleEngineRule(rule: EngineRule, enabled: boolean) {
     if (ruleBusy) return;
     setRuleBusy(true);
+    // Controlled checkboxes must reflect the user's click immediately.
+    // Reconcile from the server on either success or failure below.
+    setEngineRules(current => current.map(item =>
+      item.id === rule.id ? {...item, enabled} : item));
     try {
       await request(API + '/engine-rules/' + rule.id, {
         method: 'PUT', body: JSON.stringify({
