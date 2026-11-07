@@ -102,7 +102,7 @@ def run_browser_acceptance() -> None:
                 "button", name="ספריית ההורדות", exact=True
             ).wait_for()
             page.reload(wait_until="domcontentloaded")
-            assert page.get_by_label("Language").input_value() == "he"
+            assert page.get_by_label("שפה").input_value() == "he"
             page.get_by_label("שפה").select_option("el")
             assert page.locator("html").get_attribute("dir") == "ltr"
             assert page.locator("html").get_attribute("lang") == "el"
