@@ -76,3 +76,34 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 .option-category { display: grid; gap: .6rem; }
 .option-category .field-title { margin-top: .55rem; }
 .option-help { display: block; font-size: .78rem; margin-top: .18rem; }
+
+/* Navigation and feedback remain usable with keyboard and at 360px. */
+.admin-nav { display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 20px; }
+.admin-nav button { color:#dce8f6; background:#23354a; border:1px solid #405b79; min-height:44px; }
+.admin-nav button.active { color:#12243d; background:#92baff; }
+.guidance { max-width:750px; margin:24px auto; }
+.guidance p, .connection-settings p { color:#c4d2e5; line-height:1.6; }
+.guidance button { min-height:44px; }
+.connection-settings { max-width:780px; }
+.connection-settings .keyrow { width:100%; align-items:end; flex-wrap:wrap; }
+.connection-settings .keyrow label { flex:1 1 260px; margin:0; }
+.connection-settings .keyrow button { min-height:44px; }
+.library-layout { grid-template-columns:minmax(0,1fr); }
+.library-layout .queue-panel, .library-layout .details-panel { grid-column:1; grid-row:auto; }
+.library-filters { display:grid; grid-template-columns:minmax(0,2fr) minmax(150px,1fr); gap:12px; }
+.library-filters label { margin:0 0 14px; }
+.footer-link { color:#9cc5ff; background:transparent; text-decoration:underline; padding:6px; }
+:focus-visible { outline:3px solid #b9d9ff !important; outline-offset:3px; }
+.tabs button, .job-actions button, .small { min-height:44px; }
+@media(max-width:600px) {
+  .shell { padding:0 12px 24px; }
+  .topbar { min-height:70px; height:auto; gap:9px; }
+  .top-actions { font-size:11px; }
+  .tabs { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:4px; }
+  .tabs button { border-radius:8px; padding:12px 6px; }
+  .library-filters { grid-template-columns:1fr; }
+  .admin-nav { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .panel { padding:15px; }
+  .job-title { flex-wrap:wrap; }
+  .job-actions { gap:6px; flex-wrap:wrap; }
+}

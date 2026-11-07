@@ -3,6 +3,15 @@ import { apiErrorMessage } from './api-errors';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
+type View = 'download' | 'library' | 'my-settings' | 'administration';
+type AdminArea = 'connection' | 'delivery' | 'engines' | 'automation' | 'access';
+function initialView(): View {
+  const old = window.location.hash.slice(1);
+  if (['downloads','download'].includes(old)) return 'download';
+  if (['engines','routing','delivery','administration'].includes(old)) return 'administration';
+  if (old === 'library' || old === 'my-settings') return old;
+  return 'download';
+}
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
 type Job = {
@@ -94,7 +103,39 @@ function label(value: string): string {
 
 export default function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
-  const [tab, setTab] = useState<'downloads' | 'engines' | 'routing' | 'delivery'>('downloads');
+  const [tab, setTab] = useState<View>(initialView);
+  const [adminArea, setAdminArea] = useState<AdminArea>(() => {
+    const old = window.location.hash.slice(1);
+    return old === 'delivery' ? 'delivery' : old === 'engines' ? 'engines' : old === 'routing' ? 'automation' : 'connection';
+  });
+  const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
+  const [connected, setConnected] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(false);
+  function navigate(view: View) {
+    setTab(view); window.history.replaceState(null, '', '#' + view);
+  }
+  async function checkConnection() {
+    const key = connectionDraft.trim();
+    if (!key) { setMessage('Enter your administrator API key to connect.'); return; }
+    setCheckingConnection(true);
+    try {
+      const response = await fetch(API + '/engines', { headers: { 'X-API-Key': key } });
+      if (!response.ok) throw new Error('Could not connect. Check the API key and server availability.');
+      const result = await response.json() as EngineStatus[];
+      if (!Array.isArray(result)) throw new Error('Unexpected service response.');
+      localStorage.setItem('downloader-api-key', key);
+      setEngineStatus(result); setApiKey(key); setConnected(true);
+      setMessage('Connected ✓');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not connect.');
+    } finally { setCheckingConnection(false); }
+  }
+  function disconnect() {
+    localStorage.removeItem('downloader-api-key');
+    setApiKey(''); setConnectionDraft(''); setConnected(false); setJobs([]);
+    setMessage('Disconnected. Reconnect to download.');
+    navigate('my-settings');
+  }
   const [engine, setEngine] = useState<EngineSelection>('auto');
   const [selectedPresetId, setSelectedPresetId] = useState('');
   const [presets, setPresets] = useState<Preset[]>([]);
@@ -104,6 +145,8 @@ export default function App() {
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<number[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'active' | 'delivered' | 'failed'>('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -156,7 +199,7 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setJobs(await request(API + '/jobs?limit=80'));
+      setJobs(await request(API + '/jobs?limit=200'));
     } catch (error) {
       if (apiKey) setMessage(error instanceof Error ? error.message : 'Could not load jobs');
     }
@@ -202,7 +245,7 @@ export default function App() {
       setGalleryOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
     }).catch(error => setMessage(String(error)));
-    void request(API + '/engines').then(setEngineStatus).catch(error => setMessage(String(error)));
+    void request(API + '/engines').then(data => { setEngineStatus(data); setConnected(true); }).catch(() => { setConnected(false); setMessage('Your connection needs attention. Reconnect in My settings.'); });
     for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic', 'you-get', 'svtplay-dl', 'get-sauce'] as Engine[]) {
       void request(API + '/engines/' + name + '/options').then(data =>
         setOptionCatalog(current => ({ ...current, [name]: data.fields }))
@@ -214,13 +257,13 @@ export default function App() {
   }, [apiKey, request]);
 
   useEffect(() => {
-    if (!apiKey || tab !== 'delivery') return;
+    if (!apiKey || tab !== 'administration' || adminArea !== 'delivery') return;
     void request(API + '/delivery').then(data => {
       setMode(data.mode); setDavUrl(data.webdav_url ?? '');
       setDavUser(data.username ?? ''); setDavFolder(data.folder ?? 'Downloader');
       setPasswordConfigured(Boolean(data.password_configured));
     }).catch(error => setMessage(String(error)));
-  }, [apiKey, tab, request]);
+  }, [apiKey, tab, adminArea, request]);
 
   useEffect(() => {
     if (!apiKey || !selected) return;
@@ -401,7 +444,7 @@ export default function App() {
 
   function engineVersion(name: Engine) {
     const status = engineStatus.find(item => item.name === name);
-    return status?.installed ? 'Installed · ' + (status.version || 'version unavailable') : 'Executable not detected';
+    return status?.installed ? 'Installed · ' + (status.version || 'version unavailable') : 'Not installed';
   }
 
   async function submit(event: React.FormEvent) {
@@ -413,7 +456,7 @@ export default function App() {
           url, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
         }),
       });
-      setSelected(job.id); setUrl(''); setMediaPreview(null); setMessage('Job queued.'); await refresh();
+      setSelected(job.id); setUrl(''); setMediaPreview(null); setMessage('Download started. Follow its progress below.'); await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not submit job');
     } finally { setBusy(false); }
@@ -435,7 +478,7 @@ export default function App() {
       });
       setSelected(response.jobs?.[0]?.id ?? null);
       setBatchUrls('');
-      setMessage(response.created + ' jobs added to the queue.');
+      setMessage(response.created + ' downloads started.');
       await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not submit batch');
@@ -639,51 +682,78 @@ export default function App() {
         }),
       });
       setPasswordConfigured(Boolean(data.password_configured));
-      setDavPassword(''); setMessage('Delivery settings saved.');
+      setDavPassword(''); setMessage('Saved ✓ Changes apply to new deliveries only.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save delivery settings');
     }
   }
 
   const active = jobs.find(job => job.id === selected) ?? null;
+  const shownJobs = jobs.filter(job => {
+    if (tab !== 'library') return true;
+    const query = libraryQuery.trim().toLocaleLowerCase();
+    const searchable = [job.url, ...(job.output_files || []).map(file => file.filename)].join(' ').toLocaleLowerCase();
+    if (query && !searchable.includes(query)) return false;
+    if (libraryFilter === 'delivered') return job.status === 'completed';
+    if (libraryFilter === 'failed') return job.status === 'failed' || job.status === 'cancelled';
+    if (libraryFilter === 'active') return !['completed', 'failed', 'cancelled'].includes(job.status);
+    return true;
+  }).slice(0, tab === 'library' ? 200 : 10);
 
   return <div className="shell">
     <header className="topbar">
       <div className="brandmark">D</div>
       <div><div className="brand">Downloader Server</div><div className="subbrand">Server-side media downloads</div></div>
-      <div className="top-actions"><a href="/api-reference" target="_blank" rel="noreferrer">API reference</a></div>
+      <div className="top-actions"><span className={connected ? "status status-completed" : "status"}>{connected ? "Connected ✓" : "Not connected"}</span></div>
     </header>
 
-    <section className="connection panel">
-      <div><div className="eyebrow">SERVICE CONNECTION</div><h2>Connect to your downloader</h2><p>Enter the server API key.</p></div>
-      <div className="keyrow">
-        <input type="password" value={apiKey} onChange={event => setApiKey(event.target.value)} placeholder="API key" autoComplete="current-password" />
-        <button className="secondary" onClick={() => { localStorage.removeItem('downloader-api-key'); setApiKey(''); setJobs([]); }}>Disconnect</button>
-      </div>
-    </section>
     {message && <div className="notice" role="status">{message}</div>}
-
-    <nav className="tabs">
-      <button className={tab === 'downloads' ? 'active' : ''} onClick={() => setTab('downloads')}>Downloads</button>
-      <button className={tab === 'engines' ? 'active' : ''} onClick={() => setTab('engines')}>Engine settings</button>
-      <button className={tab === 'routing' ? 'active' : ''} onClick={() => setTab('routing')}>Presets & routing</button>
-      <button className={tab === 'delivery' ? 'active' : ''} onClick={() => setTab('delivery')}>Delivery</button>
+    <nav className="tabs" aria-label="Main navigation">
+      {([['download','Download'],['library','Library'],['my-settings','My settings']] as const).map(([view,title]) =>
+        <button key={view} className={tab === view ? 'active' : ''} onClick={() => navigate(view)}>{title}</button>)}
+      {connected && <button className={tab === 'administration' ? 'active' : ''} onClick={() => navigate('administration')}>Administration</button>}
     </nav>
-
-    {tab === 'downloads' && <div className="layout">
+    {!connected && tab !== 'my-settings' && <section className="panel guidance" role="status">
+      <h2>Connect your downloader to get started</h2>
+      <p>The service needs an administrator API key before it can download links or show your history.</p>
+      <button className="primary" onClick={() => navigate('my-settings')}>Connect in My settings</button>
+    </section>}
+    {tab === 'my-settings' && <section className="panel connection-settings">
+      <h2>Service connection</h2>
+      <p className="muted">Connect this standalone browser with the administrator API key. Your key stays in this browser.</p>
+      <div className="keyrow">
+        <label>API key<input type="password" value={connectionDraft} onChange={e => setConnectionDraft(e.target.value)} autoComplete="current-password" /></label>
+        <button type="button" className="primary" disabled={checkingConnection} onClick={() => void checkConnection()}>{checkingConnection ? 'Checking…' : connected ? 'Check connection' : 'Connect'}</button>
+        {connected && <button type="button" className="secondary" onClick={disconnect}>Disconnect</button>}
+      </div><p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
+    </section>}
+    {tab === 'administration' && connected && <>
+      <nav className="admin-nav" aria-label="Administration sections">
+        {([['connection','Connection'],['delivery','Delivery'],['engines','Engines'],['automation','Automation'],['access','Who can download']] as const).map(([area,title]) =>
+          <button key={area} className={adminArea === area ? 'active' : ''} onClick={() => setAdminArea(area)}>{title}</button>)}
+      </nav>
+      {adminArea === 'connection' && <section className="panel">
+        <h2>Service connection</h2><p>Connected ✓ This administrator API key controls the standalone service.</p>
+        <button className="secondary" onClick={() => void checkConnection()}>Check connection</button>
+        <p className="muted">Developer tools and API examples:</p>
+        <a href="/api-reference" target="_blank" rel="noreferrer">For developers: API reference</a>
+      </section>}
+      {adminArea === 'access' && <section className="panel">
+        <h2>Who can download</h2>
+        <p className="muted">Standalone access currently uses one administrator API key. Anyone with that key can administer the service. For individual user entitlements, use the Nextcloud integration.</p>
+        <button className="secondary" onClick={() => navigate('my-settings')}>Manage this browser's connection</button>
+      </section>}
+    </>}
+    {(tab === 'download' || tab === 'library') && connected && <div className={'layout' + (tab === 'library' ? ' library-layout' : '')}>
+      {tab === 'download' && <>
       <section className="panel submit-panel">
-        <div className="eyebrow">NEW DOWNLOAD</div><h2>Submit a link</h2>
+        <div className="eyebrow">NEW DOWNLOAD</div><h2>Download</h2>
         <form onSubmit={submit}>
           <label>Media URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://" required /></label>
           <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
-            <option value="auto">Automatic — use URL rules</option>
-            <option value="yt-dlp">yt-dlp — websites and media</option>
-            <option value="aria2c">aria2c — direct, torrent, magnet</option>
-            <option value="gallery-dl">gallery-dl — image galleries</option>
-            <option value="generic">generic / curl — direct file URLs</option>
-            <option value="you-get">you-get — fallback site extractor</option>
-            <option value="svtplay-dl">svtplay-dl — Nordic broadcasters</option>
-            <option value="get-sauce">get-sauce — specialized galleries/media</option>
+            <option value="auto">Automatic</option>
+            {engineStatus.filter(item => item.installed).map(item =>
+              <option key={item.name} value={item.name}>{item.name}</option>)}
           </select></label>
           <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
             <option value="">No preset</option>
@@ -743,23 +813,29 @@ export default function App() {
             <div className="field-title">Direct download overrides</div>
             <CommonOptionFields fields={optionCatalog.generic} values={genericOptionValues(genericOverride)} onChange={(key, value) => updateGenericOption(key, value, false)} />
           </div> : <div className="options-block">
-            <div className="field-title">Automatic selection</div>
-            <p className="muted">The service chooses the engine from your saved host/path rules. FTP and magnet links default to aria2c; unmatched URLs default to yt-dlp. A selected preset provides engine defaults when no URL rule matches.</p>
+            <p className="muted">Automatic picks the right tool for the link. Change only if a download fails.</p>
           </div>}
-          <button className="primary" disabled={busy || !apiKey || !url.trim()}>{busy ? 'Adding…' : 'Add to queue'}</button>
+          <button className="primary" disabled={busy || !apiKey || !url.trim()}>{busy ? 'Starting…' : 'Download'}</button>
         </form>
         <div className="options-block">
           <div className="field-title">Batch download</div>
           <label>One URL per line<textarea rows={5} value={batchUrls} onChange={event => setBatchUrls(event.target.value)} placeholder="https://example.com/video-1&#10;https://example.com/video-2" /></label>
-          <p className="muted">Up to 50 links per batch. The whole batch is rejected if any URL is invalid.</p>
-          <button className="secondary" disabled={busy || !apiKey || !batchUrls.trim()} onClick={() => void submitBatch()}>{busy ? 'Adding…' : 'Add batch to queue'}</button>
+          <p className="muted">One link per line — up to 50. If one link is invalid, no downloads start.</p>
+          <button className="secondary" disabled={busy || !apiKey || !batchUrls.trim()} onClick={() => void submitBatch()}>{busy ? 'Starting…' : 'Add up to 50 links'}</button>
         </div>
-      </section>
+      </section></>}
 
       <section className="panel queue-panel">
-        <div className="section-heading"><div><div className="eyebrow">JOB QUEUE</div><h2>Recent downloads</h2></div><span className="count">{jobs.length} jobs</span></div>
-        {!jobs.length ? <div className="empty">No jobs yet. Submit a link to start.</div> : <div className="job-list">
-          {jobs.map(job => {
+        <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{tab === 'library' ? 'Your downloads' : 'Recent downloads'}</h2></div><span className="count">{jobs.length} jobs</span></div>
+        {tab === 'library' && <div className="library-filters">
+          <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)} placeholder="Title, URL or filename" /></label>
+          <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
+            <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
+          </select></label>
+        </div>}
+        {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>See all downloads</button>}
+        {!jobs.length ? <div className="empty">Nothing here yet — your finished downloads will live here.</div> : <div className="job-list">
+          {shownJobs.map(job => {
             const percent = typeof job.progress.percent === 'number' ? job.progress.percent : (job.status === 'completed' ? 100 : 0);
             return <article key={job.id} className={'job ' + (selected === job.id ? 'selected' : '')} onClick={() => setSelected(job.id)}>
               <div className="job-head"><div className="job-title"><span className="engine-pill">{job.engine}</span><strong title={job.url}>{job.url}</strong></div><span className={'status status-' + job.status}>{label(job.status)}</span></div>
@@ -767,7 +843,7 @@ export default function App() {
               <div className="job-meta"><span>{percent ? percent.toFixed(1) + '%' : 'Progress pending'}</span><span>{bytes(job.progress.downloaded_bytes)} / {bytes(job.progress.total_bytes)}</span><span>{bytes(job.progress.speed_bytes_per_second)}/s</span></div>
               {selected === job.id && <div className="job-actions" onClick={event => event.stopPropagation()}>
                 {['queued', 'starting', 'extracting', 'downloading', 'post-processing', 'delivering'].includes(job.status) && <button className="small danger" onClick={() => void jobAction(job.id, 'cancel')}>Cancel</button>}
-                {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Retry</button>}
+                {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Try again</button>}
                 {job.status === 'completed' && <button className="small secondary" title="Deliver existing verified files again to the currently configured destination" onClick={() => void jobAction(job.id, 'redeliver')}>Re-deliver</button>}
               </div>}
             </article>;
@@ -786,7 +862,7 @@ export default function App() {
       </section>
     </div>}
 
-    {tab === 'engines' && <div className="settings-layout">
+    {tab === 'administration' && connected && adminArea === 'engines' && <div className="settings-layout">
       <section className="panel">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
         <label>Format selector<input value={yt.format} onChange={event => setYt(value => ({ ...value, format: event.target.value }))} /></label>
@@ -851,8 +927,8 @@ export default function App() {
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
     </div>}
 
-    {tab === 'routing' && <div className="settings-layout">
-      <section className="panel" id="preset-editor">
+    {((tab === 'my-settings' && connected) || (tab === 'administration' && connected && adminArea === 'automation')) && <div className="settings-layout">
+      {tab === "my-settings" && <><section className="panel" id="preset-editor">
         <div className="eyebrow">SAVED OPTIONS</div><h2>{editingPresetId ? 'Edit preset' : 'Create a preset'}</h2>
         <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
         <form onSubmit={savePreset}>
@@ -880,7 +956,8 @@ export default function App() {
           </article>)}
         </div>}
       </section>
-      <section className="panel" id="rule-editor">
+      </>}
+      {tab === "administration" && <><section className="panel" id="rule-editor">
         <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>{editingRuleId ? 'Edit URL rule' : 'Add a URL rule'}</h2>
         <p className="muted">Host suffix matches the exact host and its subdomains. A more specific path or higher priority wins.</p>
         <form onSubmit={saveEngineRule}>
@@ -908,14 +985,14 @@ export default function App() {
             </div>
           </article>)}
         </div>}
-      </section>
+      </section></>}
     </div>}
 
-    {tab === 'delivery' && <section className="panel delivery-panel">
-      <div className="eyebrow">OUTPUT DESTINATION</div><h2>Delivery settings</h2>
-      <p className="muted">Local directory or generic WebDAV. WebDAV uploads are checked against the remote file size.</p>
+    {tab === 'administration' && connected && adminArea === 'delivery' && <section className="panel delivery-panel">
+      <div className="eyebrow">OUTPUT DESTINATION</div><h2>Where finished files go</h2>
+      <p className="muted">Local folder keeps files on this server. WebDAV delivers finished files into Nextcloud Files or another WebDAV service. Changes affect new deliveries only.</p>
       <form onSubmit={saveDelivery}>
-        <label>Delivery mode<select value={mode} onChange={event => setMode(event.target.value as 'local' | 'webdav')}><option value="local">Local output directory</option><option value="webdav">WebDAV (Nextcloud or other server)</option></select></label>
+        <label>Delivery mode<select value={mode} onChange={event => setMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
         {mode === 'webdav' && <>
           <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => setDavUrl(event.target.value)} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
           <label>Username<input value={davUser} onChange={event => setDavUser(event.target.value)} required /></label>
@@ -927,6 +1004,6 @@ export default function App() {
       </form>
     </section>}
 
-    <footer>Downloader Server · standalone service · <a href="/api-reference" target="_blank" rel="noreferrer">API</a></footer>
+    <footer>Downloader Server · standalone service</footer>
   </div>;
 }

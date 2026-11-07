@@ -92,13 +92,16 @@ def run_browser_acceptance() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         try:
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
+            assert page.locator("header input[type=password]").count() == 0
+            page.get_by_role("button", name="My settings", exact=True).click()
+            page.get_by_label("API key").fill(API_TOKEN)
             with page.expect_response(
                 lambda r: r.url.endswith("/engines/aria2c/settings")
                 and r.request.method == "GET", timeout=30000
             ):
-                page.get_by_placeholder("API key").fill(API_TOKEN)
-
-            page.get_by_role("button", name="Engine settings", exact=True).click()
+                page.get_by_role("button", name="Connect", exact=True).click()
+            page.get_by_role("navigation", name="Main navigation").get_by_role("button", name="Administration", exact=True).click()
+            page.get_by_role("button", name="Engines", exact=True).click()
 
             yt_panel = page.locator("section.panel").filter(
                 has=page.get_by_role("heading", name="yt-dlp", exact=True)
@@ -124,7 +127,7 @@ def run_browser_acceptance() -> None:
             assert saved.value.status == 200
             assert fetch_settings(api, "aria2c")["options"]["max-connection-per-server"] == ARIA_GLOBAL
 
-            page.get_by_role("button", name="Downloads", exact=True).click()
+            page.get_by_role("button", name="Download", exact=True).click()
             form = page.locator("section.submit-panel form")
             assert form.count() == 1, "Downloads tab did not render a unique submission form"
             # Native wrapped <label><select> fields can have an accessible name
