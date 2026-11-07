@@ -77,3 +77,20 @@ test('disposed queue never persists or changes status', async () => {
   assert.deepEqual(writes, []);
   assert.equal(statuses.at(-1), 'pending');
 });
+
+test('invalid advanced data pauses pending changes until repaired', async () => {
+  const writes = [], states = [];
+  const queue = new EngineAutosaveQueue(async value => writes.push(value),
+    state => states.push(state), 10);
+  queue.hydrate({options:{old:'yes'}});
+  queue.change({options:{changed:'yes'}});
+  queue.pause();
+  await sleep(30);
+  assert.deepEqual(writes, []);
+  assert.equal(states.at(-1), 'error');
+  queue.change({options:{repaired:'yes'}});
+  await sleep(35);
+  assert.deepEqual(writes, [{options:{repaired:'yes'}}]);
+  assert.equal(states.at(-1), 'saved');
+  queue.dispose();
+});
