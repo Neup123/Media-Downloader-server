@@ -94,6 +94,20 @@ def run_browser_acceptance() -> None:
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
             assert page.locator("header input[type=password]").count() == 0
             page.get_by_role("button", name="My settings", exact=True).click()
+            # Real browser locale switch exercises direction and persisted UI state.
+            page.locator(".language-settings select").select_option("he")
+            assert page.locator("html").get_attribute("dir") == "rtl"
+            assert page.locator("html").get_attribute("lang") == "he"
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="ספריית ההורדות", exact=True
+            ).wait_for()
+            page.reload(wait_until="domcontentloaded")
+            assert page.get_by_label("שפה").input_value() == "he"
+            assert page.locator(".language-settings option").count() == 2
+            page.locator(".language-settings select").select_option("en")
+            assert page.locator("html").get_attribute("dir") == "ltr"
+            assert page.locator("html").get_attribute("lang") == "en"
+            assert page.locator(".language-settings select").input_value() == "en"
             # A bad key yields a human recovery action, not a raw HTTP error.
             page.get_by_label("API key").fill("invalid-browser-key")
             page.get_by_role("button", name="Connect", exact=True).click()
@@ -233,6 +247,22 @@ def run_browser_acceptance() -> None:
             )
             verify_webdav_bytes(aria_job)
             print("Real Chromium: aria2c global + per-job settings + WebDAV PASS", flush=True)
+            # Both screens must use the same locale-aware job card for verified jobs.
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="My settings", exact=True
+            ).click()
+            page.locator(".language-settings select").select_option("he")
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="הורדה", exact=True
+            ).click()
+            page.get_by_text("הועבר ✓ אומת", exact=True).first.wait_for()
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="ההגדרות שלי", exact=True
+            ).click()
+            page.get_by_label("שפה").select_option("en")
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="Download", exact=True
+            ).click()
             # The same real browser exercises Automation routing cards, not
             # mocked DOM snapshots. Rule order must persist in the core DB.
             page.get_by_role("navigation", name="Main navigation").get_by_role(
