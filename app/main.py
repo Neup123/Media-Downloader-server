@@ -224,6 +224,14 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         rows = session.scalars(select(Preset).order_by(Preset.engine, Preset.name)).all()
         return [preset_to_dict(row) for row in rows]
 
+    @app.get("/api/v1/presets/shared", tags=["settings"])
+    def list_shared_presets(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        """Only deliberately shared presets may cross into Nextcloud user settings."""
+        rows = session.scalars(
+            select(Preset).where(Preset.is_shared.is_(True)).order_by(Preset.engine, Preset.name)
+        ).all()
+        return [preset_to_dict(row) for row in rows]
+
     @app.post("/api/v1/presets", status_code=201, tags=["settings"])
     def create_preset(payload: PresetInput, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         try:
@@ -235,11 +243,14 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         )
         if duplicate:
             raise HTTPException(status_code=409, detail="A preset with this name already exists for the selected engine")
+        if payload.is_shared:
+            validate_shared_preset_settings(settings_value)
         row = Preset(
             name=payload.name,
             engine=payload.engine,
             settings=settings_value,
             description=payload.description,
+            is_shared=payload.is_shared,
         )
         session.add(row)
         session.commit()
@@ -264,10 +275,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         )
         if duplicate:
             raise HTTPException(status_code=409, detail="A preset with this name already exists for the selected engine")
+        if payload.is_shared:
+            validate_shared_preset_settings(settings_value)
         row.name = payload.name
         row.engine = payload.engine
         row.settings = settings_value
         row.description = payload.description
+        row.is_shared = payload.is_shared
         row.updated_at = utcnow()
         session.commit()
         session.refresh(row)
@@ -782,6 +796,26 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
     raise ValueError("Unsupported engine")
 
 
+def validate_shared_preset_settings(settings: dict) -> None:
+    """Public-to-entitled users: never expose cookies, proxy URLs or CLI flags."""
+    for name in ("cookies_file", "proxy", "extra_args"):
+        if settings.get(name):
+            raise HTTPException(
+                status_code=422,
+                detail="Shared presets cannot contain cookies, proxies or custom arguments",
+            )
+    options = settings.get("options", {})
+    if isinstance(options, dict) and any(
+        marker in str(name).lower()
+        for name in options
+        for marker in ("auth", "cookie", "token", "secret", "password", "header", "referer", "proxy")
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="Shared presets cannot contain private site access options",
+        )
+
+
 def preset_to_dict(row: Preset) -> dict:
     return {
         "id": row.id,
@@ -789,6 +823,7 @@ def preset_to_dict(row: Preset) -> dict:
         "engine": row.engine,
         "settings": row.settings or {},
         "description": row.description,
+        "is_shared": bool(row.is_shared),
         "created_at": row.created_at,
         "updated_at": row.updated_at,
     }

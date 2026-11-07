@@ -17,7 +17,7 @@ function initialView(): View {
   if (old === 'library' || old === 'my-settings') return old;
   return 'download';
 }
-type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string };
+type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared?: boolean };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
 type Job = {
   id: string; url: string; engine: Engine; status: string;
@@ -215,6 +215,7 @@ export default function App() {
   const [presetName, setPresetName] = useState('');
   const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
   const [presetDescription, setPresetDescription] = useState('');
+  const [presetShared, setPresetShared] = useState(false);
   const [presetSettingsText, setPresetSettingsText] = useState('{}');
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
   const [ruleHost, setRuleHost] = useState('');
@@ -625,6 +626,7 @@ export default function App() {
     setPresetName('');
     setPresetEngine('yt-dlp');
     setPresetDescription('');
+    setPresetShared(false);
     setPresetSettingsText('{}');
   }
 
@@ -633,6 +635,7 @@ export default function App() {
     setPresetName(preset.name);
     setPresetEngine(preset.engine);
     setPresetDescription(preset.description);
+    setPresetShared(preset.is_shared === true);
     setPresetSettingsText(JSON.stringify(preset.settings, null, 2));
     document.getElementById('preset-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -644,7 +647,8 @@ export default function App() {
       const editingId = editingPresetId;
       const saved = await request(API + '/presets' + (editingId ? '/' + editingId : ''), {
         method: editingId ? 'PUT' : 'POST',
-        body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription, settings }),
+        body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription,
+          settings, is_shared: presetShared }),
       }) as Preset;
       setPresets(await request(API + '/presets'));
       if (selectedPresetId === saved.id && engine !== 'auto' && engine !== saved.engine) {
@@ -1252,6 +1256,12 @@ export default function App() {
             <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
+          <label className="check"><input type="checkbox" checked={presetShared}
+            onChange={event => setPresetShared(event.target.checked)} />
+            Available to everyone (Nextcloud)</label>
+          <p className="muted">When enabled, entitled Nextcloud Downloader users can choose this preset.
+            Their personal presets remain private. Cookie files, proxy URLs, and custom CLI arguments
+            cannot be included in a shared preset.</p>
           <PresetOptionEditor engine={presetEngine} settingsText={presetSettingsText}
             fields={optionCatalog[presetEngine]} onChange={setPresetSettingsText} onError={setMessage} />
           <details className="advanced-options"><summary>Edit as JSON (advanced)</summary>
@@ -1267,7 +1277,8 @@ export default function App() {
         <div className="eyebrow">PRESET LIBRARY</div><h2>Saved presets</h2>
         {!presets.length ? <div className="empty">No presets saved.</div> : <div className="job-list">
           {presets.map(preset => <article key={preset.id} className="job">
-            <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span><strong>{preset.name}</strong></div></div>
+            <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span>
+              <strong>{preset.name}</strong></div><span className="status">{preset.is_shared ? 'Available to everyone' : 'Administrator only'}</span></div>
             {preset.description && <p className="muted">{preset.description}</p>}
             <details><summary>Advanced preset details</summary><pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre></details>
             <div className="job-actions">

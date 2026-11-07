@@ -36,6 +36,7 @@ class PresetInput(BaseModel):
     engine: EngineName
     settings: dict[str, Any] = Field(default_factory=dict)
     description: str = Field(default="", max_length=1000)
+    is_shared: bool = Field(default=False, strict=True)
 
     @field_validator("name")
     @classmethod
