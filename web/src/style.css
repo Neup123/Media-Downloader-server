@@ -173,3 +173,12 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
   .first-run ol { grid-template-columns:1fr; }
   .delivery-panel button + button { margin-left:0; margin-top:10px; }
 }
+
+/* Library actions remain discoverable and usable from 360px. */
+.library-bulk-actions { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:4px 0 18px; }
+.library-bulk-actions button { min-height:44px; }
+.library-bulk-actions .muted { flex:1 1 280px; font-size:12px; line-height:1.5; }
+.load-more { display:block; width:100%; margin:18px 0 0; min-height:44px; }
+@media(max-width:600px) {
+  .library-bulk-actions button { flex:1 1 140px; }
+}

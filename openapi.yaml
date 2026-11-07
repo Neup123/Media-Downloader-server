@@ -298,6 +298,22 @@ paths:
         - name: status
           in: query
           schema: { type: string }
+        - name: state
+          in: query
+          description: Friendly Library state filter, independent of exact status
+          schema: { type: string, enum: [all, active, delivered, failed], default: all }
+        - name: q
+          in: query
+          description: Search URL and delivered filenames (maximum 128 characters)
+          schema: { type: [string, 'null'], maxLength: 128 }
+        - name: offset
+          in: query
+          description: Zero-based pagination offset
+          schema: { type: integer, minimum: 0, maximum: 10000, default: 0 }
+        - name: standalone_only
+          in: query
+          description: Exclude Nextcloud-owned jobs from the standalone Library
+          schema: { type: boolean, default: false }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
@@ -351,6 +367,52 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobBatchOut' }
         '422': { description: Invalid batch item; no items are queued }
+  /jobs/retry-failed:
+    post:
+      operationId: retryFailedStandaloneJobs
+      summary: Retry failed and cancelled standalone downloads
+      description: >-
+        Queues up to 1000 failed or cancelled jobs without an owner ID. Never
+        retries Nextcloud user-owned jobs; does not modify already active jobs.
+      tags: [jobs]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Number of standalone jobs requeued
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [retried]
+                properties: { retried: { type: integer, minimum: 0 } }
+              example: { retried: 3 }
+        '422': { description: Too many failed jobs for one operation }
+  /jobs/history:
+    delete:
+      operationId: clearStandaloneJobHistory
+      summary: Clear only completed/failed/cancelled standalone job history
+      description: >-
+        Requires explicit confirm=true and never deletes downloaded local or
+        Nextcloud Files. Cannot affect running jobs or per-user provenance.
+        Re-delivery of forgotten jobs will no longer be available.
+      tags: [jobs]
+      parameters:
+        - name: confirm
+          in: query
+          required: true
+          schema: { type: boolean, enum: [true] }
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Number of forgotten standalone records; files are retained
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [deleted, files_retained]
+                properties: { deleted: { type: integer, minimum: 0 }, files_retained: { type: boolean } }
+              example: { deleted: 12, files_retained: true }
+        '422': { description: Explicit confirmation required }
   /jobs/{job_id}:
     parameters:
       - name: job_id
