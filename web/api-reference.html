@@ -7,7 +7,26 @@
     <title>Downloader Server API Reference</title>
   </head>
   <body>
-    <div id="scalar-reference"></div>
+    <style>
+      body { margin: 0; background: #10151e; color: #e8edf5; font-family: system-ui, sans-serif; }
+      .docs-intro { padding: 22px max(20px, calc((100vw - 1350px)/2)); border-bottom: 1px solid #34435a; }
+      .docs-intro h1 { font-size: clamp(23px, 3vw, 32px); margin: 0 0 8px; }
+      .docs-intro p { margin: 6px 0; line-height: 1.5; max-width: 70ch; }
+      .docs-intro code { background: #25374e; padding: 2px 6px; border-radius: 5px; }
+      .docs-intro a { color: #9bc6ff; }
+      :focus-visible { outline: 3px solid #bddbff; outline-offset: 3px; }
+    </style>
+    <main>
+      <header class="docs-intro">
+        <h1>Downloader Server — API reference</h1>
+        <p>Developer documentation for jobs, download engines, saved settings and file delivery.</p>
+        <p><strong>Authentication:</strong> send your administrator API key in the
+          <code>X-API-Key</code> header. Keep this key server-side; it grants full service access.
+          <code>/healthz</code> is public.</p>
+        <p><a href="/">Back to Downloader</a></p>
+      </header>
+      <div id="scalar-reference"></div>
+    </main>
     <script type="module" src="/src/api-reference.ts"></script>
   </body>
 </html>
