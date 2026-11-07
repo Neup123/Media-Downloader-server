@@ -20,6 +20,7 @@ function initialView(): View {
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared?: boolean };
 type PresetDraft = { name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared: boolean };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
+type EngineRuleDraft = Omit<EngineRule, 'id'>;
 type Job = {
   id: string; url: string; engine: Engine; status: string;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
@@ -232,6 +233,9 @@ export default function App() {
   const [ruleDescription, setRuleDescription] = useState('');
   const [ruleEnabled, setRuleEnabled] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [ruleSaveState, setRuleSaveState] = useState<SaveState>('saved');
+  const [ruleValidationError, setRuleValidationError] = useState('');
+  const ruleSaveQueue = useRef<EngineAutosaveQueue<EngineRuleDraft> | null>(null);
   const [ruleBusy, setRuleBusy] = useState(false);
   const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
   const [ruleOverId, setRuleOverId] = useState<string | null>(null);
@@ -275,6 +279,8 @@ export default function App() {
   useEffect(() => () => {
     presetSaveQueue.current?.dispose();
     presetSaveQueue.current = null;
+    ruleSaveQueue.current?.dispose();
+    ruleSaveQueue.current = null;
   }, [request]);
 
   useEffect(() => {
@@ -296,6 +302,20 @@ export default function App() {
       presetSaveQueue.current.pause();
     }
   }, [editingPresetId, presetName, presetEngine, presetSettingsText, presetDescription, presetShared]);
+
+  useEffect(() => {
+    if (!editingRuleId || !ruleSaveQueue.current) return;
+    const priority = Number(rulePriority);
+    if (!ruleHost.trim() || !rulePath.startsWith('/') || !Number.isInteger(priority) ||
+        rulePriority.trim() === '' || priority < 0 || priority > 1000) {
+      setRuleValidationError('Enter a website, a path starting with /, and a priority from 0 to 1000.');
+      ruleSaveQueue.current.pause();
+      return;
+    }
+    setRuleValidationError('');
+    ruleSaveQueue.current.change({host_suffix: ruleHost.trim(), path_prefix: rulePath,
+      engine: ruleEngine, priority, enabled: ruleEnabled, description: ruleDescription});
+  }, [editingRuleId, ruleHost, rulePath, ruleEngine, rulePriority, ruleEnabled, ruleDescription]);
 
   const refresh = useCallback(async () => {
     try {
@@ -728,6 +748,10 @@ export default function App() {
   }
 
   function resetRuleEditor() {
+    ruleSaveQueue.current?.dispose();
+    ruleSaveQueue.current = null;
+    setRuleSaveState('saved');
+    setRuleValidationError('');
     setEditingRuleId(null);
     setRuleHost('');
     setRulePath('/');
@@ -739,6 +763,21 @@ export default function App() {
   }
 
   function editEngineRule(rule: EngineRule) {
+    ruleSaveQueue.current?.dispose();
+    const queue = new EngineAutosaveQueue<EngineRuleDraft>(
+      async draft => {
+        const saved = await request(API + '/engine-rules/' + encodeURIComponent(rule.id), {
+          method: 'PUT', body: JSON.stringify(draft),
+        }) as EngineRule;
+        setEngineRules(previous => previous.map(row => row.id === saved.id ? saved : row)
+          .sort((left, right) => right.priority - left.priority));
+      }, setRuleSaveState, 800,
+    );
+    ruleSaveQueue.current = queue;
+    queue.hydrate({host_suffix: rule.host_suffix, path_prefix: rule.path_prefix,
+      engine: rule.engine, priority: rule.priority, enabled: rule.enabled,
+      description: rule.description});
+    setRuleValidationError('');
     setEditingRuleId(rule.id);
     setRuleHost(rule.host_suffix);
     setRulePath(rule.path_prefix);
@@ -756,7 +795,7 @@ export default function App() {
 
   async function saveEngineRule(event: React.FormEvent) {
     event.preventDefault();
-    if (ruleBusy) return;
+    if (ruleBusy || editingRuleId) return; // Existing rules autosave; creation remains explicit.
     setRuleBusy(true);
     const editingId = editingRuleId;
     try {
@@ -1397,6 +1436,15 @@ export default function App() {
           <h2>{editingRuleId ? 'Edit site rule' : 'Add a site rule'}</h2>
           <p className="muted">Choose a website and the downloader to use for links from that site.
             A site rule also matches its subdomains. Higher rules take precedence.</p>
+          {editingRuleId && <div className="engine-save-state" role="status" aria-live="polite">
+            {ruleValidationError || (ruleSaveState === 'saved' ? 'Saved ✓ Changes affect new downloads.'
+              : ruleSaveState === 'pending' ? 'Changes will save automatically…'
+              : ruleSaveState === 'saving' ? 'Saving changes…'
+              : ruleSaveState === 'error' ? 'Changes not saved. Check the rule and retry.'
+              : 'Loading rule…')}
+            {ruleSaveState === 'error' && !ruleValidationError &&
+              <button type="button" className="secondary" onClick={() => ruleSaveQueue.current?.retry()}>Retry saving</button>}
+          </div>}
           <form onSubmit={saveEngineRule}>
             <label>Website<input value={ruleHost} onChange={event => setRuleHost(event.target.value)}
               placeholder="soundcloud.com" autoComplete="off" required maxLength={255} /></label>
@@ -1426,11 +1474,11 @@ export default function App() {
                 }} /></label>
             </details>
             <div className="rule-form-actions">
-              <button className="primary" disabled={ruleBusy}>
-                {ruleBusy ? 'Saving…' : editingRuleId ? 'Update site rule' : 'Add site rule'}
-              </button>
+              {!editingRuleId && <button className="primary" disabled={ruleBusy}>
+                {ruleBusy ? 'Saving…' : 'Add site rule'}
+              </button>}
               {editingRuleId && <button type="button" className="secondary"
-                onClick={resetRuleEditor} disabled={ruleBusy}>Cancel editing</button>}
+                onClick={resetRuleEditor} disabled={ruleBusy || ruleSaveState !== 'saved'}>Finish editing</button>}
             </div>
           </form>
         </section>

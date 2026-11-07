@@ -270,6 +270,45 @@ def run_browser_acceptance() -> None:
             assert toggled.value.status == 200
             rows = api.get("/engine-rules").json()
             assert next(row for row in rows if row["id"] == second_id)["enabled"] is False
+            # Editing a saved routing rule must never require a Save click.
+            page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_role(
+                "button", name="Edit", exact=True
+            ).click()
+            assert routing_form.get_by_role("button", name="Update site rule").count() == 0
+            rule_puts = []
+            def collect_rule_put(request):
+                if request.method == "PUT" and request.url.endswith("/api/v1/engine-rules/" + second_id):
+                    rule_puts.append(request)
+            page.on("request", collect_rule_put)
+            page.wait_for_timeout(1100)
+            assert not rule_puts, "Hydrating a saved rule issued a PUT"
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/" + second_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as updated_rule:
+                routing_form.get_by_label("Note (optional)").fill("Automatically updated routing note")
+            assert updated_rule.value.status == 200
+            page.get_by_text("Saved ✓ Changes affect new downloads.", exact=True).wait_for()
+            assert next(row for row in api.get("/engine-rules").json()
+                if row["id"] == second_id)["description"] == "Automatically updated routing note"
+            routing_form.get_by_text("Advanced — URL path and numeric priority").click()
+            before_invalid = len(rule_puts)
+            routing_form.get_by_label("URL path prefix").fill("invalid-path")
+            page.get_by_text("Enter a website, a path starting with /", exact=False).wait_for()
+            page.wait_for_timeout(1050)
+            assert len(rule_puts) == before_invalid, "Invalid path was saved"
+            assert routing_form.get_by_role("button", name="Finish editing").is_disabled()
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/" + second_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as recovered_rule:
+                routing_form.get_by_label("URL path prefix").fill("/media")
+            assert recovered_rule.value.status == 200
+            page.get_by_text("Saved ✓ Changes affect new downloads.", exact=True).wait_for()
+            routing_form.get_by_role("button", name="Finish editing").click()
+            page.remove_listener("request", collect_rule_put)
+            print("Real Chromium: routing-rule hydration + autosave + validation PASS", flush=True)
+
             print("Real Chromium: site rule creation + order + toggle PASS", flush=True)
 
             # Saved preset edits autosave against the running Core API.
