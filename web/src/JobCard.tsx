@@ -1,5 +1,4 @@
 import type { ReactNode } from 'react';
-import { translate, type Locale } from './i18n';
 
 export type JobCardData = {
   id: string;
@@ -13,7 +12,7 @@ export type JobCardData = {
   created_at?: string;
 };
 type Operation = 'cancel' | 'retry' | 'redeliver';
-type Props = { job: JobCardData; expanded: boolean; onToggle: () => void; onAction: (action: Operation) => void; locale?: Locale };
+type Props = { job: JobCardData; expanded: boolean; onToggle: () => void; onAction: (action: Operation) => void };
 
 const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 function amount(input: unknown): string {
@@ -56,39 +55,38 @@ function symbol(job: JobCardData): string {
   if (/\.(mp4|mkv|webm)(?:$|\?)/i.test(job.url) || job.engine === 'yt-dlp') return '▶';
   return '↓';
 }
-export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Props) {
-  const t = (english: string) => translate(locale, english);
+export function JobCard({job, expanded, onToggle, onAction}: Props) {
   const percentage = Number(job.progress?.percent);
   const percent = Number.isFinite(percentage) ? Math.max(0, Math.min(100, percentage)) : null;
   const verified = Boolean(job.output_files?.length) && job.output_files!.every(file => file.verified);
   const fileLink = job.status === 'completed' && verified ? filesLocation(job) : null;
   const actionButton = (label: string, action: Operation, style = 'secondary'): ReactNode =>
-    <button type="button" className={'small ' + style} onClick={() => onAction(action)}>{t(label)}</button>;
+    <button type="button" className={'small ' + style} onClick={() => onAction(action)}>{label}</button>;
   const progressText = job.status === 'completed'
-    ? verified ? t('Delivered ✓ Verified') : t('Completed — checking delivery')
-    : job.status === 'failed' ? t('Failed — ') + (job.error || t('Check the log and try again'))
-    : job.status === 'cancelled' ? t('Cancelled')
+    ? verified ? 'Delivered ✓ Verified' : 'Completed — checking delivery'
+    : job.status === 'failed' ? 'Failed — ' + (job.error || 'Check the log and try again')
+    : job.status === 'cancelled' ? 'Cancelled'
     : job.status === 'downloading'
-      ? t('Downloading') + (percent === null ? '' : ' ' + percent.toFixed(0) + '%') +
+      ? 'Downloading' + (percent === null ? '' : ' ' + percent.toFixed(0) + '%') +
         (Number(job.progress?.speed_bytes_per_second) > 0
           ? ' · ' + amount(job.progress?.speed_bytes_per_second) + '/s' : '')
-      : job.status === 'delivering' ? t('Delivering to your destination')
-      : job.status === 'queued' ? t('Queued') : job.status.replace(/-/g, ' ');
+      : job.status === 'delivering' ? 'Delivering to your destination'
+      : job.status === 'queued' ? 'Queued' : job.status.replace(/-/g, ' ');
   return <article className={'job-card job-' + job.status}>
     <div className="job-card-head">
       <span className="job-card-icon" aria-hidden="true">{symbol(job)}</span>
       <div className="job-card-info">
         <button type="button" className="job-card-title" onClick={onToggle}
-          aria-expanded={expanded} aria-label={t('Details for ') + jobTitle(job)}>{t(jobTitle(job))}</button>
+          aria-expanded={expanded} aria-label={'Details for ' + jobTitle(job)}>{jobTitle(job)}</button>
         <div className="job-card-state">{progressText}</div>
         <div className="job-card-meta">{job.engine}
           {!TERMINAL.has(job.status) && job.progress?.downloaded_bytes !== undefined &&
-            <span> · {amount(job.progress.downloaded_bytes)} {t('downloaded')}</span>}
+            <span> · {amount(job.progress.downloaded_bytes)} downloaded</span>}
         </div>
       </div>
     </div>
     {!TERMINAL.has(job.status) && <div className="progress-track" role="progressbar"
-      aria-label={t('Download progress for ') + jobTitle(job)}
+      aria-label={'Download progress for ' + jobTitle(job)}
       aria-valuenow={percent ?? undefined} aria-valuemin={0} aria-valuemax={100}>
       <div className="progress-fill" style={{width: (percent ?? 0) + '%'}} /></div>}
     <div className="job-actions">
@@ -96,21 +94,21 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
       {(job.status === 'failed' || job.status === 'cancelled') && actionButton('Try again', 'retry')}
       {job.status === 'completed' && actionButton('Re-deliver', 'redeliver')}
       {fileLink && <a className="small secondary job-card-file-link" href={fileLink}
-        target="_blank" rel="noopener noreferrer">{t('Open in Files')}</a>}
+        target="_blank" rel="noopener noreferrer">Open in Files</a>}
       <button type="button" className="small secondary" onClick={onToggle}
-        aria-expanded={expanded}>{t(expanded ? 'Hide details' : 'Details')}</button>
+        aria-expanded={expanded}>{expanded ? 'Hide details' : 'Details'}</button>
     </div>
     {expanded && <div className="job-card-details">
       {!!job.output_files?.length && <div className="outputs">
-        <strong>{t('Delivered files')}</strong>
+        <strong>Delivered files</strong>
         {job.output_files.map((file, index) => <div className="output-row" key={index}>
           <span>{file.filename}</span><span>{amount(file.size_bytes)}</span>
-          <span>{t(file.verified ? '✓ Verified' : 'Not verified')}</span>
+          <span>{file.verified ? '✓ Verified' : 'Not verified'}</span>
         </div>)}
       </div>}
       {job.error && <p className="error-box">{job.error}</p>}
-      <details><summary>{t('Technical log (advanced)')}</summary>
-        <pre className="log">{job.log_text || t('No log output yet.')}</pre>
+      <details><summary>Technical log (advanced)</summary>
+        <pre className="log">{job.log_text || 'No log output yet.'}</pre>
       </details>
     </div>}
   </article>;
