@@ -12,7 +12,7 @@ import pytest
 import yaml
 
 from app.schemas import (
-    CookieUploadIn, DeliverySettingsIn, EngineRuleInput,
+    CookieUploadIn, DeliverySettingsIn, EngineRuleInput, EngineRuleOrderInput,
     EngineSettingsIn, JobBatchCreate, JobCreate, MediaPreviewIn, PresetInput,
 )
 
@@ -24,6 +24,7 @@ OPERATIONS = {
     ("post", "/presets"): PresetInput,
     ("put", "/presets/{preset_id}"): PresetInput,
     ("post", "/engine-rules"): EngineRuleInput,
+    ("put", "/engine-rules/order"): EngineRuleOrderInput,
     ("put", "/engine-rules/{rule_id}"): EngineRuleInput,
     ("post", "/jobs"): JobCreate,
     ("post", "/jobs/batch"): JobBatchCreate,

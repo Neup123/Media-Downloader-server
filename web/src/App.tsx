@@ -4,6 +4,7 @@ import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
+import { moveRule, stepRule, isReordered } from './rule-order';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -223,6 +224,10 @@ export default function App() {
   const [ruleDescription, setRuleDescription] = useState('');
   const [ruleEnabled, setRuleEnabled] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
+  const [ruleOverId, setRuleOverId] = useState<string | null>(null);
+  const [rulePriorityEdited, setRulePriorityEdited] = useState(false);
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', 'X-API-Key': apiKey }), [apiKey]);
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -670,6 +675,7 @@ export default function App() {
     setRulePath('/');
     setRuleEngine('yt-dlp');
     setRulePriority('100');
+    setRulePriorityEdited(false);
     setRuleDescription('');
     setRuleEnabled(true);
   }
@@ -680,39 +686,101 @@ export default function App() {
     setRulePath(rule.path_prefix);
     setRuleEngine(rule.engine);
     setRulePriority(String(rule.priority));
+    setRulePriorityEdited(true);
     setRuleDescription(rule.description);
     setRuleEnabled(rule.enabled);
     document.getElementById('rule-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  async function reloadRules() {
+    setEngineRules(await request(API + '/engine-rules'));
+  }
+
   async function saveEngineRule(event: React.FormEvent) {
     event.preventDefault();
+    if (ruleBusy) return;
+    setRuleBusy(true);
+    const editingId = editingRuleId;
     try {
-      const editingId = editingRuleId;
-      await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
+      const created = await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
         method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           host_suffix: ruleHost, path_prefix: rulePath, engine: ruleEngine,
-          priority: Number(rulePriority), enabled: ruleEnabled, description: ruleDescription,
+          priority: rulePriorityEdited ? Number(rulePriority) : 1000,
+          enabled: ruleEnabled, description: ruleDescription,
         }),
-      });
-      setEngineRules(await request(API + '/engine-rules'));
+      }) as EngineRule;
+      // A normal new rule goes to the top, keeping the displayed order equal
+      // to the matcher's numeric priority. Explicit Advanced priority bypasses it.
+      if (!editingId && !rulePriorityEdited && engineRules.length) {
+        const ids = [created.id, ...engineRules.map(item => item.id)];
+        await request(API + '/engine-rules/order', {
+          method: 'PUT', body: JSON.stringify({ids}),
+        });
+      }
+      await reloadRules();
       resetRuleEditor();
-      setMessage(editingId ? 'URL engine rule updated.' : 'URL engine rule saved.');
+      setMessage(editingId ? 'Rule saved ✓ New downloads use the updated rule.'
+        : 'Rule created ✓ Automatic downloads now consider this site.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save URL rule');
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not save the rule.');
+    } finally { setRuleBusy(false); }
+  }
+
+  async function persistRuleOrder(next: EngineRule[]) {
+    if (ruleBusy || !isReordered(engineRules, next)) return;
+    setRuleBusy(true);
+    setEngineRules(next);
+    try {
+      const saved = await request(API + '/engine-rules/order', {
+        method: 'PUT', body: JSON.stringify({ids: next.map(item => item.id)}),
+      }) as EngineRule[];
+      setEngineRules(saved);
+      setMessage('Saved ✓ Routing order updated. New downloads follow this order.');
+    } catch (error) {
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not save routing order; changes were reloaded.');
+    } finally {
+      setRuleBusy(false);
+      setDraggedRuleId(null);
+      setRuleOverId(null);
     }
   }
 
+  async function toggleEngineRule(rule: EngineRule, enabled: boolean) {
+    if (ruleBusy) return;
+    setRuleBusy(true);
+    // Controlled checkboxes must reflect the user's click immediately.
+    // Reconcile from the server on either success or failure below.
+    setEngineRules(current => current.map(item =>
+      item.id === rule.id ? {...item, enabled} : item));
+    try {
+      await request(API + '/engine-rules/' + rule.id, {
+        method: 'PUT', body: JSON.stringify({
+          host_suffix: rule.host_suffix, path_prefix: rule.path_prefix, engine: rule.engine,
+          priority: rule.priority, enabled, description: rule.description,
+        }),
+      });
+      await reloadRules();
+      setMessage(enabled ? 'Saved ✓ Rule enabled for new downloads.' : 'Saved ✓ Rule disabled for new downloads.');
+    } catch (error) {
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not change rule. Reloaded current settings.');
+    } finally { setRuleBusy(false); }
+  }
+
   async function deleteEngineRule(id: string) {
+    if (ruleBusy || !window.confirm('Delete this site rule? Existing downloads are unaffected.')) return;
+    setRuleBusy(true);
     try {
       await request(API + '/engine-rules/' + id, { method: 'DELETE' });
       setEngineRules(current => current.filter(item => item.id !== id));
       if (editingRuleId === id) resetRuleEditor();
-      setMessage('URL engine rule deleted.');
+      setMessage('Rule deleted. New downloads no longer use it.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete URL rule');
-    }
+      setMessage(error instanceof Error ? error.message : 'Could not delete rule.');
+    } finally { setRuleBusy(false); }
   }
 
   async function uploadCookie(file: File) {
@@ -1210,35 +1278,117 @@ export default function App() {
         </div>}
       </section>
       </>}
-      {tab === "administration" && <><section className="panel" id="rule-editor">
-        <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div><h2>{editingRuleId ? 'Edit URL rule' : 'Add a URL rule'}</h2>
-        <p className="muted">Host suffix matches the exact host and its subdomains. A more specific path or higher priority wins.</p>
-        <form onSubmit={saveEngineRule}>
-          <label>Host suffix<input value={ruleHost} onChange={event => setRuleHost(event.target.value)} placeholder="example.com" required /></label>
-          <label>Path prefix<input value={rulePath} onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
-          <label>Engine<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
-            <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
-          </select></label>
-          <label>Priority (0–1000)<input type="number" min="0" max="1000" value={rulePriority} onChange={event => setRulePriority(event.target.value)} /></label>
-          <label className="check"><input type="checkbox" checked={ruleEnabled} onChange={event => setRuleEnabled(event.target.checked)} /> Rule enabled</label>
-          <label>Description<input value={ruleDescription} onChange={event => setRuleDescription(event.target.value)} maxLength={255} /></label>
-          <button className="primary">{editingRuleId ? 'Update URL rule' : 'Create URL rule'}</button>
-          {editingRuleId && <button type="button" className="secondary" onClick={resetRuleEditor}>Cancel editing</button>}
-        </form>
-      </section>
-      <section className="panel">
-        <div className="eyebrow">URL RULES</div><h2>Routing table</h2>
-        {!engineRules.length ? <div className="empty">No URL rules configured. Automatic selection defaults to yt-dlp, or aria2c for FTP/magnet links.</div> : <div className="job-list">
-          {engineRules.map(rule => <article key={rule.id} className="job">
-            <div className="job-head"><div className="job-title"><span className="engine-pill">{rule.engine}</span><strong>{rule.host_suffix}{rule.path_prefix === '/' ? '' : rule.path_prefix}</strong></div><span className="status">{rule.enabled ? 'Enabled' : 'Disabled'} · Priority {rule.priority}</span></div>
-            {rule.description && <p className="muted">{rule.description}</p>}
-            <div className="job-actions">
-              <button className="small" onClick={() => editEngineRule(rule)}>Edit</button>
-              <button className="small danger" onClick={() => void deleteEngineRule(rule.id)}>Delete</button>
+      {tab === "administration" && <>
+        <section className="panel" id="rule-editor">
+          <div className="eyebrow">AUTOMATIC ENGINE SELECTION</div>
+          <h2>{editingRuleId ? 'Edit site rule' : 'Add a site rule'}</h2>
+          <p className="muted">Choose a website and the downloader to use for links from that site.
+            A site rule also matches its subdomains. Higher rules take precedence.</p>
+          <form onSubmit={saveEngineRule}>
+            <label>Website<input value={ruleHost} onChange={event => setRuleHost(event.target.value)}
+              placeholder="soundcloud.com" autoComplete="off" required maxLength={255} /></label>
+            <label>Download with<select value={ruleEngine} onChange={event => setRuleEngine(event.target.value as Engine)}>
+              <option value="yt-dlp">yt-dlp — video and audio</option>
+              <option value="aria2c">aria2c — direct files and torrents</option>
+              <option value="gallery-dl">gallery-dl — galleries</option>
+              <option value="generic">Direct file (curl)</option>
+              <option value="you-get">you-get — video fallback</option>
+              <option value="svtplay-dl">svtplay-dl — Nordic television</option>
+              <option value="get-sauce">get-sauce — specialized media</option>
+            </select></label>
+            <label>Note (optional)<input value={ruleDescription}
+              onChange={event => setRuleDescription(event.target.value)} maxLength={255}
+              placeholder="Example: use this for audio tracks" /></label>
+            <label className="check"><input type="checkbox" checked={ruleEnabled}
+              onChange={event => setRuleEnabled(event.target.checked)} /> Enable rule</label>
+            <details className="advanced-options">
+              <summary>Advanced — URL path and numeric priority</summary>
+              <p className="muted">Normally the order of cards decides priority. Limit a rule to a URL path
+                or enter a custom numeric priority only if necessary.</p>
+              <label>URL path prefix<input value={rulePath}
+                onChange={event => setRulePath(event.target.value)} placeholder="/" /></label>
+              <label>Priority (0–1000)<input type="number" min="0" max="1000"
+                value={rulePriority} onChange={event => {
+                  setRulePriority(event.target.value); setRulePriorityEdited(true);
+                }} /></label>
+            </details>
+            <div className="rule-form-actions">
+              <button className="primary" disabled={ruleBusy}>
+                {ruleBusy ? 'Saving…' : editingRuleId ? 'Update site rule' : 'Add site rule'}
+              </button>
+              {editingRuleId && <button type="button" className="secondary"
+                onClick={resetRuleEditor} disabled={ruleBusy}>Cancel editing</button>}
             </div>
-          </article>)}
-        </div>}
-      </section></>}
+          </form>
+        </section>
+        <section className="panel">
+          <div className="eyebrow">ROUTING RULES</div><h2>Which downloader handles each site?</h2>
+          <p className="muted">Drag the handle or use Move up / Move down to change order. The highest enabled matching
+            rule is used for new downloads; existing jobs are not changed.</p>
+          {ruleBusy && <p role="status" className="muted">Saving routing settings…</p>}
+          {!engineRules.length
+            ? <div className="empty">No site rules yet. Automatic mode uses yt-dlp by default,
+                or aria2c for FTP and magnet links.</div>
+            : <div className="rule-order-list" aria-label="Ordered site rules">
+              {engineRules.map((rule, index) => <article key={rule.id}
+                className={'rule-card' + (ruleOverId === rule.id ? ' drop-target' : '')}
+                data-rule-id={rule.id}
+                onDragOver={event => {
+                  if (ruleBusy || !draggedRuleId) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = 'move';
+                  if (ruleOverId !== rule.id) setRuleOverId(rule.id);
+                }}
+                onDragLeave={() => setRuleOverId(current => current === rule.id ? null : current)}
+                onDrop={event => {
+                  event.preventDefault();
+                  const source = draggedRuleId;
+                  setDraggedRuleId(null); setRuleOverId(null);
+                  if (!source || ruleBusy) return;
+                  const box = event.currentTarget.getBoundingClientRect();
+                  const location = event.clientY > box.top + box.height / 2 ? 'after' : 'before';
+                  void persistRuleOrder(moveRule(engineRules, source, rule.id, location));
+                }}>
+                <div className="rule-head">
+                  <button type="button" className="rule-drag" draggable={!ruleBusy}
+                    title="Drag to reorder"
+                    aria-label={'Drag to reorder rule for ' + rule.host_suffix}
+                    onDragStart={event => {
+                      if (ruleBusy) {event.preventDefault();return;}
+                      setDraggedRuleId(rule.id);
+                      event.dataTransfer.effectAllowed = 'move';
+                      event.dataTransfer.setData('text/plain', rule.id);
+                    }}
+                    onDragEnd={() => {setDraggedRuleId(null);setRuleOverId(null);}}>⋮⋮</button>
+                  <div className="rule-label">
+                    <strong>{rule.host_suffix} → {rule.engine}</strong>
+                    {rule.description && <p className="muted">{rule.description}</p>}
+                    {rule.path_prefix !== '/' && <small className="muted">Applies to path: {rule.path_prefix}</small>}
+                  </div>
+                  <label className="rule-enabled"><input type="checkbox" checked={rule.enabled}
+                    disabled={ruleBusy}
+                    onChange={event => void toggleEngineRule(rule, event.target.checked)} />
+                    {rule.enabled ? 'Enabled' : 'Disabled'}</label>
+                </div>
+                <div className="rule-actions">
+                  <button className="small secondary" disabled={ruleBusy || index === 0} type="button"
+                    aria-label={'Move ' + rule.host_suffix + ' up'}
+                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, -1))}>Move up</button>
+                  <button className="small secondary" disabled={ruleBusy || index === engineRules.length - 1}
+                    type="button" aria-label={'Move ' + rule.host_suffix + ' down'}
+                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, 1))}>Move down</button>
+                  <button className="small secondary" disabled={ruleBusy} type="button"
+                    onClick={() => editEngineRule(rule)}>Edit</button>
+                  <button className="small danger" disabled={ruleBusy} type="button"
+                    onClick={() => void deleteEngineRule(rule.id)}>Delete</button>
+                  <details className="rule-advanced"><summary>Advanced</summary>
+                    <span>Priority {rule.priority} · ID {rule.id}</span>
+                  </details>
+                </div>
+              </article>)}
+            </div>}
+        </section>
+      </>}
     </div>}
 
     {tab === 'administration' && connected && adminArea === 'delivery' && <section className="panel delivery-panel">

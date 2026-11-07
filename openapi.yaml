@@ -235,6 +235,34 @@ paths:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '201': { description: Rule created }
         '422': { description: Invalid host or path rule }
+  /engine-rules/order:
+    put:
+      operationId: reorderEngineRules
+      summary: Save the complete drag-and-drop order of routing rules atomically
+      description: >-
+        The ordered IDs must be a complete snapshot of every current rule,
+        including disabled rules. Priorities are reassigned 1000, 999, ...
+        in the supplied order. Missing or unknown IDs reject the whole transaction;
+        reload if another administrator changed the routing table.
+      tags: [settings]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EngineRuleOrderInput' }
+            example:
+              ids:
+                - 11111111-1111-4111-8111-111111111111
+                - 22222222-2222-4222-8222-222222222222
+      responses:
+        '200':
+          description: All routing rules in the saved order and their updated numeric priorities
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/EngineRuleOut' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { description: Stale or incomplete routing-rule snapshot }
+        '422': { description: Invalid or duplicate IDs, or more than 1001 rules }
   /engine-rules/{rule_id}:
     parameters:
       - name: rule_id
@@ -715,6 +743,28 @@ components:
         engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         settings: { type: object, additionalProperties: true }
         description: { type: string, maxLength: 1000, default: '' }
+    EngineRuleOrderInput:
+      type: object
+      required: [ids]
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 1001
+          items: { type: string }
+    EngineRuleOut:
+      type: object
+      required: [id, host_suffix, path_prefix, engine, priority, enabled, description]
+      properties:
+        id: { type: string, format: uuid }
+        host_suffix: { type: string }
+        path_prefix: { type: string }
+        engine: { type: string }
+        priority: { type: integer, minimum: 0, maximum: 1000 }
+        enabled: { type: boolean }
+        description: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
     EngineRuleInput:
       type: object
       required: [host_suffix, engine]
