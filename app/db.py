@@ -55,6 +55,7 @@ class Preset(Base):
     engine: Mapped[str] = mapped_column(String(40), nullable=False, index=True)
     settings: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     description: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
@@ -117,6 +118,13 @@ def initialize_database(engine) -> None:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_owner_id ON jobs (owner_id)"))
         if "delivery_token" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN delivery_token TEXT"))
+        # Existing presets were private to the standalone administrator; they
+        # must never become visible to Nextcloud users without an explicit grant.
+        preset_columns = {column["name"] for column in inspect(engine).get_columns("presets")}
+        if "is_shared" not in preset_columns:
+            connection.execute(text(
+                "ALTER TABLE presets ADD COLUMN is_shared BOOLEAN NOT NULL DEFAULT FALSE"
+            ))
 
 
 def make_session_factory(engine):
