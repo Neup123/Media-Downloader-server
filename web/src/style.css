@@ -232,18 +232,3 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
  .rule-enabled{flex:1 1 100%;padding-left:4px}
  .rule-actions button{flex:1 1 calc(50% - 10px)}
 }
-
-/* Hebrew locale follows semantic document direction. Keep machine-readable
-   URLs, tokens and advanced settings left-to-right inside the RTL shell. */
-:root[dir="rtl"] .top-actions { margin-left: 0; margin-right: auto; }
-:root[dir="rtl"] .download-options summary .muted { margin-left: 0; margin-right: 8px; }
-:root[dir="rtl"] .job-list { padding-right: 0; padding-left: 3px; }
-:root[dir="rtl"] .rule-enabled { padding-left: 0; padding-right: 4px; }
-:root[dir="rtl"] .delivery-panel button + button { margin-left: 0; margin-right: 10px; }
-:root[dir="rtl"] .rule-card, :root[dir="rtl"] .job-card { text-align: start; }
-:root[dir="rtl"] .url-entry input, :root[dir="rtl"] input[type="url"],
-:root[dir="rtl"] input[type="password"], :root[dir="rtl"] .log,
-:root[dir="rtl"] .advanced-options textarea { direction: ltr; text-align: left; }
-@media(max-width:600px) {
-  :root[dir="rtl"] .delivery-panel button + button { margin-right: 0; }
-}
