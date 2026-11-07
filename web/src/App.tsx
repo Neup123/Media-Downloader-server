@@ -1087,17 +1087,22 @@ export default function App() {
           <section className="panel engine-editor" data-engine="yt-dlp">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
         <QualityControl value={yt.format} onChange={format => setYt(value => ({ ...value, format }))} />
-        <label>Subtitle languages<input placeholder="en,he,el" value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <h3>Playlists</h3>
         <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div><p className="muted">When off, a playlist link downloads only its first item.</p>
         {yt.allow_playlist && <label>Default playlist selection (optional)<input value={yt.playlist_items} onChange={event => setYt(value => ({ ...value, playlist_items: event.target.value }))} placeholder="e.g. 1-5 or leave empty for all" /></label>}
 
+        <h3>Site access (cookies)</h3>
         <label>Default cookie file<select value={yt.cookies_file ?? ''} onChange={event => setYt(value => ({ ...value, cookies_file: event.target.value }))}><option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}</select></label>
         <label>Upload browser-exported cookies<input type="file" accept=".txt,.cookies,text/plain" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadCookie(file); event.target.value = ''; }} /></label>
         <div className="muted">Some sites only show full quality to signed-in users. Upload a cookies file exported from your browser; it stays on the server, private.</div>
+        <h3>Subtitles</h3>
+        <label>Subtitle languages<input placeholder="en,he,el" value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <p className="muted">Enter subtitle language codes separated by commas when the site offers captions.</p>
         <div className="checks">
           <label className="check"><input type="checkbox" checked={yt.write_subtitles} onChange={event => setYt(value => ({ ...value, write_subtitles: event.target.checked }))} /> Download subtitles by default</label>
           <label className="check"><input type="checkbox" checked={yt.embed_subtitles} onChange={event => setYt(value => ({ ...value, embed_subtitles: event.target.checked }))} /> Embed subtitles by default</label>
         </div>
+        <p className="muted">Download keeps a separate caption track; Embed includes supported captions in the media file.</p>
         <details className="advanced-options"><summary>Advanced — additional arguments</summary><p className="muted">Use only reviewed yt-dlp flags. Leave empty for normal downloads.</p><label>Additional arguments (one per line)<textarea rows={4} value={yt.extra_args.join('\n')} onChange={event => setYt(value => ({ ...value, extra_args: event.target.value.split('\n').map(item => item.trim()).filter(Boolean) }))} /></label></details>
         
       </section>}
