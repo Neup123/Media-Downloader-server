@@ -129,7 +129,8 @@ def run_browser_acceptance() -> None:
 
             page.get_by_role("button", name="Download", exact=True).click()
             form = page.locator("section.submit-panel form")
-            assert form.count() == 1, "Downloads tab did not render a unique submission form"
+            assert form.count() == 1, "Download screen did not render a unique submission form"
+            form.locator("summary").click()
             # Native wrapped <label><select> fields can have an accessible name
             # expanded by the option list; target the real form structure.
             form.locator("select").first.select_option("yt-dlp")
