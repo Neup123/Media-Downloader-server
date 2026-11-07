@@ -67,7 +67,9 @@ export function JobCard({job, expanded, onToggle, onAction}: Props) {
     : job.status === 'failed' ? 'Failed — ' + (job.error || 'Check the log and try again')
     : job.status === 'cancelled' ? 'Cancelled'
     : job.status === 'downloading'
-      ? 'Downloading' + (percent === null ? '' : ' ' + percent.toFixed(0) + '%')
+      ? 'Downloading' + (percent === null ? '' : ' ' + percent.toFixed(0) + '%') +
+        (Number(job.progress?.speed_bytes_per_second) > 0
+          ? ' · ' + amount(job.progress?.speed_bytes_per_second) + '/s' : '')
       : job.status === 'delivering' ? 'Delivering to your destination'
       : job.status === 'queued' ? 'Queued' : job.status.replace(/-/g, ' ');
   return <article className={'job-card job-' + job.status}>
@@ -80,8 +82,6 @@ export function JobCard({job, expanded, onToggle, onAction}: Props) {
         <div className="job-card-meta">{job.engine}
           {!TERMINAL.has(job.status) && job.progress?.downloaded_bytes !== undefined &&
             <span> · {amount(job.progress.downloaded_bytes)} downloaded</span>}
-          {job.status === 'downloading' && Number(job.progress?.speed_bytes_per_second) > 0 &&
-            <span> · {amount(job.progress?.speed_bytes_per_second)}/s</span>}
         </div>
       </div>
     </div>

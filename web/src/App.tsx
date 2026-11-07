@@ -1133,31 +1133,6 @@ export default function App() {
       <p>The service needs an administrator API key before it can download links or show your history.</p>
       <button className="primary" onClick={() => navigate('my-settings')}>Connect in My settings</button>
     </section>}
-    {connected && historyChecked && !verifiedDownload && <section className="panel first-run" aria-label="Set up Downloader">
-      <h2>Get ready for your first download</h2>
-      <p className="muted">Complete these steps, then try a small public test file. The guide disappears after your first verified download.</p>
-      <ol>
-        <li><strong>✓ Connected to Downloader</strong><p>Your administrator API key works.</p></li>
-        <li><strong>{deliveryVerified ? '✓ ' : '② '}Choose where files go</strong>
-          <p>Save the local folder or WebDAV destination, then run its actual delivery test.</p>
-          <button className="secondary" type="button" onClick={() => {navigate('administration');setAdminArea('delivery');}}>
-            {deliveryVerified ? 'Review delivery' : 'Set up and test delivery'}
-          </button></li>
-        <li><strong>{accessAcknowledged ? '✓ ' : '③ '}Decide who can download</strong>
-          <p>Standalone Downloader currently uses one administrator API key. Only people with that key have access. Nextcloud user permissions are configured separately.</p>
-          <label className="check"><input type="checkbox" checked={accessAcknowledged}
-            onChange={event => {
-              setAccessAcknowledged(event.target.checked);
-              if (event.target.checked) localStorage.setItem('downloader-admin-access-ack', 'yes');
-              else localStorage.removeItem('downloader-admin-access-ack');
-            }} /> I understand who can access this service</label></li>
-        <li><strong>④ Download something first</strong><p>A small public PDF tests the complete download and delivery flow.</p>
-          <button className="primary" type="button" disabled={!deliveryVerified || !accessAcknowledged}
-            onClick={() => {setEngine('generic');setUrl('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');navigate('download');}}>
-            Try an example download
-          </button></li>
-      </ol>
-    </section>}
     {tab === 'my-settings' && <section className="panel connection-settings">
       <h2>Service connection</h2>
       <p className="muted">Connect this standalone browser with the administrator API key. Your key stays in this browser.</p>
@@ -1256,7 +1231,7 @@ export default function App() {
           </div> : engine === 'gallery-dl' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             <CommonOptionFields fields={optionCatalog['gallery-dl']} values={catalogValues(galleryOverrideOptionsText)} onChange={(key, value) => updateGalleryOption(key, value, false)} />
-            <details className="advanced-options"><summary>Advanced — site-specific gallery options</summary><p className="muted">Leave as default unless a site-specific extractor setting is required.</p><details className="advanced-options"><summary>Advanced — site-specific gallery options</summary><p className="muted">Leave as default unless a site-specific extractor setting is required.</p><label>Advanced extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label></details></details>
+            <details className="advanced-options"><summary>Advanced — site-specific gallery options</summary><p className="muted">Leave as default unless a site-specific extractor setting is required.</p><label>Advanced extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label></details>
             <label>Cookie file<select value={galleryOverride.cookies_file ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, cookies_file: event.target.value }))}>
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
@@ -1281,7 +1256,33 @@ export default function App() {
             {busy ? 'Starting…' : linkMode === 'one' ? 'Download' : 'Add up to 50 links'}
           </button>
         </form>
-      </section></>}
+      </section>
+    {connected && historyChecked && !verifiedDownload && <section className="panel first-run" aria-label="Set up Downloader">
+      <h2>Get ready for your first download</h2>
+      <p className="muted">Complete these steps, then try a small public test file. The guide disappears after your first verified download.</p>
+      <ol>
+        <li><strong>✓ Connected to Downloader</strong><p>Your administrator API key works.</p></li>
+        <li><strong>{deliveryVerified ? '✓ ' : '② '}Choose where files go</strong>
+          <p>Save the local folder or WebDAV destination, then run its actual delivery test.</p>
+          <button className="secondary" type="button" onClick={() => {navigate('administration');setAdminArea('delivery');}}>
+            {deliveryVerified ? 'Review delivery' : 'Set up and test delivery'}
+          </button></li>
+        <li><strong>{accessAcknowledged ? '✓ ' : '③ '}Decide who can download</strong>
+          <p>Standalone Downloader currently uses one administrator API key. Only people with that key have access. Nextcloud user permissions are configured separately.</p>
+          <label className="check"><input type="checkbox" checked={accessAcknowledged}
+            onChange={event => {
+              setAccessAcknowledged(event.target.checked);
+              if (event.target.checked) localStorage.setItem('downloader-admin-access-ack', 'yes');
+              else localStorage.removeItem('downloader-admin-access-ack');
+            }} /> I understand who can access this service</label></li>
+        <li><strong>④ Download something first</strong><p>A small public PDF tests the complete download and delivery flow.</p>
+          <button className="primary" type="button" disabled={!deliveryVerified || !accessAcknowledged}
+            onClick={() => {setEngine('generic');setUrl('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');navigate('download');}}>
+            Try an example download
+          </button></li>
+      </ol>
+    </section>}
+      </>}
 
       <section className="panel queue-panel">
         <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{tab === 'library' ? 'Your downloads' : 'Recent downloads'}</h2></div><span className="count">{jobs.length} jobs</span></div>
