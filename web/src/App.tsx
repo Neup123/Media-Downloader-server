@@ -973,15 +973,26 @@ export default function App() {
 
       <section className="panel queue-panel">
         <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{tab === 'library' ? 'Your downloads' : 'Recent downloads'}</h2></div><span className="count">{jobs.length} jobs</span></div>
-        {tab === 'library' && <div className="library-filters">
-          <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)} placeholder="Title, URL or filename" /></label>
-          <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
-            <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
-          </select></label>
-        </div>}
+        {tab === 'library' && <>
+          <div className="library-filters">
+            <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)}
+              placeholder="Title, URL or filename" maxLength={128} /></label>
+            <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
+              <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
+            </select></label>
+          </div>
+          <div className="library-bulk-actions">
+            <button className="secondary" disabled={busy} type="button" onClick={() => void retryFailedLibrary()}>Retry all failed</button>
+            <button className="danger" disabled={busy} type="button" onClick={() => void clearLibraryHistory()}>Clear history</button>
+            <span className="muted">Standalone jobs only. Clearing history keeps downloaded files.</span>
+          </div>
+          {libraryLoading && <p className="muted" role="status">Searching your Library…</p>}
+        </>}
         {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>See all downloads</button>}
         {!shownJobs.length ? <div className="empty">
-          <p>{jobs.length ? 'No downloads match these filters.' : 'Nothing here yet — your finished downloads will live here.'}</p>
+          <p>{libraryLoading && tab === 'library' ? 'Searching your Library…'
+            : tab === 'library' && (libraryQuery || libraryFilter !== 'all') ? 'No downloads match these filters.'
+            : 'Nothing here yet — your finished downloads will live here.'}</p>
           <button className="secondary" onClick={() => tab === 'library' ?
             (setLibraryQuery(''), setLibraryFilter('all')) : document.querySelector<HTMLInputElement>('.url-entry input')?.focus()}>
             {tab === 'library' ? 'Clear filters' : 'Download something'}
@@ -991,6 +1002,10 @@ export default function App() {
             onToggle={() => setSelected(current => current === job.id ? null : job.id)}
             onAction={operation => void jobAction(job.id, operation)} />)}
         </div>}
+        {tab === 'library' && libraryHasMore && <button type="button" className="secondary load-more"
+          disabled={libraryLoading} onClick={() => void fetchLibrary(libraryOffset + 200)}>
+          {libraryLoading ? 'Loading…' : 'Load more downloads'}
+        </button>}
       </section>
     </div>}
 
