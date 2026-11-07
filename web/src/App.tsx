@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
 import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
+import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -39,6 +40,17 @@ type SvtSettings = { resolution: string; quality: string; subtitles: boolean; al
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
+
+const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
+  'yt-dlp': {title: 'Video & audio sites', purpose: 'Videos, playlists, subtitles and audio from supported sites'},
+  aria2c: {title: 'Large files & torrents', purpose: 'Direct files, magnets, FTP and torrent downloads'},
+  'gallery-dl': {title: 'Image galleries', purpose: 'Image collections from supported gallery websites'},
+  generic: {title: 'Direct file downloads', purpose: 'Files from public HTTP and HTTPS links'},
+  'you-get': {title: 'Alternative video sites', purpose: 'Fallback downloader for supported videos and audio'},
+  'svtplay-dl': {title: 'Nordic television', purpose: 'Video and subtitles from Nordic broadcasting sites'},
+  'get-sauce': {title: 'Specialized media', purpose: 'Specialized media and gallery download sources'},
+};
+const ENGINE_ORDER = Object.keys(ENGINE_DESCRIPTIONS) as Engine[];
 
 function CommonOptionFields({ fields, values, onChange }: {
   fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
@@ -184,6 +196,12 @@ export default function App() {
   const [getSauceOverride, setGetSauceOverride] = useState<GetSauceSettings>(getSauceDefaults);
   const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [], 'get-sauce': [] });
   const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
+  const [editingEngine, setEditingEngine] = useState<Engine>('yt-dlp');
+  const [engineLoaded, setEngineLoaded] = useState<Partial<Record<Engine, boolean>>>({});
+  const [engineLoadError, setEngineLoadError] = useState<Partial<Record<Engine, boolean>>>({});
+  const [optionCatalogLoaded, setOptionCatalogLoaded] = useState<Partial<Record<Engine, boolean>>>({});
+  const [engineSaveStatus, setEngineSaveStatus] = useState<Partial<Record<Engine, SaveState>>>({});
+  const engineSaveQueues = useRef<Partial<Record<Engine, EngineAutosaveQueue<unknown>>>>({});
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
   const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
   const [cookies, setCookies] = useState<{ filename: string; size_bytes: number }[]>([]);
@@ -214,6 +232,32 @@ export default function App() {
     if (!response.ok) throw new Error(apiErrorMessage(data, response.status));
     return data;
   }, [apiKey, headers]);
+
+  const autosaveQueue = useCallback((name: Engine) => {
+    let queue = engineSaveQueues.current[name];
+    if (!queue) {
+      queue = new EngineAutosaveQueue<unknown>(
+        value => request(API + '/engines/' + name + '/settings', {
+          method: 'PUT', body: JSON.stringify({settings: value}),
+        }),
+        status => setEngineSaveStatus(previous => ({...previous, [name]: status})),
+      );
+      engineSaveQueues.current[name] = queue;
+    }
+    return queue;
+  }, [request]);
+
+  const hydrateEngine = useCallback((name: Engine, settings: unknown) => {
+    autosaveQueue(name).hydrate(settings);
+    setEngineLoaded(previous => ({...previous, [name]: true}));
+    setEngineLoadError(previous => ({...previous, [name]: false}));
+  }, [autosaveQueue]);
+
+  // A credential change invalidates all outstanding writes from the prior service.
+  useEffect(() => () => {
+    Object.values(engineSaveQueues.current).forEach(queue => queue?.dispose());
+    engineSaveQueues.current = {};
+  }, [request]);
 
   const refresh = useCallback(async () => {
     try {
@@ -260,44 +304,69 @@ export default function App() {
     if (!apiKey) return;
     void request(API + '/engines/yt-dlp/settings').then(data => {
       const saved = { ...ytDefaults, ...data.settings };
+      hydrateEngine('yt-dlp', saved);
       setYt(saved); setYtOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['yt-dlp']: true})));
     void request(API + '/engines/aria2c/settings').then(data => {
       const saved = { ...ariaDefaults, ...data.settings };
+      hydrateEngine('aria2c', saved);
       setAria(saved); setAriaOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['aria2c']: true})));
     void request(API + '/engines/you-get/settings').then(data => {
       const saved = { ...youGetDefaults, ...data.settings };
+      hydrateEngine('you-get', saved);
       setYouGet(saved); setYouGetOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['you-get']: true})));
     void request(API + '/engines/svtplay-dl/settings').then(data => {
       const saved = { ...svtDefaults, ...data.settings };
+      hydrateEngine('svtplay-dl', saved);
       setSvt(saved); setSvtOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['svtplay-dl']: true})));
     void request(API + '/engines/get-sauce/settings').then(data => {
       const saved = { ...getSauceDefaults, ...data.settings };
+      hydrateEngine('get-sauce', saved);
       setGetSauce(saved); setGetSauceOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['get-sauce']: true})));
     void request(API + '/engines/generic/settings').then(data => {
       const saved = { ...genericDefaults, ...data.settings };
+      hydrateEngine('generic', saved);
       setGeneric(saved); setGenericOverride(saved);
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['generic']: true})));
     void request(API + '/engines/gallery-dl/settings').then(data => {
       const saved = { ...galleryDefaults, ...data.settings };
+      hydrateEngine('gallery-dl', saved);
       setGallery(saved); setGalleryOverride(saved);
       setGalleryOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
-    }).catch(error => setMessage(String(error)));
+    }).catch(() => setEngineLoadError(previous => ({...previous, ['gallery-dl']: true})));
     void request(API + '/engines').then(data => { setEngineStatus(data); setConnected(true); }).catch(() => { setConnected(false); setMessage('Your connection needs attention. Reconnect in My settings.'); });
     for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic', 'you-get', 'svtplay-dl', 'get-sauce'] as Engine[]) {
-      void request(API + '/engines/' + name + '/options').then(data =>
-        setOptionCatalog(current => ({ ...current, [name]: data.fields }))
-      ).catch(error => setMessage(String(error)));
+      void request(API + '/engines/' + name + '/options').then(data => {
+        setOptionCatalog(current => ({ ...current, [name]: data.fields }));
+        setOptionCatalogLoaded(previous => ({...previous, [name]: true}));
+      }).catch(() => setMessage('Could not load the options for ' + name + '. Check the connection.'));
     }
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
     void request(API + '/presets').then(setPresets).catch(error => setMessage(String(error)));
     void request(API + '/engine-rules').then(setEngineRules).catch(error => setMessage(String(error)));
-  }, [apiKey, request]);
+  }, [apiKey, request, hydrateEngine]);
+
+  useEffect(() => { engineSaveQueues.current['yt-dlp']?.change(yt); }, [yt]);
+  useEffect(() => { engineSaveQueues.current.aria2c?.change(aria); }, [aria]);
+  useEffect(() => { engineSaveQueues.current['you-get']?.change(youGet); }, [youGet]);
+  useEffect(() => { engineSaveQueues.current['svtplay-dl']?.change(svt); }, [svt]);
+  useEffect(() => { engineSaveQueues.current['get-sauce']?.change(getSauce); }, [getSauce]);
+  useEffect(() => { engineSaveQueues.current.generic?.change(generic); }, [generic]);
+  useEffect(() => {
+    const queue = engineSaveQueues.current['gallery-dl'];
+    if (!queue) return;
+    try {
+      const options = parseOptionsJson(galleryOptionsText);
+      queue.change({...gallery, options});
+    } catch {
+      queue.pause();
+    }
+  }, [gallery, galleryOptionsText]);
 
   useEffect(() => {
     if (!apiKey || tab !== 'administration' || adminArea !== 'delivery') return;
@@ -646,59 +715,6 @@ export default function App() {
     }
   }
 
-  async function saveEngine(name: Engine) {
-    try {
-      if (name === 'yt-dlp') {
-        const settings = yt;
-        await request(API + '/engines/yt-dlp/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setYtOverride(settings);
-      } else if (name === 'aria2c') {
-        const settings = aria;
-        await request(API + '/engines/aria2c/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setAriaOverride(settings);
-      } else if (name === 'you-get') {
-        const settings = youGet;
-        await request(API + '/engines/you-get/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setYouGetOverride(settings);
-      } else if (name === 'get-sauce') {
-        const settings = getSauce;
-        await request(API + '/engines/get-sauce/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setGetSauceOverride(settings);
-      } else if (name === 'svtplay-dl') {
-        const settings = svt;
-        await request(API + '/engines/svtplay-dl/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setSvtOverride(settings);
-      } else if (name === 'generic') {
-        const settings = generic;
-        await request(API + '/engines/generic/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setGenericOverride(settings);
-      } else {
-        const settings = { ...gallery, options: parseOptionsJson(galleryOptionsText) };
-        await request(API + '/engines/gallery-dl/settings', {
-          method: 'PUT', body: JSON.stringify({ settings }),
-        });
-        setGallery(settings);
-        setGalleryOverride(settings);
-        setGalleryOverrideOptionsText(JSON.stringify(settings.options, null, 2));
-      }
-      setMessage(name + ' defaults saved.');
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save settings');
-    }
-  }
-
   async function uploadCookie(file: File) {
     if (file.size > 1_000_000) { setMessage('Cookie file must be no larger than 1 MB.'); return; }
     try {
@@ -802,6 +818,10 @@ export default function App() {
     }
   }
   const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
+  const galleryOptionsValid = (() => {
+    try { parseOptionsJson(galleryOptionsText); return true; }
+    catch { return false; }
+  })();
 
   return <div className="shell">
     <header className="topbar">
@@ -1009,68 +1029,148 @@ export default function App() {
       </section>
     </div>}
 
-    {tab === 'administration' && connected && adminArea === 'engines' && <div className="settings-layout">
-      <section className="panel">
+    {tab === 'administration' && connected && adminArea === 'engines' && <div className="settings-layout engine-settings-layout">
+      <nav className="panel engine-picker" aria-label="Download engines">
+        <h2>Download engines</h2>
+        <p className="muted">Choose an engine to edit its defaults. You usually do not need to change these.</p>
+        {ENGINE_ORDER.map(name => {
+          const status = engineStatus.find(item => item.name === name);
+          return <button key={name} type="button" data-engine-select={name}
+            className={editingEngine === name ? 'engine-choice active' : 'engine-choice'}
+            aria-pressed={editingEngine === name}
+            onClick={() => setEditingEngine(name)}>
+            <strong>{ENGINE_DESCRIPTIONS[name].title}</strong>
+            <span className="engine-choice-description">{ENGINE_DESCRIPTIONS[name].purpose}</span>
+            <span className="engine-choice-meta">{name} · {status?.installed ? 'Ready' : status ? 'Not installed' : 'Checking availability…'}
+              {status?.version ? ' · ' + status.version : ''}</span>
+          </button>;
+        })}
+      </nav>
+      <div className="engine-editor-area">
+        {engineStatus.find(item => item.name === editingEngine)?.installed === false && <section className="panel" role="status">
+          <h2>{ENGINE_DESCRIPTIONS[editingEngine].title}</h2>
+          <p>Not installed. This engine cannot be configured until its executable is installed on the server.</p>
+        </section>}
+        {!engineLoaded[editingEngine] &&
+          engineStatus.find(item => item.name === editingEngine)?.installed !== false && <section className="panel" role="status">
+            <h2>{ENGINE_DESCRIPTIONS[editingEngine].title}</h2>
+            <p>{engineLoadError[editingEngine] ? 'Could not load settings. Check the service connection and reload this page.'
+              : 'Loading settings…'}</p>
+          </section>}
+        {engineLoaded[editingEngine] && engineStatus.find(item => item.name === editingEngine)?.installed !== false &&
+          <div className="engine-save-state" role="status" aria-live="polite">
+            {engineSaveStatus[editingEngine] === 'saved' ? 'Saved ✓ Changes affect new downloads.'
+              : engineSaveStatus[editingEngine] === 'saving' ? 'Saving changes…'
+              : engineSaveStatus[editingEngine] === 'pending' ? 'Changes will save automatically…'
+              : engineSaveStatus[editingEngine] === 'error' ? editingEngine === 'gallery-dl' && !galleryOptionsValid
+                ? 'Invalid advanced JSON. Correct the JSON before changes can save.'
+                : 'Changes not saved — check your settings or connection.'
+              : 'Loading settings…'}
+            {engineSaveStatus[editingEngine] === 'error' && (editingEngine !== 'gallery-dl' || galleryOptionsValid) &&
+              <button className="secondary" type="button"
+              onClick={() => engineSaveQueues.current[editingEngine]?.retry()}>Retry saving</button>}
+          </div>}
+{engineLoaded[editingEngine] && engineStatus.find(item => item.name === editingEngine)?.installed !== false &&
+          editingEngine !== 'yt-dlp' && editingEngine !== 'gallery-dl' &&
+          !optionCatalogLoaded[editingEngine] && <section className="panel" role="status">
+            <h3>Loading available options…</h3>
+          </section>}
+        {engineLoaded[editingEngine] && engineStatus.find(item => item.name === editingEngine)?.installed !== false &&
+          editingEngine !== 'yt-dlp' && editingEngine !== 'gallery-dl' &&
+          optionCatalogLoaded[editingEngine] && !optionCatalog[editingEngine].length &&
+          <section className="panel" role="status">
+            <h3>{ENGINE_DESCRIPTIONS[editingEngine].title} — Ready</h3>
+            <p>There are no additional settings to configure for this engine.</p>
+          </section>}
+        {editingEngine === 'yt-dlp' && engineLoaded['yt-dlp'] &&
+          engineStatus.find(item => item.name === 'yt-dlp')?.installed !== false &&
+          <section className="panel engine-editor" data-engine="yt-dlp">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
         <QualityControl value={yt.format} onChange={format => setYt(value => ({ ...value, format }))} />
-        <label>Subtitle languages<input placeholder="en,he,el" value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <h3>Playlists</h3>
         <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div><p className="muted">When off, a playlist link downloads only its first item.</p>
         {yt.allow_playlist && <label>Default playlist selection (optional)<input value={yt.playlist_items} onChange={event => setYt(value => ({ ...value, playlist_items: event.target.value }))} placeholder="e.g. 1-5 or leave empty for all" /></label>}
 
+        <h3>Site access (cookies)</h3>
         <label>Default cookie file<select value={yt.cookies_file ?? ''} onChange={event => setYt(value => ({ ...value, cookies_file: event.target.value }))}><option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}</select></label>
         <label>Upload browser-exported cookies<input type="file" accept=".txt,.cookies,text/plain" onChange={event => { const file = event.target.files?.[0]; if (file) void uploadCookie(file); event.target.value = ''; }} /></label>
-        <div className="muted">Cookie files remain in the private service data volume.</div>
+        <div className="muted">Some sites only show full quality to signed-in users. Upload a cookies file exported from your browser; it stays on the server, private.</div>
+        <h3>Subtitles</h3>
+        <label>Subtitle languages<input placeholder="en,he,el" value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <p className="muted">Enter subtitle language codes separated by commas when the site offers captions.</p>
         <div className="checks">
           <label className="check"><input type="checkbox" checked={yt.write_subtitles} onChange={event => setYt(value => ({ ...value, write_subtitles: event.target.checked }))} /> Download subtitles by default</label>
           <label className="check"><input type="checkbox" checked={yt.embed_subtitles} onChange={event => setYt(value => ({ ...value, embed_subtitles: event.target.checked }))} /> Embed subtitles by default</label>
         </div>
+        <p className="muted">Download keeps a separate caption track; Embed includes supported captions in the media file.</p>
         <details className="advanced-options"><summary>Advanced — additional arguments</summary><p className="muted">Use only reviewed yt-dlp flags. Leave empty for normal downloads.</p><label>Additional arguments (one per line)<textarea rows={4} value={yt.extra_args.join('\n')} onChange={event => setYt(value => ({ ...value, extra_args: event.target.value.split('\n').map(item => item.trim()).filter(Boolean) }))} /></label></details>
-        <button className="primary" onClick={() => void saveEngine('yt-dlp')}>Save yt-dlp defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'aria2c' && engineLoaded['aria2c'] &&
+          engineStatus.find(item => item.name === 'aria2c')?.installed !== false &&
+          optionCatalogLoaded['aria2c'] && optionCatalog['aria2c'].length > 0 &&
+          <section className="panel engine-editor" data-engine="aria2c">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>aria2c</h2><p className="muted">{engineVersion('aria2c')}. These settings map to aria2 options; RPC access and output paths remain service-managed.</p>
         <CommonOptionFields fields={optionCatalog.aria2c} values={aria.options} onChange={(key, value) => updateAriaOption(key, value, true)} />
         <button className="secondary" onClick={() => setAria(ariaDefaults)}>Reset shown defaults</button>
-        <button className="primary" onClick={() => void saveEngine('aria2c')}>Save aria2c defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'gallery-dl' && engineLoaded['gallery-dl'] &&
+          engineStatus.find(item => item.name === 'gallery-dl')?.installed !== false &&
+          <section className="panel engine-editor" data-engine="gallery-dl">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>gallery-dl</h2>
         <p className="muted">{engineVersion('gallery-dl')}. Common extractor options are graphical; site-specific options remain available in the advanced JSON editor. The service controls the output root.</p>
         <CommonOptionFields fields={optionCatalog['gallery-dl']} values={catalogValues(galleryOptionsText)} onChange={(key, value) => updateGalleryOption(key, value, true)} />
-        <label>Advanced extractor options (JSON object)<textarea rows={8} value={galleryOptionsText} onChange={event => setGalleryOptionsText(event.target.value)} /></label>
+        <details className="advanced-options"><summary>Advanced — site-specific gallery options</summary>
+          <p className="muted">Only edit JSON if this site needs settings not shown above. Invalid JSON is never saved.</p>
+          <label>Advanced extractor options (JSON object)<textarea rows={8} value={galleryOptionsText} onChange={event => setGalleryOptionsText(event.target.value)} /></label>
+        </details>
         <label>Default cookie file<select value={gallery.cookies_file ?? ''} onChange={event => setGallery(value => ({ ...value, cookies_file: event.target.value }))}>
           <option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
         </select></label>
         <label>Default proxy URL<input value={gallery.proxy ?? ''} onChange={event => setGallery(value => ({ ...value, proxy: event.target.value }))} placeholder="Optional proxy" /></label>
         <button className="secondary" onClick={() => { setGallery(galleryDefaults); setGalleryOptionsText('{}'); }}>Reset shown defaults</button>
-        <button className="primary" onClick={() => void saveEngine('gallery-dl')}>Save gallery-dl defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'generic' && engineLoaded['generic'] &&
+          engineStatus.find(item => item.name === 'generic')?.installed !== false &&
+          optionCatalogLoaded['generic'] && optionCatalog['generic'].length > 0 &&
+          <section className="panel engine-editor" data-engine="generic">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>generic / curl</h2>
         <p className="muted">{engineVersion('generic')}. For direct HTTP(S) links. Redirects are disabled by default.</p>
         <CommonOptionFields fields={optionCatalog.generic} values={genericOptionValues(generic)} onChange={(key, value) => updateGenericOption(key, value, true)} />
-        <button className="primary" onClick={() => void saveEngine('generic')}>Save generic defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'you-get' && engineLoaded['you-get'] &&
+          engineStatus.find(item => item.name === 'you-get')?.installed !== false &&
+          optionCatalogLoaded['you-get'] && optionCatalog['you-get'].length > 0 &&
+          <section className="panel engine-editor" data-engine="you-get">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>you-get</h2>
         <p className="muted">{engineVersion('you-get')}. P1 fallback extractor with optional cookie file and format selection.</p>
         <CommonOptionFields fields={optionCatalog['you-get']} values={youGetOptionValues(youGet)} onChange={(key, value) => updateYouGetOption(key, value, true)} />
-        <button className="primary" onClick={() => void saveEngine('you-get')}>Save you-get defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'svtplay-dl' && engineLoaded['svtplay-dl'] &&
+          engineStatus.find(item => item.name === 'svtplay-dl')?.installed !== false &&
+          optionCatalogLoaded['svtplay-dl'] && optionCatalog['svtplay-dl'].length > 0 &&
+          <section className="panel engine-editor" data-engine="svtplay-dl">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>svtplay-dl</h2>
         <p className="muted">{engineVersion('svtplay-dl')}. Nordic video services; output path remains service-managed.</p>
         <CommonOptionFields fields={optionCatalog['svtplay-dl']} values={svtOptionValues(svt)} onChange={(key, value) => updateSvtOption(key, value, true)} />
         <button className="secondary" onClick={() => setSvt(svtDefaults)}>Reset shown defaults</button>
-        <button className="primary" onClick={() => void saveEngine('svtplay-dl')}>Save svtplay-dl defaults</button>
-      </section>
-      <section className="panel">
+        
+      </section>}
+{editingEngine === 'get-sauce' && engineLoaded['get-sauce'] &&
+          engineStatus.find(item => item.name === 'get-sauce')?.installed !== false &&
+          optionCatalogLoaded['get-sauce'] && optionCatalog['get-sauce'].length > 0 &&
+          <section className="panel engine-editor" data-engine="get-sauce">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>get-sauce</h2>
         <p className="muted">{engineVersion('get-sauce')}. Specialized media/gallery downloads, managed output directory.</p>
         <CommonOptionFields fields={optionCatalog['get-sauce']} values={getSauceOptionValues(getSauce)} onChange={(key, value) => updateGetSauceOption(key, value, true)} />
         <button className="secondary" onClick={() => setGetSauce(getSauceDefaults)}>Reset shown defaults</button>
-        <button className="primary" onClick={() => void saveEngine('get-sauce')}>Save get-sauce defaults</button>
-      </section>
+        
+      </section>}
+      </div>
       <div className="hint panel"><strong>Advanced options</strong><p>Service-managed paths, cookie arguments, progress reporting, and process execution flags cannot be overridden.</p></div>
     </div>}
 

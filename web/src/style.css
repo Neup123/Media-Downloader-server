@@ -182,3 +182,25 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 @media(max-width:600px) {
   .library-bulk-actions button { flex:1 1 140px; }
 }
+
+/* Administration / Engines: single selected, annotated editor with autosave. */
+.engine-settings-layout {grid-template-columns:minmax(230px,300px) minmax(0,1fr); align-items:start;}
+.engine-picker {display:flex;flex-direction:column;gap:8px;min-width:0;}
+.engine-picker h2 {margin:0;}
+.engine-picker p {line-height:1.6;}
+.engine-choice {display:grid;gap:5px;width:100%;min-height:66px;align-content:center;
+  padding:12px;text-align:left;background:#17273a;color:#f1f7ff;border:1px solid #3d5674;border-radius:10px;}
+.engine-choice strong {font-size:14px;overflow-wrap:anywhere;}
+.engine-choice.active {background:#263e58;border:2px solid #a2c7ff;padding:11px;}
+.engine-choice-description,.engine-choice-meta {font-size:11px;line-height:1.4;color:#b9cde2;overflow-wrap:anywhere;}
+.engine-choice-meta {font-weight:650;color:#a8d4ff;}
+.engine-editor-area {min-width:0;display:grid;gap:12px;align-content:start;}
+.engine-editor-area .panel {min-width:0;}
+.engine-save-state {display:flex;gap:12px;align-items:center;flex-wrap:wrap;
+  border:1px solid #385977;background:#15273b;border-radius:10px;padding:10px 15px;
+  color:#d3e9fc;font-size:13px;}
+.engine-save-state button {min-height:44px;}
+.engine-editor .common-options {gap:14px;}
+.engine-editor .option-category {padding-top:9px;border-top:1px solid #364c67;}
+.engine-editor label {line-height:1.5;}
+@media(max-width:850px){.engine-settings-layout{grid-template-columns:1fr;}.engine-picker{grid-row:auto;}}
