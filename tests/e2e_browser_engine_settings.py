@@ -106,6 +106,16 @@ def run_browser_acceptance() -> None:
                 and r.request.method == "GET", timeout=30000
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
+            # The download hero is the first main content after navigation.
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="Download", exact=True
+            ).click()
+            assert page.locator(".layout > section").first.get_attribute("class").find("submit-panel") >= 0
+            assert page.locator(".submit-panel form button.download-submit").count() == 1
+            if page.locator(".first-run").count():
+                assert page.locator(".submit-panel").evaluate(
+                    "(hero) => Boolean(hero.compareDocumentPosition(document.querySelector('.first-run')) & Node.DOCUMENT_POSITION_FOLLOWING)"
+                )
             page.get_by_role("navigation", name="Main navigation").get_by_role("button", name="Administration", exact=True).click()
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "GET",
