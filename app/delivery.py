@@ -341,7 +341,7 @@ async def verify_delivery_destination(
     if parsed.scheme not in {"https", "http"} or not parsed.netloc or parsed.username or parsed.password:
         raise DeliveryError("WebDAV test requires an absolute URL without embedded credentials")
     parts = [part for part in folder.split("/") if part]
-    if any(part in {".", ".."} or "\\x00" in part for part in parts):
+    if any(part in {".", ".."} or "\x00" in part for part in parts):
         raise DeliveryError("WebDAV test folder contains invalid path segments")
     current = base_url.rstrip("/")
     try:
