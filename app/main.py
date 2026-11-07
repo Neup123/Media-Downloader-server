@@ -16,7 +16,7 @@ from urllib.parse import urlsplit
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import select, cast, or_, Text, delete
 from sqlalchemy.orm import Session
 
 from app.adapters.process_env import downloader_environment
@@ -373,17 +373,79 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         return {"created": len(jobs), "jobs": [job_to_dict(job) for job in jobs]}
 
     @app.get("/api/v1/jobs", response_model=list[JobOut], tags=["jobs"])
-    def list_jobs(_: bool = Depends(authenticate), session: Session = Depends(db_session), limit: int = 50, status: str | None = None, owner_id: str | None = None):
-        limit = max(1, min(200, limit))
+    def list_jobs(
+        _: bool = Depends(authenticate), session: Session = Depends(db_session),
+        limit: int = 50, status: str | None = None, owner_id: str | None = None,
+        state: str = "all", q: str | None = None, offset: int = 0,
+        standalone_only: bool = False,
+    ):
+        if not 0 <= offset <= 10000 or not 1 <= limit <= 200:
+            raise HTTPException(status_code=422, detail="Limit must be 1–200 and offset 0–10000")
         query = select(Job)
         if status:
             if status not in {"queued", "starting", "extracting", "downloading", "post-processing", "delivering", "completed", "failed", "cancelled"}:
                 raise HTTPException(status_code=422, detail="Unknown job status")
             query = query.where(Job.status == status)
+        if state not in {"all", "active", "delivered", "failed"}:
+            raise HTTPException(status_code=422, detail="Unknown Library state")
+        if state == "active":
+            query = query.where(Job.status.not_in(("completed", "failed", "cancelled")))
+        elif state == "delivered":
+            query = query.where(Job.status == "completed")
+        elif state == "failed":
+            query = query.where(Job.status.in_(("failed", "cancelled")))
         if owner_id is not None:
             query = query.where(Job.owner_id == owner_id)
-        query = query.order_by(Job.created_at.desc()).limit(limit)
+        if standalone_only:
+            query = query.where(Job.owner_id.is_(None))
+        if q is not None:
+            searched = q.strip()
+            if len(searched) > 128:
+                raise HTTPException(status_code=422, detail="Search text must be at most 128 characters")
+            if searched:
+                escaped = searched.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                pattern = f"%{escaped}%"
+                query = query.where(or_(
+                    Job.url.ilike(pattern, escape="\\"),
+                    cast(Job.output_files, Text).ilike(pattern, escape="\\"),
+                ))
+        query = query.order_by(Job.created_at.desc(), Job.id.desc()).offset(offset).limit(limit)
         return [job_to_dict(job) for job in session.scalars(query).all()]
+
+    @app.post("/api/v1/jobs/retry-failed", tags=["jobs"])
+    def retry_all_failed(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        """Retry failed standalone jobs only; never alter Nextcloud-owned jobs."""
+        query = select(Job).where(
+            Job.owner_id.is_(None), Job.status.in_(("failed", "cancelled"))
+        ).order_by(Job.created_at.desc()).limit(1001)
+        failed = session.scalars(query).all()
+        if len(failed) > 1000:
+            raise HTTPException(status_code=422, detail="More than 1000 failed jobs; retry in smaller batches")
+        for job in failed:
+            job.status = "queued"
+            job.cancel_requested = False
+            job.progress = {"state": "queued"}
+            job.output_files = []
+            job.error = None
+            job.finished_at = None
+            append_log(job, "Job queued for retry from Library")
+        session.commit()
+        return {"retried": len(failed)}
+
+    @app.delete("/api/v1/jobs/history", tags=["jobs"])
+    def clear_standalone_history(
+        confirm: bool = False, _: bool = Depends(authenticate),
+        session: Session = Depends(db_session),
+    ):
+        """Forget terminal standalone job metadata; never delete Files or user provenance."""
+        if not confirm:
+            raise HTTPException(status_code=422, detail="Confirm clearing standalone history explicitly")
+        query = delete(Job).where(
+            Job.owner_id.is_(None), Job.status.in_(("completed", "failed", "cancelled"))
+        )
+        result = session.execute(query)
+        session.commit()
+        return {"deleted": int(result.rowcount or 0), "files_retained": True}
 
     @app.get("/api/v1/provenance", tags=["jobs"])
     def file_provenance(owner_id: str, file_id: str,
