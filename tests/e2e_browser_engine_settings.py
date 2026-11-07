@@ -94,6 +94,12 @@ def run_browser_acceptance() -> None:
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
             assert page.locator("header input[type=password]").count() == 0
             page.get_by_role("button", name="My settings", exact=True).click()
+            # A bad key yields a human recovery action, not a raw HTTP error.
+            page.get_by_label("API key").fill("invalid-browser-key")
+            page.get_by_role("button", name="Connect", exact=True).click()
+            page.get_by_text("Could not connect. Check the API key and server availability.").wait_for()
+            page.get_by_role("button", name="Review settings", exact=True).click()
+            assert page.get_by_label("API key").evaluate("(element) => element === document.activeElement")
             page.get_by_label("API key").fill(API_TOKEN)
             with page.expect_response(
                 lambda r: r.url.endswith("/engines/aria2c/settings")
