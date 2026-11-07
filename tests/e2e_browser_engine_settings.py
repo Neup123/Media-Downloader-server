@@ -128,6 +128,28 @@ def run_browser_acceptance() -> None:
             assert api.get("/delivery").json()["mode"] == "webdav"
             assert page.get_by_role("button", name="Save delivery settings").count() == 0
 
+            # A configured WebDAV folder is not a credential: it autosaves after
+            # debounce, and a second edit restores the original destination.
+            original_folder = api.get("/delivery").json()["folder"]
+            folder_input = page.get_by_label("Destination folder")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "PUT",
+                timeout=30000
+            ) as folder_saved:
+                folder_input.fill(original_folder + "-browser-check")
+            assert folder_saved.value.status == 200
+            assert folder_saved.value.request.post_data_json["app_password"] is None
+            assert api.get("/delivery").json()["folder"] == original_folder + "-browser-check"
+            page.get_by_text("Saved ✓ Changes affect new deliveries.", exact=True).wait_for()
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "PUT",
+                timeout=30000
+            ) as folder_restored:
+                folder_input.fill(original_folder)
+            assert folder_restored.value.status == 200
+            assert api.get("/delivery").json()["folder"] == original_folder
+            assert page.get_by_role("button", name="Save delivery settings").count() == 0
+
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/delivery/test")
                 and r.request.method == "POST", timeout=30000
