@@ -1329,7 +1329,7 @@ export default function App() {
             {tab === 'library' ? 'Clear filters' : 'Download something'}
           </button>
         </div> : <div className="job-list">
-          {shownJobs.map(job => <JobCard key={job.id} job={job} expanded={selected === job.id}
+          {shownJobs.map(job => <JobCard key={job.id} job={job} locale={locale} expanded={selected === job.id}
             onToggle={() => setSelected(current => current === job.id ? null : job.id)}
             onAction={operation => void jobAction(job.id, operation)} />)}
         </div>}
