@@ -406,6 +406,9 @@ async def deliver_files(
     with session_factory() as session:
         job = session.get(Job, job_id)
         per_user = bool(job and job.owner_id)
+        # A standalone one-off choice is a single validated subfolder inside
+        # the already configured destination, never a new WebDAV endpoint.
+        subfolder = job.delivery_subfolder if job and not per_user else None
         if per_user:
             if not job.delivery_token:
                 raise DeliveryError("Per-user delivery configuration missing; choose your destination again")
@@ -419,7 +422,10 @@ async def deliver_files(
         else:
             setting = session.get(DeliverySetting, 1)
         if not per_user and (setting is None or setting.mode == "local"):
-            target_dir = settings.output_dir / job_id
+            root = settings.output_dir.resolve()
+            target_dir = (root / subfolder / job_id).resolve() if subfolder else (root / job_id).resolve()
+            if not target_dir.is_relative_to(root):
+                raise DeliveryError("One-off destination must remain inside the configured local output directory")
             target_dir.mkdir(parents=True, exist_ok=True)
             output: list[dict[str, Any]] = []
             for source in files:
@@ -481,7 +487,7 @@ async def deliver_files(
                 "url": setting.webdav_url,
                 "username": setting.username,
                 "password": decrypt_password(setting.password_encrypted, settings),
-                "folder": setting.folder,
+                "folder": "/".join(part for part in (setting.folder, subfolder) if part),
             }
 
     if not data["url"] or not data["username"]:
