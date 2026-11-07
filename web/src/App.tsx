@@ -213,6 +213,9 @@ export default function App() {
   const [davPassword, setDavPassword] = useState('');
   const [davFolder, setDavFolder] = useState('Downloader');
   const [passwordConfigured, setPasswordConfigured] = useState(false);
+  const [deliveryModeSaving, setDeliveryModeSaving] = useState(false);
+  const [deliveryModeStatus, setDeliveryModeStatus] = useState('');
+  const deliverySaved = useRef<{mode: 'local' | 'webdav'; webdav_url: string; username: string; folder: string; password_configured: boolean} | null>(null);
   const [presetName, setPresetName] = useState('');
   const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
   const [presetDescription, setPresetDescription] = useState('');
@@ -409,6 +412,9 @@ export default function App() {
       setMode(data.mode); setDavUrl(data.webdav_url ?? '');
       setDavUser(data.username ?? ''); setDavFolder(data.folder ?? 'Downloader');
       setPasswordConfigured(Boolean(data.password_configured)); setDeliveryDirty(false);
+      deliverySaved.current = {mode: data.mode, webdav_url: data.webdav_url ?? '', username: data.username ?? '',
+        folder: data.folder ?? 'Downloader', password_configured: Boolean(data.password_configured)};
+      setDeliveryModeStatus('');
     }).catch(error => setMessage(String(error)));
   }, [apiKey, tab, adminArea, request]);
 
@@ -887,8 +893,39 @@ export default function App() {
     finally { setBusy(false); }
   }
 
+  async function changeDeliveryMode(next: 'local' | 'webdav') {
+    if (next === mode || deliveryModeSaving) return;
+    const saved = deliverySaved.current;
+    setDeliveryVerified(false);
+    // Never silently submit unsaved WebDAV credentials or enable an incomplete destination.
+    if (deliveryDirty || !saved || (next === 'webdav' &&
+        (!saved.webdav_url || !saved.username || !saved.password_configured))) {
+      setMode(next);
+      setDeliveryDirty(true);
+      setDeliveryModeStatus('Complete the delivery configuration and save before testing.');
+      return;
+    }
+    setMode(next);
+    setDeliveryModeSaving(true);
+    setDeliveryModeStatus('Saving delivery mode…');
+    try {
+      const result = await request(API + '/delivery', {
+        method: 'PUT',
+        body: JSON.stringify({mode: next, webdav_url: saved.webdav_url || null,
+          username: saved.username || null, app_password: null, folder: saved.folder}),
+      });
+      deliverySaved.current = {...saved, mode: next, password_configured: Boolean(result.password_configured)};
+      setPasswordConfigured(Boolean(result.password_configured));
+      setDeliveryModeStatus('Saved ✓ The new mode applies to new deliveries only.');
+    } catch (error) {
+      setMode(saved.mode);
+      setDeliveryModeStatus(error instanceof Error ? 'Delivery mode not saved: ' + error.message : 'Delivery mode not saved. Try again.');
+    } finally { setDeliveryModeSaving(false); }
+  }
+
   async function saveDelivery(event: React.FormEvent) {
     event.preventDefault();
+    if (deliveryModeSaving) return;
     try {
       const data = await request(API + '/delivery', {
         method: 'PUT',
@@ -899,6 +936,9 @@ export default function App() {
       });
       setPasswordConfigured(Boolean(data.password_configured));
       setDavPassword(''); setDeliveryDirty(false); setDeliveryVerified(false);
+      deliverySaved.current = {mode, webdav_url: davUrl, username: davUser,
+        folder: davFolder, password_configured: Boolean(data.password_configured)};
+      setDeliveryModeStatus('Saved ✓ Changes affect new deliveries only.');
       setMessage('Saved ✓ Test the delivery destination to confirm it works.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save delivery settings');
@@ -1468,7 +1508,7 @@ export default function App() {
       <div className="eyebrow">OUTPUT DESTINATION</div><h2>Where finished files go</h2>
       <p className="muted">Local folder keeps files on this server. WebDAV delivers finished files into Nextcloud Files or another WebDAV service. Changes affect new deliveries only.</p>
       <form onSubmit={saveDelivery}>
-        <label>Delivery mode<select value={mode} onChange={event => {setMode(event.target.value as 'local' | 'webdav');setDeliveryDirty(true);setDeliveryVerified(false);}}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
+        <label>Delivery mode<select value={mode} disabled={deliveryModeSaving} onChange={event => void changeDeliveryMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
         {mode === 'webdav' && <>
           <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
           <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} required /></label>
@@ -1476,8 +1516,9 @@ export default function App() {
           <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} /></label>
           <div className="secure-note">{passwordConfigured ? 'An app password is stored encrypted on the server.' : 'An app password is required.'} Credentials are never returned to the browser.</div>
         </>}
-        <button className="primary">Save delivery settings</button>
-        <button className="secondary" type="button" disabled={testingDelivery || deliveryDirty}
+        {deliveryDirty && <button className="primary" disabled={deliveryModeSaving}>Save delivery settings</button>}
+        <p className="muted" role="status" aria-live="polite">{deliveryModeStatus || (deliveryDirty ? 'WebDAV details require explicit saving.' : 'Delivery mode saves automatically when its destination is configured.')}</p>
+        <button className="secondary" type="button" disabled={testingDelivery || deliveryDirty || deliveryModeSaving}
           onClick={() => void testDeliveryConnection()}>{testingDelivery ? 'Testing delivery…' : 'Test delivery'}</button>
         <p className="muted" role="status">{deliveryDirty ? 'Save changes before testing' :
           deliveryVerified ? '✓ Delivery verified using a temporary file' : 'Not tested in this browser session'}</p>
