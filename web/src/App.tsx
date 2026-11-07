@@ -285,7 +285,11 @@ export default function App() {
         description: presetDescription, is_shared: presetShared,
       });
     } catch (error) {
-      setPresetValidationError(error instanceof Error ? error.message : 'Invalid preset settings.');
+      setPresetValidationError(
+        error instanceof SyntaxError
+          ? 'Invalid preset settings. Correct the advanced JSON before changes can save.'
+          : error instanceof Error ? error.message : 'Invalid preset settings.',
+      );
       presetSaveQueue.current.pause();
     }
   }, [editingPresetId, presetName, presetEngine, presetSettingsText, presetDescription, presetShared]);
