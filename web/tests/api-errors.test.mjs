@@ -26,9 +26,9 @@ test('batch item errors are helpful without echoing sensitive input URLs', () =>
 
 test('show business validation messages and use safe HTTP fallback', () => {
   assert.equal(apiErrorMessage({detail: 'Unknown job status'}, 422), 'Unknown job status');
-  assert.equal(apiErrorMessage({error: 'n/a'}, 500), 'Request failed (HTTP 500)');
-  assert.equal(apiErrorMessage(null, 503), 'Request failed (HTTP 503)');
-  assert.equal(apiErrorMessage({detail: []}, 422), 'Request failed (HTTP 422)');
+  assert.equal(apiErrorMessage({error: 'n/a'}, 500), 'The downloader service could not complete this request. Try again or check its connection.');
+  assert.equal(apiErrorMessage(null, 503), 'The downloader service could not complete this request. Try again or check its connection.');
+  assert.equal(apiErrorMessage({detail: []}, 422), 'Some details were not accepted. Check the fields and try again.');
 });
 
 test('bound very long and malformed validation error responses', () => {
@@ -39,4 +39,21 @@ test('bound very long and malformed validation error responses', () => {
   }))}, 422);
   assert.match(many, /\(\+8 more\)/);
   assert.ok(many.length <= 500);
+});
+
+test('Files and destination conflicts explain how to recover without raw codes', () => {
+  const disconnected = apiErrorMessage({detail: 'Nextcloud Files not connected: app password missing'}, 409);
+  assert.match(disconnected, /Connect them once in My settings/);
+  const folder = apiErrorMessage({detail: 'Destination folder unavailable'}, 409);
+  assert.match(folder, /Check the folder still exists/);
+  assert.doesNotMatch(disconnected + folder, /HTTP 409/);
+});
+
+test('authentication and upstream failures have clear next steps', () => {
+  assert.match(apiErrorMessage({detail: 'Invalid API key'}, 401), /Reconnect in My settings/);
+  assert.match(apiErrorMessage({detail: 'Access denied'}, 403), /Ask your administrator/);
+  assert.match(apiErrorMessage({detail: 'Traceback: INTERNAL_SECRET'}, 500), /Try again/);
+  assert.doesNotMatch(apiErrorMessage({detail: 'Traceback: INTERNAL_SECRET'}, 500), /INTERNAL_SECRET|HTTP/);
+  assert.match(apiErrorMessage(null, 404), /Refresh the list/);
+  assert.match(apiErrorMessage(null, 429), /Try again shortly/);
 });
