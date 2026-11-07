@@ -71,5 +71,6 @@ export function normalizeLocale(value: string | null | undefined): Locale {
 }
 export function isRtl(locale: Locale): boolean { return locale === 'he'; }
 export function translate(locale: Locale, english: string): string {
-  return (locale === 'he' ? he : locale === 'el' ? el : {})[english] ?? english;
+  const dictionary: Record<string, string> = locale === 'he' ? he : locale === 'el' ? el : {};
+  return dictionary[english] ?? english;
 }
