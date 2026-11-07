@@ -1595,10 +1595,10 @@ export default function App() {
       <form onSubmit={saveDelivery}>
         <label>Delivery mode<select value={mode} disabled={deliveryModeSaving || (deliveryFieldState !== 'saved' && !deliveryDirty)} onChange={event => void changeDeliveryMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
         {mode === 'webdav' && <>
-          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
-          <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);setDeliveryVerified(false);}} required /></label>
+          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);if (!passwordConfigured) setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
+          <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);if (!passwordConfigured) setDeliveryDirty(true);setDeliveryVerified(false);}} required /></label>
           <label>App password<input type="password" value={davPassword} onChange={event => {setDavPassword(event.target.value);setDeliveryDirty(true);deliveryFieldQueue.current?.pause();setDeliveryVerified(false);}} placeholder={passwordConfigured ? 'Stored; leave blank to keep' : 'Enter app password'} autoComplete="new-password" /></label>
-          <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);setDeliveryVerified(false);}} /></label>
+          <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);if (!passwordConfigured) setDeliveryDirty(true);setDeliveryVerified(false);}} /></label>
           <div className="secure-note">{passwordConfigured ? 'An app password is stored encrypted on the server.' : 'An app password is required.'} Credentials are never returned to the browser.</div>
         </>}
         {deliveryDirty && <button className="primary" disabled={deliveryModeSaving}>Save delivery settings</button>}
