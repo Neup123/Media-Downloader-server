@@ -116,30 +116,39 @@ def run_browser_acceptance() -> None:
             assert payload["verified"] and payload["cleaned_up"]
             page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Engines").click()
 
-            yt_panel = page.locator("section.panel").filter(
-                has=page.get_by_role("heading", name="yt-dlp", exact=True)
-            )
+            picker = page.get_by_role("navigation", name="Download engines")
+            assert picker.get_by_role("button").count() == 7, "Engine list missing"
+            assert page.locator("section.engine-editor").count() == 1, "More than one engine editor"
+            picker.locator('[data-engine-select="yt-dlp"]').click()
+            yt_panel = page.locator('section.engine-editor[data-engine="yt-dlp"]')
             yt_panel.locator(".quality-control summary").click()
-            yt_panel.get_by_label("Format selector", exact=True).fill(YTDLP_GLOBAL)
+            # Autosave is triggered by a real field edit; hydration must not PUT.
             with page.expect_response(
                 lambda r: r.url.endswith("/engines/yt-dlp/settings")
                 and r.request.method == "PUT", timeout=30000
             ) as saved:
-                yt_panel.get_by_role("button", name="Save yt-dlp defaults").click()
+                yt_panel.get_by_label("Format selector", exact=True).fill(YTDLP_GLOBAL)
             assert saved.value.status == 200
             assert fetch_settings(api, "yt-dlp")["format"] == YTDLP_GLOBAL
+            assert yt_panel.get_by_role("button", name="Save yt-dlp defaults").count() == 0
 
-            aria_panel = page.locator("section.panel").filter(
-                has=page.get_by_role("heading", name="aria2c", exact=True)
-            )
-            aria_panel.get_by_label("Connections per server", exact=True).fill(ARIA_GLOBAL)
+            picker.locator('[data-engine-select="aria2c"]').click()
+            assert page.locator("section.engine-editor").count() == 1
+            aria_panel = page.locator('section.engine-editor[data-engine="aria2c"]')
             with page.expect_response(
                 lambda r: r.url.endswith("/engines/aria2c/settings")
                 and r.request.method == "PUT", timeout=30000
             ) as saved:
-                aria_panel.get_by_role("button", name="Save aria2c defaults").click()
+                aria_panel.get_by_label("Connections per server", exact=True).fill(ARIA_GLOBAL)
             assert saved.value.status == 200
             assert fetch_settings(api, "aria2c")["options"]["max-connection-per-server"] == ARIA_GLOBAL
+            assert aria_panel.get_by_role("button", name="Save aria2c defaults").count() == 0
+
+            picker.locator('[data-engine-select="gallery-dl"]').click()
+            gallery_panel = page.locator('section.engine-editor[data-engine="gallery-dl"]')
+            assert gallery_panel.get_by_label("Advanced extractor options (JSON object)").is_hidden()
+            gallery_panel.get_by_text("Advanced — site-specific gallery options").click()
+            assert gallery_panel.get_by_label("Advanced extractor options (JSON object)").is_visible()
 
             page.get_by_role("button", name="Download", exact=True).click()
             form = page.locator("section.submit-panel form")
