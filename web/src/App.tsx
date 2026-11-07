@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
 import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
+import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -39,6 +40,17 @@ type SvtSettings = { resolution: string; quality: string; subtitles: boolean; al
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
+
+const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
+  'yt-dlp': {title: 'Video & audio sites', purpose: 'Videos, playlists, subtitles and audio from supported sites'},
+  aria2c: {title: 'Large files & torrents', purpose: 'Direct files, magnets, FTP and torrent downloads'},
+  'gallery-dl': {title: 'Image galleries', purpose: 'Image collections from supported gallery websites'},
+  generic: {title: 'Direct file downloads', purpose: 'Files from public HTTP and HTTPS links'},
+  'you-get': {title: 'Alternative video sites', purpose: 'Fallback downloader for supported videos and audio'},
+  'svtplay-dl': {title: 'Nordic television', purpose: 'Video and subtitles from Nordic broadcasting sites'},
+  'get-sauce': {title: 'Specialized media', purpose: 'Specialized media and gallery download sources'},
+};
+const ENGINE_ORDER = Object.keys(ENGINE_DESCRIPTIONS) as Engine[];
 
 function CommonOptionFields({ fields, values, onChange }: {
   fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
@@ -184,6 +196,10 @@ export default function App() {
   const [getSauceOverride, setGetSauceOverride] = useState<GetSauceSettings>(getSauceDefaults);
   const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [], 'get-sauce': [] });
   const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
+  const [editingEngine, setEditingEngine] = useState<Engine>('yt-dlp');
+  const [engineLoaded, setEngineLoaded] = useState<Partial<Record<Engine, boolean>>>({});
+  const [engineSaveStatus, setEngineSaveStatus] = useState<Partial<Record<Engine, SaveState>>>({});
+  const engineSaveQueues = useRef<Partial<Record<Engine, EngineAutosaveQueue<unknown>>>>({});
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
   const [galleryOverrideOptionsText, setGalleryOverrideOptionsText] = useState('{}');
   const [cookies, setCookies] = useState<{ filename: string; size_bytes: number }[]>([]);
@@ -214,6 +230,31 @@ export default function App() {
     if (!response.ok) throw new Error(apiErrorMessage(data, response.status));
     return data;
   }, [apiKey, headers]);
+
+  const autosaveQueue = useCallback((name: Engine) => {
+    let queue = engineSaveQueues.current[name];
+    if (!queue) {
+      queue = new EngineAutosaveQueue<unknown>(
+        value => request(API + '/engines/' + name + '/settings', {
+          method: 'PUT', body: JSON.stringify({settings: value}),
+        }),
+        status => setEngineSaveStatus(previous => ({...previous, [name]: status})),
+      );
+      engineSaveQueues.current[name] = queue;
+    }
+    return queue;
+  }, [request]);
+
+  const hydrateEngine = useCallback((name: Engine, settings: unknown) => {
+    autosaveQueue(name).hydrate(settings);
+    setEngineLoaded(previous => ({...previous, [name]: true}));
+  }, [autosaveQueue]);
+
+  // A credential change invalidates all outstanding writes from the prior service.
+  useEffect(() => () => {
+    Object.values(engineSaveQueues.current).forEach(queue => queue?.dispose());
+    engineSaveQueues.current = {};
+  }, [request]);
 
   const refresh = useCallback(async () => {
     try {
@@ -260,30 +301,37 @@ export default function App() {
     if (!apiKey) return;
     void request(API + '/engines/yt-dlp/settings').then(data => {
       const saved = { ...ytDefaults, ...data.settings };
+      hydrateEngine('yt-dlp', saved);
       setYt(saved); setYtOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/aria2c/settings').then(data => {
       const saved = { ...ariaDefaults, ...data.settings };
+      hydrateEngine('aria2c', saved);
       setAria(saved); setAriaOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/you-get/settings').then(data => {
       const saved = { ...youGetDefaults, ...data.settings };
+      hydrateEngine('you-get', saved);
       setYouGet(saved); setYouGetOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/svtplay-dl/settings').then(data => {
       const saved = { ...svtDefaults, ...data.settings };
+      hydrateEngine('svtplay-dl', saved);
       setSvt(saved); setSvtOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/get-sauce/settings').then(data => {
       const saved = { ...getSauceDefaults, ...data.settings };
+      hydrateEngine('get-sauce', saved);
       setGetSauce(saved); setGetSauceOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/generic/settings').then(data => {
       const saved = { ...genericDefaults, ...data.settings };
+      hydrateEngine('generic', saved);
       setGeneric(saved); setGenericOverride(saved);
     }).catch(error => setMessage(String(error)));
     void request(API + '/engines/gallery-dl/settings').then(data => {
       const saved = { ...galleryDefaults, ...data.settings };
+      hydrateEngine('gallery-dl', saved);
       setGallery(saved); setGalleryOverride(saved);
       setGalleryOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
       setGalleryOverrideOptionsText(JSON.stringify(saved.options ?? {}, null, 2));
@@ -297,7 +345,24 @@ export default function App() {
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
     void request(API + '/presets').then(setPresets).catch(error => setMessage(String(error)));
     void request(API + '/engine-rules').then(setEngineRules).catch(error => setMessage(String(error)));
-  }, [apiKey, request]);
+  }, [apiKey, request, hydrateEngine]);
+
+  useEffect(() => { engineSaveQueues.current['yt-dlp']?.change(yt); }, [yt]);
+  useEffect(() => { engineSaveQueues.current.aria2c?.change(aria); }, [aria]);
+  useEffect(() => { engineSaveQueues.current['you-get']?.change(youGet); }, [youGet]);
+  useEffect(() => { engineSaveQueues.current['svtplay-dl']?.change(svt); }, [svt]);
+  useEffect(() => { engineSaveQueues.current['get-sauce']?.change(getSauce); }, [getSauce]);
+  useEffect(() => { engineSaveQueues.current.generic?.change(generic); }, [generic]);
+  useEffect(() => {
+    const queue = engineSaveQueues.current['gallery-dl'];
+    if (!queue) return;
+    try {
+      const options = parseOptionsJson(galleryOptionsText);
+      queue.change({...gallery, options});
+    } catch {
+      queue.pause();
+    }
+  }, [gallery, galleryOptionsText]);
 
   useEffect(() => {
     if (!apiKey || tab !== 'administration' || adminArea !== 'delivery') return;
