@@ -912,6 +912,11 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
 
     encrypted_delivery = None
     if payload.owner_id:
+        if payload.delivery_subfolder is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="Nextcloud user destinations are selected by the trusted gateway",
+            )
         if payload.delivery is None:
             raise HTTPException(status_code=422, detail="Per-user jobs require a WebDAV delivery destination")
         try:
@@ -925,6 +930,7 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
         url=url,
         owner_id=payload.owner_id,
         delivery_token=encrypted_delivery,
+        delivery_subfolder=payload.delivery_subfolder,
         engine=engine,
         status="queued",
         overrides=overrides,
@@ -937,6 +943,7 @@ def job_to_dict(job: Job) -> dict:
         "id": job.id,
         "url": job.url,
         "owner_id": job.owner_id,
+        "delivery_subfolder": job.delivery_subfolder,
         "engine": job.engine,
         "status": job.status,
         "overrides": job.overrides or {},
