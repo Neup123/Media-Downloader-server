@@ -1293,7 +1293,20 @@ export default function App() {
     {((tab === 'my-settings' && connected) || (tab === 'administration' && connected && adminArea === 'automation')) && <div className="settings-layout">
       {tab === "my-settings" && <><section className="panel" id="preset-editor">
         <div className="eyebrow">SAVED OPTIONS</div><h2>{editingPresetId ? 'Edit preset' : 'Create a preset'}</h2>
-        <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
+        <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.
+          Changes to an existing preset save automatically and affect new downloads.</p>
+        {editingPresetId && <div className="engine-save-state" role="status" aria-live="polite">
+          {presetValidationError || (
+            presetSaveState === 'saved' ? 'Saved ✓ Changes affect new downloads.'
+              : presetSaveState === 'pending' ? 'Changes will save automatically…'
+              : presetSaveState === 'saving' ? 'Saving changes…'
+              : presetSaveState === 'error' ? 'Changes not saved. Check settings and retry.'
+              : 'Loading preset…'
+          )}
+          {presetSaveState === 'error' && !presetValidationError &&
+            <button type="button" className="secondary"
+              onClick={() => presetSaveQueue.current?.retry()}>Retry saving</button>}
+        </div>}
         <form onSubmit={savePreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => {setPresetEngine(event.target.value as Engine); setPresetSettingsText('{}');}}>
@@ -1313,8 +1326,9 @@ export default function App() {
             <label>Settings JSON<textarea rows={7} value={presetSettingsText}
               onChange={event => setPresetSettingsText(event.target.value)} /></label>
           </details>
-          <button className="primary">{editingPresetId ? 'Update preset' : 'Create preset'}</button>
-          {editingPresetId && <button type="button" className="secondary" onClick={resetPresetEditor}>Cancel editing</button>}
+          {!editingPresetId && <button className="primary">Create preset</button>}
+          {editingPresetId && <button type="button" className="secondary"
+            disabled={presetSaveState !== 'saved'} onClick={resetPresetEditor}>Finish editing</button>}
         </form>
       </section>
       <section className="panel">
