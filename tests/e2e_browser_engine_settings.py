@@ -106,6 +106,7 @@ def run_browser_acceptance() -> None:
             yt_panel = page.locator("section.panel").filter(
                 has=page.get_by_role("heading", name="yt-dlp", exact=True)
             )
+            yt_panel.locator(".quality-control summary").click()
             yt_panel.get_by_label("Format selector", exact=True).fill(YTDLP_GLOBAL)
             with page.expect_response(
                 lambda r: r.url.endswith("/engines/yt-dlp/settings")
@@ -135,7 +136,8 @@ def run_browser_acceptance() -> None:
             # expanded by the option list; target the real form structure.
             form.locator("select").first.select_option("yt-dlp")
             form.locator('input[type="url"]').fill(SOURCE_URL)
-            form.locator(".options-block > label input").first.fill(YTDLP_OVERRIDE)
+            form.locator(".quality-control summary").click()
+            form.get_by_label("Format selector", exact=True).fill(YTDLP_OVERRIDE)
             yt_job = submitted_job(page, api, "yt-dlp", {"format": YTDLP_OVERRIDE})
             verify_webdav_bytes(yt_job)
             print("Real Chromium: yt-dlp global + per-job settings + WebDAV PASS", flush=True)

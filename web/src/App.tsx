@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
 import { JobCard } from './JobCard';
+import { QualityControl } from './QualityControl';
+import { PresetOptionEditor } from './PresetOptionEditor';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -800,8 +802,8 @@ export default function App() {
           </select></label>
           {engine === 'yt-dlp' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
-            <label>Format<input value={ytOverride.format} onChange={event => setYtOverride(value => ({ ...value, format: event.target.value }))} /></label>
-            <label>Subtitle languages<input value={ytOverride.subtitles_lang} onChange={event => setYtOverride(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+            <QualityControl value={ytOverride.format} onChange={format => setYtOverride(value => ({ ...value, format }))} />
+            <label>Subtitle languages<input placeholder="en,he,el" value={ytOverride.subtitles_lang} onChange={event => setYtOverride(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
             <div className="checks"><label className="check"><input type="checkbox" checked={ytOverride.allow_playlist} onChange={event => setYtOverride(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Allow playlist downloads</label></div>
             {ytOverride.allow_playlist && <label>Playlist entries (e.g. 1,3,5-7)<input value={ytOverride.playlist_items} onChange={event => setYtOverride(value => ({ ...value, playlist_items: event.target.value }))} placeholder="Leave empty for entire playlist" /></label>}
             <button type="button" className="secondary" disabled={busy || !url.trim()} onClick={() => void inspectUrl()}>Inspect media formats / playlist</button>
@@ -832,7 +834,7 @@ export default function App() {
           </div> : engine === 'gallery-dl' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             <CommonOptionFields fields={optionCatalog['gallery-dl']} values={catalogValues(galleryOverrideOptionsText)} onChange={(key, value) => updateGalleryOption(key, value, false)} />
-            <label>Advanced extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label>
+            <details className="advanced-options"><summary>Advanced — site-specific gallery options</summary><p className="muted">Leave as default unless a site-specific extractor setting is required.</p><details className="advanced-options"><summary>Advanced — site-specific gallery options</summary><p className="muted">Leave as default unless a site-specific extractor setting is required.</p><label>Advanced extractor options (JSON object)<textarea rows={4} value={galleryOverrideOptionsText} onChange={event => setGalleryOverrideOptionsText(event.target.value)} /></label></details></details>
             <label>Cookie file<select value={galleryOverride.cookies_file ?? ''} onChange={event => setGalleryOverride(value => ({ ...value, cookies_file: event.target.value }))}>
               <option value="">No cookie file</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}
             </select></label>
@@ -885,9 +887,9 @@ export default function App() {
     {tab === 'administration' && connected && adminArea === 'engines' && <div className="settings-layout">
       <section className="panel">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
-        <label>Format selector<input value={yt.format} onChange={event => setYt(value => ({ ...value, format: event.target.value }))} /></label>
-        <label>Subtitle languages<input value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
-        <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div>
+        <QualityControl value={yt.format} onChange={format => setYt(value => ({ ...value, format }))} />
+        <label>Subtitle languages<input placeholder="en,he,el" value={yt.subtitles_lang} onChange={event => setYt(value => ({ ...value, subtitles_lang: event.target.value }))} /></label>
+        <div className="checks"><label className="check"><input type="checkbox" checked={yt.allow_playlist} onChange={event => setYt(value => ({ ...value, allow_playlist: event.target.checked, playlist_items: event.target.checked ? value.playlist_items : '' }))} /> Download playlists by default</label></div><p className="muted">When off, a playlist link downloads only its first item.</p>
         {yt.allow_playlist && <label>Default playlist selection (optional)<input value={yt.playlist_items} onChange={event => setYt(value => ({ ...value, playlist_items: event.target.value }))} placeholder="e.g. 1-5 or leave empty for all" /></label>}
 
         <label>Default cookie file<select value={yt.cookies_file ?? ''} onChange={event => setYt(value => ({ ...value, cookies_file: event.target.value }))}><option value="">None</option>{cookies.map(file => <option key={file.filename} value={file.filename}>{file.filename}</option>)}</select></label>
@@ -897,7 +899,7 @@ export default function App() {
           <label className="check"><input type="checkbox" checked={yt.write_subtitles} onChange={event => setYt(value => ({ ...value, write_subtitles: event.target.checked }))} /> Download subtitles by default</label>
           <label className="check"><input type="checkbox" checked={yt.embed_subtitles} onChange={event => setYt(value => ({ ...value, embed_subtitles: event.target.checked }))} /> Embed subtitles by default</label>
         </div>
-        <label>Additional arguments (one per line)<textarea rows={4} value={yt.extra_args.join('\n')} onChange={event => setYt(value => ({ ...value, extra_args: event.target.value.split('\n').map(item => item.trim()).filter(Boolean) }))} /></label>
+        <details className="advanced-options"><summary>Advanced — additional arguments</summary><p className="muted">Use only reviewed yt-dlp flags. Leave empty for normal downloads.</p><label>Additional arguments (one per line)<textarea rows={4} value={yt.extra_args.join('\n')} onChange={event => setYt(value => ({ ...value, extra_args: event.target.value.split('\n').map(item => item.trim()).filter(Boolean) }))} /></label></details>
         <button className="primary" onClick={() => void saveEngine('yt-dlp')}>Save yt-dlp defaults</button>
       </section>
       <section className="panel">
@@ -953,11 +955,17 @@ export default function App() {
         <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
         <form onSubmit={savePreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
-          <label>Engine<select value={presetEngine} onChange={event => setPresetEngine(event.target.value as Engine)}>
+          <label>Engine<select value={presetEngine} onChange={event => {setPresetEngine(event.target.value as Engine); setPresetSettingsText('{}');}}>
             <option value="yt-dlp">yt-dlp</option><option value="aria2c">aria2c</option><option value="gallery-dl">gallery-dl</option><option value="generic">generic / curl</option><option value="you-get">you-get</option><option value="svtplay-dl">svtplay-dl</option><option value="get-sauce">get-sauce</option>
           </select></label>
           <label>Description<input value={presetDescription} onChange={event => setPresetDescription(event.target.value)} maxLength={1000} /></label>
-          <label>Settings JSON<textarea rows={7} value={presetSettingsText} onChange={event => setPresetSettingsText(event.target.value)} /></label>
+          <PresetOptionEditor engine={presetEngine} settingsText={presetSettingsText}
+            fields={optionCatalog[presetEngine]} onChange={setPresetSettingsText} onError={setMessage} />
+          <details className="advanced-options"><summary>Edit as JSON (advanced)</summary>
+            <p className="muted">Only use raw JSON for options not shown in the visual editor.</p>
+            <label>Settings JSON<textarea rows={7} value={presetSettingsText}
+              onChange={event => setPresetSettingsText(event.target.value)} /></label>
+          </details>
           <button className="primary">{editingPresetId ? 'Update preset' : 'Create preset'}</button>
           {editingPresetId && <button type="button" className="secondary" onClick={resetPresetEditor}>Cancel editing</button>}
         </form>
@@ -968,7 +976,7 @@ export default function App() {
           {presets.map(preset => <article key={preset.id} className="job">
             <div className="job-head"><div className="job-title"><span className="engine-pill">{preset.engine}</span><strong>{preset.name}</strong></div></div>
             {preset.description && <p className="muted">{preset.description}</p>}
-            <pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre>
+            <details><summary>Advanced preset details</summary><pre className="log">{JSON.stringify(preset.settings, null, 2)}</pre></details>
             <div className="job-actions">
               <button className="small" onClick={() => editPreset(preset)}>Edit</button>
               <button className="small danger" onClick={() => void deletePreset(preset.id)}>Delete</button>

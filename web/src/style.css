@@ -149,3 +149,13 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
   .job-card .job-card-head { gap:9px; }
   .job-card { padding:14px; }
 }
+
+/* Human option editors: simple controls first, raw CLI/JSON only when requested. */
+.quality-control { display:grid; gap:3px; }
+.quality-control label { margin:10px 0 2px; }
+.advanced-quality,.advanced-options { background:#121c29; border:1px solid #344b67; border-radius:10px; padding:10px 14px; margin:12px 0; }
+.advanced-quality summary,.advanced-options summary,.preset-visual summary { cursor:pointer; padding:8px 0; min-height:40px; font-weight:600; }
+.preset-visual { display:grid; gap:4px; }
+.preset-visual label { margin:10px 0; }
+.preset-visual .check { margin-top:12px; }
+.preset-visual .option-help { line-height:1.5; }
