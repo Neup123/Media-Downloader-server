@@ -17,8 +17,26 @@ function bounded(value: string): string {
 }
 
 export function apiErrorMessage(payload: unknown, httpStatus: number): string {
-  const fallback = 'Request failed (HTTP ' + httpStatus + ')';
   const detail = asObject(payload)?.detail;
+  const raw = typeof detail === 'string' ? detail.toLowerCase() : '';
+  // Known recovery cases are actionable without surfacing HTTP status codes or
+  // repeating an untrusted URL, credential or server exception in the UI.
+  if (httpStatus === 409 && /files|webdav|app.password|connect/.test(raw)
+      && /connect|not.configured|missing|password|credential/.test(raw)) {
+    return "Your Files aren't connected yet. Connect them once in My settings, then this download will start.";
+  }
+  if (httpStatus === 409 && /destination|folder|directory/.test(raw)) {
+    return "Couldn't reach your destination folder. Check the folder still exists, then try again.";
+  }
+  if (httpStatus === 401) return 'Your connection has expired or the key is incorrect. Reconnect in My settings.';
+  if (httpStatus === 403) return 'You do not have access to this action. Ask your administrator to check your permissions.';
+  if (httpStatus === 429) return 'Too many requests. Try again shortly.';
+  if (httpStatus >= 500) return 'The downloader service could not complete this request. Try again or check its connection.';
+  const fallback = httpStatus === 404
+    ? 'This item could not be found. Refresh the list and try again.'
+    : httpStatus === 422
+      ? 'Some details were not accepted. Check the fields and try again.'
+      : 'Could not complete the request. Check the details and try again.';
 
   if (typeof detail === 'string' && detail.trim()) {
     return bounded(detail);
