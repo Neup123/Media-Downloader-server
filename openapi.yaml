@@ -185,6 +185,18 @@ paths:
         '422': { $ref: '#/components/responses/InvalidRequest' }
         '201': { description: Preset created }
         '409': { description: Preset name already exists for the engine }
+  /presets/shared:
+    get:
+      operationId: listSharedPresets
+      summary: List only administrator-approved presets available to entitled Nextcloud users
+      description: >-
+        Requires the core administrator token. Never includes private Core presets
+        or personal Nextcloud user presets. Shared settings cannot contain
+        another user's cookies, proxy or custom CLI arguments.
+      tags: [settings]
+      responses:
+        '200': { description: Presets explicitly marked available to everyone }
+        '401': { $ref: '#/components/responses/Unauthorized' }
   /presets/{preset_id}:
     parameters:
       - name: preset_id
@@ -743,6 +755,7 @@ components:
         engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         settings: { type: object, additionalProperties: true }
         description: { type: string, maxLength: 1000, default: '' }
+        is_shared: { type: boolean, default: false, description: Administrator opt-in; makes a safe preset available to entitled Nextcloud users. }
     EngineRuleOrderInput:
       type: object
       required: [ids]
