@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
+import { JobCard } from './JobCard';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -141,6 +142,7 @@ export default function App() {
   const [presets, setPresets] = useState<Preset[]>([]);
   const [engineRules, setEngineRules] = useState<EngineRule[]>([]);
   const [batchUrls, setBatchUrls] = useState('');
+  const [linkMode, setLinkMode] = useState<'one' | 'many'>('one');
   const [url, setUrl] = useState('');
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<number[]>([]);
@@ -688,7 +690,21 @@ export default function App() {
     }
   }
 
-  const active = jobs.find(job => job.id === selected) ?? null;
+  let sourceHint = '';
+  if (url.trim()) {
+    try {
+      const parsed = new URL(url.trim());
+      if (['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol) && parsed.hostname) {
+        sourceHint = '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
+      } else if (parsed.protocol === 'magnet:') {
+        sourceHint = '✓ Magnet link detected';
+      } else {
+        sourceHint = 'Enter a public HTTP(S), FTP, SFTP or magnet link.';
+      }
+    } catch {
+      sourceHint = 'Enter a full link beginning with https:// or another supported protocol.';
+    }
+  }
   const shownJobs = jobs.filter(job => {
     if (tab !== 'library') return true;
     const query = libraryQuery.trim().toLocaleLowerCase();
@@ -747,9 +763,30 @@ export default function App() {
     {(tab === 'download' || tab === 'library') && connected && <div className={'layout' + (tab === 'library' ? ' library-layout' : '')}>
       {tab === 'download' && <>
       <section className="panel submit-panel">
-        <div className="eyebrow">NEW DOWNLOAD</div><h2>Download</h2>
-        <form onSubmit={submit}>
-          <label>Media URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://" required /></label>
+        <div className="eyebrow">NEW DOWNLOAD</div><h2>What would you like to download?</h2>
+        <p className="muted">Paste a link and your download will appear below.</p>
+        <form onSubmit={event => {
+          if (linkMode === 'many') { event.preventDefault(); void submitBatch(); }
+          else void submit(event);
+        }}>
+          <div className="mode-switch" role="group" aria-label="Number of links">
+            <button type="button" className={linkMode === 'one' ? 'active' : ''} onClick={() => setLinkMode('one')}>One link</button>
+            <button type="button" className={linkMode === 'many' ? 'active' : ''} onClick={() => setLinkMode('many')}>Many links</button>
+          </div>
+          {linkMode === 'one' ? <div>
+            <label>Link to download<div className="url-entry">
+              <input type="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
+              <button className="secondary" type="button" onClick={() => void navigator.clipboard.readText().then(setUrl).catch(() =>
+                setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>Paste</button>
+            </div></label>
+            {sourceHint && <p className={sourceHint.startsWith('✓') ? 'input-valid' : 'input-help'} role="status">{sourceHint}</p>}
+          </div> : <div>
+            <label>One link per line — up to 50<textarea rows={6} required value={batchUrls} onChange={event => setBatchUrls(event.target.value)}
+              placeholder={'https://example.com/video-1\\nhttps://example.com/video-2'} /></label>
+            <p className="muted">If any link is invalid, none of the downloads start.</p>
+          </div>}
+          <details className="download-options">
+            <summary>Options <span className="muted">Engine, preset and download choices</span></summary>
           <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
             <option value="auto">Automatic</option>
             {engineStatus.filter(item => item.installed).map(item =>
@@ -815,14 +852,11 @@ export default function App() {
           </div> : <div className="options-block">
             <p className="muted">Automatic picks the right tool for the link. Change only if a download fails.</p>
           </div>}
-          <button className="primary" disabled={busy || !apiKey || !url.trim()}>{busy ? 'Starting…' : 'Download'}</button>
+          </details>
+          <button className="primary download-submit" disabled={busy || !apiKey || (linkMode === 'one' ? !url.trim() || !sourceHint.startsWith('✓') : !batchUrls.trim())}>
+            {busy ? 'Starting…' : linkMode === 'one' ? 'Download' : 'Add up to 50 links'}
+          </button>
         </form>
-        <div className="options-block">
-          <div className="field-title">Batch download</div>
-          <label>One URL per line<textarea rows={5} value={batchUrls} onChange={event => setBatchUrls(event.target.value)} placeholder="https://example.com/video-1&#10;https://example.com/video-2" /></label>
-          <p className="muted">One link per line — up to 50. If one link is invalid, no downloads start.</p>
-          <button className="secondary" disabled={busy || !apiKey || !batchUrls.trim()} onClick={() => void submitBatch()}>{busy ? 'Starting…' : 'Add up to 50 links'}</button>
-        </div>
       </section></>}
 
       <section className="panel queue-panel">
@@ -834,31 +868,17 @@ export default function App() {
           </select></label>
         </div>}
         {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>See all downloads</button>}
-        {!jobs.length ? <div className="empty">Nothing here yet — your finished downloads will live here.</div> : <div className="job-list">
-          {shownJobs.map(job => {
-            const percent = typeof job.progress.percent === 'number' ? job.progress.percent : (job.status === 'completed' ? 100 : 0);
-            return <article key={job.id} className={'job ' + (selected === job.id ? 'selected' : '')} onClick={() => setSelected(job.id)}>
-              <div className="job-head"><div className="job-title"><span className="engine-pill">{job.engine}</span><strong title={job.url}>{job.url}</strong></div><span className={'status status-' + job.status}>{label(job.status)}</span></div>
-              <div className="progress-track"><div className="progress-fill" style={{ width: percent + '%' }} /></div>
-              <div className="job-meta"><span>{percent ? percent.toFixed(1) + '%' : 'Progress pending'}</span><span>{bytes(job.progress.downloaded_bytes)} / {bytes(job.progress.total_bytes)}</span><span>{bytes(job.progress.speed_bytes_per_second)}/s</span></div>
-              {selected === job.id && <div className="job-actions" onClick={event => event.stopPropagation()}>
-                {['queued', 'starting', 'extracting', 'downloading', 'post-processing', 'delivering'].includes(job.status) && <button className="small danger" onClick={() => void jobAction(job.id, 'cancel')}>Cancel</button>}
-                {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Try again</button>}
-                {job.status === 'completed' && <button className="small secondary" title="Deliver existing verified files again to the currently configured destination" onClick={() => void jobAction(job.id, 'redeliver')}>Re-deliver</button>}
-              </div>}
-            </article>;
-          })}
+        {!shownJobs.length ? <div className="empty">
+          <p>{jobs.length ? 'No downloads match these filters.' : 'Nothing here yet — your finished downloads will live here.'}</p>
+          <button className="secondary" onClick={() => tab === 'library' ?
+            (setLibraryQuery(''), setLibraryFilter('all')) : document.querySelector<HTMLInputElement>('.url-entry input')?.focus()}>
+            {tab === 'library' ? 'Clear filters' : 'Download something'}
+          </button>
+        </div> : <div className="job-list">
+          {shownJobs.map(job => <JobCard key={job.id} job={job} expanded={selected === job.id}
+            onToggle={() => setSelected(current => current === job.id ? null : job.id)}
+            onAction={operation => void jobAction(job.id, operation)} />)}
         </div>}
-      </section>
-
-      <section className="panel details-panel">
-        <div className="eyebrow">JOB DETAILS</div><h2>{active ? 'Selected job' : 'Select a job'}</h2>
-        {active ? <>
-          <div className="detail-grid"><span>Engine</span><strong>{active.engine}</strong><span>Status</span><strong>{label(active.status)}</strong><span>Job ID</span><code>{active.id}</code></div>
-          {active.error && <div className="error-box">{active.error}</div>}
-          {active.output_files?.length > 0 && <div className="outputs"><div className="field-title">Delivered files</div>{active.output_files.map((file, index) => <div key={index} className="output-row"><strong>{file.filename}</strong><span>{bytes(file.size_bytes)}</span><span className="verified">{file.verified ? 'Verified' : 'Unverified'}</span></div>)}</div>}
-          <div className="field-title log-title">Job log</div><pre className="log">{active.log_text || 'No log output yet.'}</pre>
-        </> : <p className="muted">Progress, output files, and logs appear here.</p>}
       </section>
     </div>}
 
