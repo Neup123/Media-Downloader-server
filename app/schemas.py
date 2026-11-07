@@ -82,6 +82,18 @@ class EngineRuleInput(BaseModel):
         return value
 
 
+class EngineRuleOrderInput(BaseModel):
+    """Complete ordering snapshot; no partial priority updates."""
+    ids: list[str] = Field(min_length=1, max_length=1001)
+
+    @field_validator("ids")
+    @classmethod
+    def unique_rule_ids(cls, values: list[str]) -> list[str]:
+        if len(values) != len(set(values)):
+            raise ValueError("Rule IDs must be unique")
+        return values
+
+
 class JobOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: str
