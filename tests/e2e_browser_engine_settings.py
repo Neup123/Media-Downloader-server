@@ -218,6 +218,20 @@ def run_browser_acceptance() -> None:
             rows = api.get("/engine-rules").json()
             assert [row["id"] for row in rows] == [first_id, second_id]
 
+            # Verify the actual HTML drag/drop interaction, not only
+            # the Move up/down keyboard/touch alternative.
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/order")
+                and r.request.method == "PUT", timeout=30000
+            ) as dragged_order:
+                page.locator('.rule-card[data-rule-id="' + second_id + '"] .rule-drag').drag_to(
+                    page.locator('.rule-card[data-rule-id="' + first_id + '"]'),
+                    target_position={"x": 18, "y": 6},
+                )
+            assert dragged_order.value.status == 200
+            rows = api.get("/engine-rules").json()
+            assert [row["id"] for row in rows] == [second_id, first_id]
+
             page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_text(
                 "Advanced", exact=True
             ).click()
