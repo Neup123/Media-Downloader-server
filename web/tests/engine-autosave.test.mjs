@@ -94,3 +94,45 @@ test('invalid advanced data pauses pending changes until repaired', async () => 
   assert.equal(states.at(-1), 'saved');
   queue.dispose();
 });
+
+
+test('pausing invalid data during an in-flight save never reports false success', async () => {
+  const writes = [], states = [];
+  let releaseFirst;
+  const queue = new EngineAutosaveQueue(async draft => {
+    writes.push(draft);
+    if (draft.name === 'Old valid edit') {
+      await new Promise(resolve => { releaseFirst = resolve; });
+    }
+  }, state => states.push(state), 6);
+
+  queue.hydrate({name: 'Original'});
+  queue.change({name: 'Old valid edit'});
+  await sleep(18);
+  assert.deepEqual(writes, [{name: 'Old valid edit'}]);
+
+  queue.pause();
+  assert.equal(states.at(-1), 'error');
+  releaseFirst();
+  await sleep(30);
+  assert.equal(states.at(-1), 'error',
+    'A prior valid HTTP response must not make invalid current form data appear saved');
+
+  queue.change({name: 'Corrected edit'});
+  await sleep(38);
+  assert.deepEqual(writes, [{name: 'Old valid edit'}, {name: 'Corrected edit'}]);
+  assert.equal(states.at(-1), 'saved');
+  queue.dispose();
+});
+
+test('switching away from a pending preset prevents later unsent writes', async () => {
+  const writes = [], states = [];
+  const queue = new EngineAutosaveQueue(async value => writes.push(value),
+    state => states.push(state), 25);
+  queue.hydrate({name: 'One'});
+  queue.change({name: 'Two'});
+  queue.dispose();
+  await sleep(50);
+  assert.deepEqual(writes, []);
+  assert.equal(states.at(-1), 'pending');
+});
