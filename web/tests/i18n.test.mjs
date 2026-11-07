@@ -24,3 +24,10 @@ test('only Hebrew uses RTL document direction', () => {
   assert.equal(isRtl('el'), false);
   assert.equal(isRtl('en'), false);
 });
+
+test('job status and actions translate without changing engine or API data', () => {
+  assert.equal(translate('he', 'Delivered ✓ Verified'), 'הועבר ✓ אומת');
+  assert.equal(translate('el', 'Try again'), 'Δοκιμάστε ξανά');
+  assert.equal(translate('en', 'Queued'), 'Queued');
+  assert.equal(translate('el', 'Unknown engine status'), 'Unknown engine status');
+});
