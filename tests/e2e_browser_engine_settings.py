@@ -101,12 +101,10 @@ def run_browser_acceptance() -> None:
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
             page.get_by_role("navigation", name="Main navigation").get_by_role("button", name="Administration", exact=True).click()
-            page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Delivery").click()
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "GET",
                 timeout=30000
             ):
-                page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Engines").click()
                 page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Delivery").click()
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/delivery/test")
@@ -117,7 +115,6 @@ def run_browser_acceptance() -> None:
             payload = delivery_preflight.value.json()
             assert payload["verified"] and payload["cleaned_up"]
             page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Engines").click()
-            page.get_by_role("button", name="Engines", exact=True).click()
 
             yt_panel = page.locator("section.panel").filter(
                 has=page.get_by_role("heading", name="yt-dlp", exact=True)
