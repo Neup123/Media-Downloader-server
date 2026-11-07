@@ -250,6 +250,72 @@ def run_browser_acceptance() -> None:
             assert next(row for row in rows if row["id"] == second_id)["enabled"] is False
             print("Real Chromium: site rule creation + order + toggle PASS", flush=True)
 
+            # Saved preset edits autosave against the running Core API.
+            # Creation is an explicit action; editing an existing preset is not.
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="My settings", exact=True
+            ).click()
+            preset_form = page.locator("#preset-editor form")
+            preset_form.get_by_label("Preset name").fill("Chromium site preset")
+            preset_form.get_by_label("Description").fill("Initial browser preset")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/presets")
+                and r.request.method == "POST", timeout=30000
+            ) as created_preset:
+                preset_form.get_by_role("button", name="Create preset").click()
+            assert created_preset.value.status == 201, created_preset.value.text()
+            preset_id = created_preset.value.json()["id"]
+            preset_row = page.locator("article.job").filter(has_text="Chromium site preset")
+            preset_row.get_by_role("button", name="Edit", exact=True).click()
+            assert preset_form.get_by_role("button", name="Update preset").count() == 0
+            assert preset_form.get_by_role("button", name="Save preset").count() == 0
+
+            # Hydrating the editor from the saved snapshot must not write to Core.
+            preset_puts = []
+            def collect_preset_put(request):
+                if request.method == "PUT" and request.url.endswith("/api/v1/presets/" + preset_id):
+                    preset_puts.append(request)
+            page.on("request", collect_preset_put)
+            page.wait_for_timeout(1100)
+            assert preset_puts == [], "Existing preset hydration caused an unexpected PUT"
+
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/presets/" + preset_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as edited_preset:
+                preset_form.get_by_label("Description").fill("Automatically saved edit")
+            assert edited_preset.value.status == 200
+            page.get_by_text("Saved ✓ Changes affect new downloads.", exact=True).wait_for()
+            actual = api.get("/presets").json()
+            assert next(row for row in actual if row["id"] == preset_id)["description"] == "Automatically saved edit"
+
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/presets/" + preset_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as shared_preset:
+                preset_form.get_by_label("Available to everyone (Nextcloud)").check()
+            assert shared_preset.value.status == 200
+            assert preset_id in {row["id"] for row in api.get("/presets/shared").json()}
+
+            # Invalid advanced JSON must not silently save or report success.
+            preset_form.get_by_text("Edit as JSON (advanced)").click()
+            before_invalid = len(preset_puts)
+            preset_form.get_by_label("Settings JSON").fill("{invalid")
+            page.get_by_text("Invalid preset settings.", exact=False).wait_for()
+            page.wait_for_timeout(1000)
+            assert len(preset_puts) == before_invalid, "Invalid JSON caused a preset PUT"
+            assert preset_form.get_by_role("button", name="Finish editing").is_disabled()
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/presets/" + preset_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as recovered_preset:
+                preset_form.get_by_label("Settings JSON").fill('{"format":"best"}')
+            assert recovered_preset.value.status == 200
+            page.get_by_text("Saved ✓ Changes affect new downloads.", exact=True).wait_for()
+            preset_form.get_by_role("button", name="Finish editing").click()
+            page.remove_listener("request", collect_preset_put)
+            print("Real Chromium: private preset create + autosave + share + validation PASS", flush=True)
+
             print("BROWSER ENGINE SETTINGS ACCEPTANCE: PASS", flush=True)
         except Exception:
             page.screenshot(path="browser-failure.png", full_page=True)

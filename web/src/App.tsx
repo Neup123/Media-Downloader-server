@@ -18,6 +18,7 @@ function initialView(): View {
   return 'download';
 }
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared?: boolean };
+type PresetDraft = { name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared: boolean };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
 type Job = {
   id: string; url: string; engine: Engine; status: string;
@@ -218,6 +219,9 @@ export default function App() {
   const [presetShared, setPresetShared] = useState(false);
   const [presetSettingsText, setPresetSettingsText] = useState('{}');
   const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [presetSaveState, setPresetSaveState] = useState<SaveState>('saved');
+  const [presetValidationError, setPresetValidationError] = useState('');
+  const presetSaveQueue = useRef<EngineAutosaveQueue<PresetDraft> | null>(null);
   const [ruleHost, setRuleHost] = useState('');
   const [rulePath, setRulePath] = useState('/');
   const [ruleEngine, setRuleEngine] = useState<Engine>('yt-dlp');
@@ -264,6 +268,31 @@ export default function App() {
     Object.values(engineSaveQueues.current).forEach(queue => queue?.dispose());
     engineSaveQueues.current = {};
   }, [request]);
+
+  useEffect(() => () => {
+    presetSaveQueue.current?.dispose();
+    presetSaveQueue.current = null;
+  }, [request]);
+
+  useEffect(() => {
+    if (!editingPresetId || !presetSaveQueue.current) return;
+    try {
+      if (!presetName.trim()) throw new Error('Enter a preset name before changes can save.');
+      const settings = parseJsonObject(presetSettingsText);
+      setPresetValidationError('');
+      presetSaveQueue.current.change({
+        name: presetName.trim(), engine: presetEngine, settings,
+        description: presetDescription, is_shared: presetShared,
+      });
+    } catch (error) {
+      setPresetValidationError(
+        error instanceof SyntaxError
+          ? 'Invalid preset settings. Correct the advanced JSON before changes can save.'
+          : error instanceof Error ? error.message : 'Invalid preset settings.',
+      );
+      presetSaveQueue.current.pause();
+    }
+  }, [editingPresetId, presetName, presetEngine, presetSettingsText, presetDescription, presetShared]);
 
   const refresh = useCallback(async () => {
     try {
@@ -622,6 +651,10 @@ export default function App() {
   }
 
   function resetPresetEditor() {
+    presetSaveQueue.current?.dispose();
+    presetSaveQueue.current = null;
+    setPresetSaveState('saved');
+    setPresetValidationError('');
     setEditingPresetId(null);
     setPresetName('');
     setPresetEngine('yt-dlp');
@@ -631,6 +664,24 @@ export default function App() {
   }
 
   function editPreset(preset: Preset) {
+    presetSaveQueue.current?.dispose();
+    const queue = new EngineAutosaveQueue<PresetDraft>(
+      async draft => {
+        const saved = await request(API + '/presets/' + encodeURIComponent(preset.id), {
+          method: 'PUT', body: JSON.stringify(draft),
+        }) as Preset;
+        setPresets(previous => previous.map(row => row.id === saved.id ? saved : row));
+      },
+      setPresetSaveState,
+      800,
+    );
+    presetSaveQueue.current = queue;
+    queue.hydrate({
+      name: preset.name, engine: preset.engine,
+      description: preset.description, settings: preset.settings,
+      is_shared: preset.is_shared === true,
+    });
+    setPresetValidationError('');
     setEditingPresetId(preset.id);
     setPresetName(preset.name);
     setPresetEngine(preset.engine);
@@ -642,22 +693,19 @@ export default function App() {
 
   async function savePreset(event: React.FormEvent) {
     event.preventDefault();
+    if (editingPresetId) return; // Existing entries use serialized autosave.
     try {
       const settings = parseJsonObject(presetSettingsText);
-      const editingId = editingPresetId;
-      const saved = await request(API + '/presets' + (editingId ? '/' + editingId : ''), {
-        method: editingId ? 'PUT' : 'POST',
+      await request(API + '/presets', {
+        method: 'POST',
         body: JSON.stringify({ name: presetName, engine: presetEngine, description: presetDescription,
           settings, is_shared: presetShared }),
-      }) as Preset;
+      });
       setPresets(await request(API + '/presets'));
-      if (selectedPresetId === saved.id && engine !== 'auto' && engine !== saved.engine) {
-        setSelectedPresetId('');
-      }
       resetPresetEditor();
-      setMessage(editingId ? 'Preset updated.' : 'Preset saved.');
+      setMessage('Preset created ✓ It is available for new downloads.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save preset');
+      setMessage(error instanceof Error ? error.message : 'Could not create preset');
     }
   }
 
@@ -1249,7 +1297,20 @@ export default function App() {
     {((tab === 'my-settings' && connected) || (tab === 'administration' && connected && adminArea === 'automation')) && <div className="settings-layout">
       {tab === "my-settings" && <><section className="panel" id="preset-editor">
         <div className="eyebrow">SAVED OPTIONS</div><h2>{editingPresetId ? 'Edit preset' : 'Create a preset'}</h2>
-        <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.</p>
+        <p className="muted">A preset stores engine-specific settings. Job-level overrides take precedence over preset settings.
+          Changes to an existing preset save automatically and affect new downloads.</p>
+        {editingPresetId && <div className="engine-save-state" role="status" aria-live="polite">
+          {presetValidationError || (
+            presetSaveState === 'saved' ? 'Saved ✓ Changes affect new downloads.'
+              : presetSaveState === 'pending' ? 'Changes will save automatically…'
+              : presetSaveState === 'saving' ? 'Saving changes…'
+              : presetSaveState === 'error' ? 'Changes not saved. Check settings and retry.'
+              : 'Loading preset…'
+          )}
+          {presetSaveState === 'error' && !presetValidationError &&
+            <button type="button" className="secondary"
+              onClick={() => presetSaveQueue.current?.retry()}>Retry saving</button>}
+        </div>}
         <form onSubmit={savePreset}>
           <label>Preset name<input value={presetName} onChange={event => setPresetName(event.target.value)} required maxLength={120} /></label>
           <label>Engine<select value={presetEngine} onChange={event => {setPresetEngine(event.target.value as Engine); setPresetSettingsText('{}');}}>
@@ -1269,8 +1330,9 @@ export default function App() {
             <label>Settings JSON<textarea rows={7} value={presetSettingsText}
               onChange={event => setPresetSettingsText(event.target.value)} /></label>
           </details>
-          <button className="primary">{editingPresetId ? 'Update preset' : 'Create preset'}</button>
-          {editingPresetId && <button type="button" className="secondary" onClick={resetPresetEditor}>Cancel editing</button>}
+          {!editingPresetId && <button className="primary">Create preset</button>}
+          {editingPresetId && <button type="button" className="secondary"
+            disabled={presetSaveState !== 'saved'} onClick={resetPresetEditor}>Finish editing</button>}
         </form>
       </section>
       <section className="panel">

@@ -94,3 +94,85 @@ test('invalid advanced data pauses pending changes until repaired', async () => 
   assert.equal(states.at(-1), 'saved');
   queue.dispose();
 });
+
+
+test('pausing invalid data during an in-flight save never reports false success', async () => {
+  const writes = [], states = [];
+  let releaseFirst;
+  const queue = new EngineAutosaveQueue(async draft => {
+    writes.push(draft);
+    if (draft.name === 'Old valid edit') {
+      await new Promise(resolve => { releaseFirst = resolve; });
+    }
+  }, state => states.push(state), 6);
+
+  queue.hydrate({name: 'Original'});
+  queue.change({name: 'Old valid edit'});
+  await sleep(18);
+  assert.deepEqual(writes, [{name: 'Old valid edit'}]);
+
+  queue.pause();
+  assert.equal(states.at(-1), 'error');
+  releaseFirst();
+  await sleep(30);
+  assert.equal(states.at(-1), 'error',
+    'A prior valid HTTP response must not make invalid current form data appear saved');
+
+  queue.change({name: 'Corrected edit'});
+  await sleep(38);
+  assert.deepEqual(writes, [{name: 'Old valid edit'}, {name: 'Corrected edit'}]);
+  assert.equal(states.at(-1), 'saved');
+  queue.dispose();
+});
+
+test('switching away from a pending preset prevents later unsent writes', async () => {
+  const writes = [], states = [];
+  const queue = new EngineAutosaveQueue(async value => writes.push(value),
+    state => states.push(state), 25);
+  queue.hydrate({name: 'One'});
+  queue.change({name: 'Two'});
+  queue.dispose();
+  await sleep(50);
+  assert.deepEqual(writes, []);
+  assert.equal(states.at(-1), 'pending');
+});
+
+
+test('hydration and form drafts with reordered keys are semantically identical', async () => {
+  const writes = [], states = [];
+  const queue = new EngineAutosaveQueue(async draft => writes.push(draft),
+    state => states.push(state), 6);
+  queue.hydrate({
+    name: 'Chromium site preset', engine: 'yt-dlp',
+    description: 'From API', settings: {format: 'best', nested: {alpha: 1, beta: 2}},
+    is_shared: false,
+  });
+  queue.change({
+    settings: {nested: {beta: 2, alpha: 1}, format: 'best'},
+    is_shared: false, description: 'From API', engine: 'yt-dlp',
+    name: 'Chromium site preset',
+  });
+  await sleep(25);
+  assert.deepEqual(writes, [], 'Opening an existing preset must not update the server');
+  assert.equal(states.at(-1), 'saved');
+
+  queue.change({
+    settings: {format: 'best', nested: {alpha: 1, beta: 2}},
+    is_shared: true, description: 'From API', engine: 'yt-dlp',
+    name: 'Chromium site preset',
+  });
+  await sleep(28);
+  assert.equal(writes.length, 1, 'An actual shared-state change must persist');
+  assert.equal(writes[0].is_shared, true);
+  queue.dispose();
+});
+
+test('array order remains meaningful even with canonical object keys', async () => {
+  const writes = [];
+  const queue = new EngineAutosaveQueue(async draft => writes.push(draft), () => {}, 5);
+  queue.hydrate({items: ['first', 'second']});
+  queue.change({items: ['second', 'first']});
+  await sleep(28);
+  assert.deepEqual(writes, [{items: ['second', 'first']}]);
+  queue.dispose();
+});
