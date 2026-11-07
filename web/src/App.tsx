@@ -145,6 +145,8 @@ export default function App() {
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<number[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [libraryQuery, setLibraryQuery] = useState('');
+  const [libraryFilter, setLibraryFilter] = useState<'all' | 'active' | 'delivered' | 'failed'>('all');
   const [selected, setSelected] = useState<string | null>(null);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
@@ -197,7 +199,7 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      setJobs(await request(API + '/jobs?limit=80'));
+      setJobs(await request(API + '/jobs?limit=200'));
     } catch (error) {
       if (apiKey) setMessage(error instanceof Error ? error.message : 'Could not load jobs');
     }
@@ -687,6 +689,16 @@ export default function App() {
   }
 
   const active = jobs.find(job => job.id === selected) ?? null;
+  const shownJobs = jobs.filter(job => {
+    if (tab !== 'library') return true;
+    const query = libraryQuery.trim().toLocaleLowerCase();
+    const searchable = [job.url, ...(job.output_files || []).map(file => file.filename)].join(' ').toLocaleLowerCase();
+    if (query && !searchable.includes(query)) return false;
+    if (libraryFilter === 'delivered') return job.status === 'completed';
+    if (libraryFilter === 'failed') return job.status === 'failed' || job.status === 'cancelled';
+    if (libraryFilter === 'active') return !['completed', 'failed', 'cancelled'].includes(job.status);
+    return true;
+  }).slice(0, tab === 'library' ? 200 : 10);
 
   return <div className="shell">
     <header className="topbar">
@@ -732,7 +744,8 @@ export default function App() {
         <button className="secondary" onClick={() => navigate('my-settings')}>Manage this browser's connection</button>
       </section>}
     </>}
-    {tab === 'download' && connected && <div className="layout">
+    {(tab === 'download' || tab === 'library') && connected && <div className="layout">
+      {tab === 'download' && <>
       <section className="panel submit-panel">
         <div className="eyebrow">NEW DOWNLOAD</div><h2>Download</h2>
         <form onSubmit={submit}>
@@ -815,12 +828,19 @@ export default function App() {
           <p className="muted">One link per line — up to 50. If one link is invalid, no downloads start.</p>
           <button className="secondary" disabled={busy || !apiKey || !batchUrls.trim()} onClick={() => void submitBatch()}>{busy ? 'Starting…' : 'Add up to 50 links'}</button>
         </div>
-      </section>
+      </section></>}
 
       <section className="panel queue-panel">
-        <div className="section-heading"><div><div className="eyebrow">JOB QUEUE</div><h2>Recent downloads</h2></div><span className="count">{jobs.length} jobs</span></div>
+        <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{tab === 'library' ? 'Your downloads' : 'Recent downloads'}</h2></div><span className="count">{jobs.length} jobs</span></div>
+        {tab === 'library' && <div className="library-filters">
+          <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)} placeholder="Title, URL or filename" /></label>
+          <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
+            <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
+          </select></label>
+        </div>}
+        {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>See all downloads</button>}
         {!jobs.length ? <div className="empty">Nothing here yet — your finished downloads will live here.</div> : <div className="job-list">
-          {jobs.map(job => {
+          {shownJobs.map(job => {
             const percent = typeof job.progress.percent === 'number' ? job.progress.percent : (job.status === 'completed' ? 100 : 0);
             return <article key={job.id} className={'job ' + (selected === job.id ? 'selected' : '')} onClick={() => setSelected(job.id)}>
               <div className="job-head"><div className="job-title"><span className="engine-pill">{job.engine}</span><strong title={job.url}>{job.url}</strong></div><span className={'status status-' + job.status}>{label(job.status)}</span></div>
@@ -989,6 +1009,6 @@ export default function App() {
       </form>
     </section>}
 
-    <footer>Downloader Server · standalone service · <a href="/api-reference" target="_blank" rel="noreferrer">API</a></footer>
+    <footer>Downloader Server · standalone service · <button className="footer-link" onClick={() => { navigate('administration'); setAdminArea('connection'); }}>Administration</button></footer>
   </div>;
 }
