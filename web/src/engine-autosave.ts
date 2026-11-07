@@ -6,6 +6,23 @@
 export type SaveState = 'loading' | 'pending' | 'saving' | 'saved' | 'error';
 type Snapshot<T> = { signature: string; value: T };
 
+/**
+ * Compare JSON settings by meaning, not insertion order of object properties.
+ * Hydrated API payloads and UI form drafts often enumerate the same fields in
+ * different orders. Array ordering remains significant for playlist/settings.
+ */
+function stableSignature(value: unknown): string {
+  return JSON.stringify(value, (_key, entry: unknown) => {
+    if (entry !== null && typeof entry === 'object' && !Array.isArray(entry)) {
+      return Object.fromEntries(
+        Object.entries(entry).sort(([left], [right]) =>
+          left < right ? -1 : left > right ? 1 : 0),
+      );
+    }
+    return entry;
+  });
+}
+
 export class EngineAutosaveQueue<T> {
   private baseline: string | null = null;
   private latest: Snapshot<T> | null = null;
@@ -32,7 +49,7 @@ export class EngineAutosaveQueue<T> {
     if (this.disposed) return;
     this.clearTimer();
     this.paused = false;
-    this.baseline = JSON.stringify(value);
+    this.baseline = stableSignature(value);
     this.latest = null;
     this.status('saved');
   }
@@ -40,7 +57,7 @@ export class EngineAutosaveQueue<T> {
   change(value: T) {
     if (this.disposed || this.baseline === null) return;
     this.paused = false;
-    const signature = JSON.stringify(value);
+    const signature = stableSignature(value);
     if (signature === this.baseline && !this.saving) {
       this.clearTimer();
       this.latest = null;
