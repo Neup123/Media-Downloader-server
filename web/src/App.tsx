@@ -1093,7 +1093,20 @@ export default function App() {
       <div className="top-actions"><span className={connected ? "status status-completed" : "status"}>{connected ? "Connected ✓" : "Not connected"}</span></div>
     </header>
 
-    {message && <div className="notice" role="status">{message}</div>}
+    {message && <div className="notice" role="status">{message}
+      {message.includes("Connect them once in My settings") &&
+        <button type="button" className="secondary" onClick={() => navigate('my-settings')}>
+          Connect Files
+        </button>}
+      {message.includes("Couldn't reach your destination folder") &&
+        <button type="button" className="secondary" onClick={() => {
+          navigate('administration'); setAdminArea('delivery');
+        }}>Check destination</button>}
+      {message.includes('Reconnect in My settings') &&
+        <button type="button" className="secondary" onClick={() => navigate('my-settings')}>
+          Reconnect
+        </button>}
+    </div>}
     <nav className="tabs" aria-label="Main navigation">
       {([['download','Download'],['library','Library'],['my-settings','My settings']] as const).map(([view,title]) =>
         <button key={view} className={tab === view ? 'active' : ''} onClick={() => navigate(view)}>{title}</button>)}
