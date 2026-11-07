@@ -13,11 +13,19 @@ export class EngineAutosaveQueue<T> {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
 
+  private readonly persist: (value: T) => Promise<unknown>;
+  private readonly status: (next: SaveState) => void;
+  private readonly delayMs: number;
+
   constructor(
-    private readonly persist: (value: T) => Promise<unknown>,
-    private readonly status: (next: SaveState) => void,
-    private readonly delayMs = 650,
-  ) {}
+    persist: (value: T) => Promise<unknown>,
+    status: (next: SaveState) => void,
+    delayMs = 650,
+  ) {
+    this.persist = persist;
+    this.status = status;
+    this.delayMs = delayMs;
+  }
 
   hydrate(value: T) {
     if (this.disposed) return;
