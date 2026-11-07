@@ -106,6 +106,28 @@ def run_browser_acceptance() -> None:
                 timeout=30000
             ):
                 page.get_by_role("navigation", name="Administration sections").get_by_role("button", name="Delivery").click()
+            # Non-sensitive delivery-mode selection autosaves without ever submitting
+            # credentials from the form. Restore WebDAV before the download E2E.
+            assert api.get("/delivery").json()["mode"] == "webdav"
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "PUT",
+                timeout=30000
+            ) as local_mode:
+                page.get_by_label("Delivery mode").select_option("local")
+            assert local_mode.value.status == 200
+            assert local_mode.value.request.post_data_json["app_password"] is None
+            assert api.get("/delivery").json()["mode"] == "local"
+            page.get_by_text("Saved ✓ The new mode applies to new deliveries only.", exact=True).wait_for()
+            assert page.get_by_role("button", name="Save delivery settings").count() == 0
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/delivery") and r.request.method == "PUT",
+                timeout=30000
+            ) as restored_webdav:
+                page.get_by_label("Delivery mode").select_option("webdav")
+            assert restored_webdav.value.status == 200
+            assert api.get("/delivery").json()["mode"] == "webdav"
+            assert page.get_by_role("button", name="Save delivery settings").count() == 0
+
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/delivery/test")
                 and r.request.method == "POST", timeout=30000
