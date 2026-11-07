@@ -173,6 +173,69 @@ def run_browser_acceptance() -> None:
             )
             verify_webdav_bytes(aria_job)
             print("Real Chromium: aria2c global + per-job settings + WebDAV PASS", flush=True)
+            # The same real browser exercises Automation routing cards, not
+            # mocked DOM snapshots. Rule order must persist in the core DB.
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="Administration", exact=True
+            ).click()
+            page.get_by_role("navigation", name="Administration sections").get_by_role(
+                "button", name="Automation", exact=True
+            ).click()
+            routing_form = page.locator("#rule-editor form")
+            routing_form.get_by_label("Website").fill("routing.example.org")
+            routing_form.get_by_label("Download with").select_option("yt-dlp")
+            routing_form.get_by_label("Note (optional)").fill("Preferred video downloader")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules")
+                and r.request.method == "POST", timeout=30000
+            ) as first_created:
+                routing_form.get_by_role("button", name="Add site rule").click()
+            assert first_created.value.status == 201
+            first_id = first_created.value.json()["id"]
+            page.locator('.rule-card[data-rule-id="' + first_id + '"]').wait_for()
+
+            routing_form.get_by_label("Website").fill("routing.example.org")
+            routing_form.get_by_label("Download with").select_option("aria2c")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/order")
+                and r.request.method == "PUT", timeout=30000
+            ) as created_order:
+                routing_form.get_by_role("button", name="Add site rule").click()
+            assert created_order.value.status == 200
+            rows = api.get("/engine-rules").json()
+            assert len(rows) == 2 and rows[0]["engine"] == "aria2c"
+            assert rows[0]["priority"] > rows[1]["priority"]
+            second_id = rows[0]["id"]
+
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/order")
+                and r.request.method == "PUT", timeout=30000
+            ) as reordered:
+                page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_role(
+                    "button", name="Move routing.example.org down"
+                ).click()
+            assert reordered.value.status == 200
+            rows = api.get("/engine-rules").json()
+            assert [row["id"] for row in rows] == [first_id, second_id]
+
+            page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_text(
+                "Advanced", exact=True
+            ).click()
+            assert page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_text(
+                "Priority", exact=False
+            ).count() >= 1
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/engine-rules/" + second_id)
+                and r.request.method == "PUT", timeout=30000
+            ) as toggled:
+                page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_role(
+                    "checkbox"
+                ).uncheck()
+            assert toggled.value.status == 200
+            rows = api.get("/engine-rules").json()
+            assert next(row for row in rows if row["id"] == second_id)["enabled"] is False
+            print("Real Chromium: site rule creation + order + toggle PASS", flush=True)
+
             print("BROWSER ENGINE SETTINGS ACCEPTANCE: PASS", flush=True)
         except Exception:
             page.screenshot(path="browser-failure.png", full_page=True)
