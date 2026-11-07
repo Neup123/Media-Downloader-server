@@ -6,6 +6,7 @@ import json
 import os
 import re
 import tempfile
+import secrets
 import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -284,6 +285,106 @@ def set_delivery_settings(session: Session, payload, settings: Settings) -> dict
     session.commit()
     session.refresh(row)
     return serialize_delivery(row)
+
+
+async def verify_delivery_destination(
+    session_factory,
+    settings: Settings,
+    transport: httpx.AsyncBaseTransport | None = None,
+) -> dict[str, Any]:
+    """Verify the configured destination without creating a download job.
+
+    Local mode writes/reads/deletes a small file. WebDAV mode uploads, PROPFINDs,
+    reads back and deletes a unique small file. This is a real remote test, not
+    proof of general internet or unrestricted SSRF safety: guarded host egress
+    is still mandatory for untrusted inputs.
+    """
+    payload = b"Downloader delivery preflight\n"
+    with session_factory() as session:
+        row = session.get(DeliverySetting, 1)
+        if row is None or row.mode == "local":
+            mode = "local"
+            destination = settings.output_dir
+        else:
+            mode = "webdav"
+            base_url = row.webdav_url or ""
+            username = row.username or ""
+            folder = row.folder
+            password = decrypt_password(row.password_encrypted, settings)
+    if mode == "local":
+        try:
+            destination.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w+b", dir=destination, prefix=".downloader-check-", delete=True
+            ) as check:
+                check.write(payload)
+                check.flush()
+                check.seek(0)
+                if check.read() != payload:
+                    raise DeliveryError("Local directory readback did not match the temporary file")
+                sample = Path(check.name)
+            if sample.exists():
+                raise DeliveryError("Local temporary file cleanup could not be verified")
+            return {"mode": mode, "verified": True, "cleaned_up": True,
+                    "message": "Local destination was writable and the test file was removed"}
+        except OSError as exc:
+            raise DeliveryError("Local destination is not writable or cannot be verified") from exc
+    if not base_url or not username:
+        raise DeliveryError("Configure the WebDAV URL and username before testing delivery")
+    _validate_webdav_destination(base_url, settings)
+    if transport is None and not settings.allow_private_webdav_targets:
+        try:
+            await asyncio.to_thread(resolve_http_target, base_url, False)
+        except UnsafeUrlError as exc:
+            raise DeliveryError("WebDAV test destination DNS is not allowed") from exc
+    parsed = urlsplit(base_url)
+    if parsed.scheme not in {"https", "http"} or not parsed.netloc or parsed.username or parsed.password:
+        raise DeliveryError("WebDAV test requires an absolute URL without embedded credentials")
+    parts = [part for part in folder.split("/") if part]
+    if any(part in {".", ".."} or "\\x00" in part for part in parts):
+        raise DeliveryError("WebDAV test folder contains invalid path segments")
+    current = base_url.rstrip("/")
+    try:
+        async with httpx.AsyncClient(
+            auth=(username, password), timeout=httpx.Timeout(25.0, connect=10.0),
+            trust_env=False, follow_redirects=False, transport=transport,
+        ) as client:
+            for segment in parts:
+                current += "/" + quote(segment, safe="")
+                await _ensure_webdav_collection(client, current, "Could not access WebDAV test folder")
+            temporary_url = current + "/.downloader-check-" + secrets.token_hex(12)
+            uploaded = False
+            try:
+                response = await client.put(
+                    temporary_url, content=payload,
+                    headers={"Content-Type": "application/octet-stream"},
+                )
+                if response.status_code not in {200, 201, 204}:
+                    raise _delivery_failure(response.status_code, "WebDAV test upload was rejected")
+                uploaded = True
+                info = await client.request(
+                    "PROPFIND", temporary_url,
+                    headers={"Depth": "0", "Content-Type": "application/xml"},
+                    content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>',
+                )
+                if info.status_code != 207 or _webdav_uploaded_size(info.content, temporary_url) != len(payload):
+                    raise DeliveryError("WebDAV test could not verify the uploaded file size")
+                content = await client.get(temporary_url)
+                if content.status_code != 200 or content.content != payload:
+                    raise DeliveryError("WebDAV test readback did not match the uploaded bytes")
+            finally:
+                if uploaded:
+                    try:
+                        cleanup = await client.delete(temporary_url)
+                    except httpx.RequestError as exc:
+                        raise DeliveryError("Temporary WebDAV test file cleanup could not be verified") from exc
+                    if cleanup.status_code not in {200, 202, 204}:
+                        raise DeliveryError("Temporary WebDAV test file cleanup failed")
+    except httpx.RequestError as exc:
+        # Never echo the remote URL or credentials from exception strings.
+        raise DeliveryError("Could not reach the WebDAV destination; check URL, TLS and app password") from exc
+    return {"mode": mode, "verified": True, "cleaned_up": True,
+            "message": "WebDAV test upload, readback and cleanup all succeeded"}
 
 
 async def deliver_files(
