@@ -25,8 +25,8 @@ from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
-from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
+from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -518,6 +518,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def update_delivery(payload: DeliverySettingsIn, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         try:
             return set_delivery_settings(session, payload, config)
+        except DeliveryError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.post("/api/v1/delivery/test", response_model=DeliveryTestOut, tags=["delivery"])
+    async def test_delivery(_: bool = Depends(authenticate)):
+        try:
+            return await verify_delivery_destination(session_factory, config)
         except DeliveryError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
