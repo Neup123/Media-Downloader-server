@@ -163,7 +163,7 @@ jobs:
           values = {
               "APP_API_TOKEN": secrets.token_urlsafe(48),
               "APP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
-              "NEXTCLOUD_ADMIN_PASSWORD": secrets.token_urlsafe(24),
+              "NEXTCLOUD_ADMIN_PASSWORD": "nc-" + secrets.token_urlsafe(24),
           }
           with open(".env.e2e", "w", encoding="utf-8") as stream:
               for key, value in values.items():
