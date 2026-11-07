@@ -10,12 +10,27 @@ type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtp
 type EngineSelection = 'auto' | Engine;
 type View = 'download' | 'library' | 'my-settings' | 'administration';
 type AdminArea = 'connection' | 'delivery' | 'engines' | 'automation' | 'access';
+const LEGACY_NAVIGATION: Record<string, {view: View; area?: AdminArea}> = {
+  downloads: {view: 'download'},
+  'engine-settings': {view: 'administration', area: 'engines'},
+  engines: {view: 'administration', area: 'engines'},
+  delivery: {view: 'administration', area: 'delivery'},
+  routing: {view: 'administration', area: 'automation'},
+  presets: {view: 'my-settings'},
+  'presets-routing': {view: 'my-settings'},
+  'presets-and-routing': {view: 'my-settings'},
+};
+function initialNavigation(): {view: View; area?: AdminArea; canonical: string} {
+  const old = window.location.hash.slice(1).toLowerCase();
+  const redirected = LEGACY_NAVIGATION[old];
+  if (redirected) return {...redirected, canonical: redirected.view};
+  if (['download', 'library', 'my-settings', 'administration'].includes(old)) {
+    return {view: old as View, canonical: old};
+  }
+  return {view: 'download', canonical: 'download'};
+}
 function initialView(): View {
-  const old = window.location.hash.slice(1);
-  if (['downloads','download'].includes(old)) return 'download';
-  if (['engines','routing','delivery','administration'].includes(old)) return 'administration';
-  if (old === 'library' || old === 'my-settings') return old;
-  return 'download';
+  return initialNavigation().view;
 }
 type Preset = { id: string; name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared?: boolean };
 type PresetDraft = { name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared: boolean };
@@ -123,10 +138,13 @@ function label(value: string): string {
 export default function App() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
   const [tab, setTab] = useState<View>(initialView);
-  const [adminArea, setAdminArea] = useState<AdminArea>(() => {
-    const old = window.location.hash.slice(1);
-    return old === 'delivery' ? 'delivery' : old === 'engines' ? 'engines' : old === 'routing' ? 'automation' : 'connection';
-  });
+  const [adminArea, setAdminArea] = useState<AdminArea>(() => initialNavigation().area ?? 'connection');
+  useEffect(() => {
+    const canonical = initialNavigation().canonical;
+    if (window.location.hash !== '#' + canonical) {
+      window.history.replaceState(null, '', '#' + canonical);
+    }
+  }, []);
   const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
   const [connected, setConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
