@@ -399,6 +399,21 @@ def run_browser_acceptance() -> None:
             page.remove_listener("request", collect_preset_put)
             print("Real Chromium: private preset create + autosave + share + validation PASS", flush=True)
 
+            # Legacy bookmarks must open the new home, not an unrelated tab.
+            page.goto(BASE_URL + "/#routing", wait_until="domcontentloaded")
+            page.get_by_role("navigation", name="Administration sections").get_by_role(
+                "button", name="Automation", exact=True
+            ).wait_for(timeout=30000)
+            assert page.url.endswith("#administration"), page.url
+            assert page.locator("#rule-editor").is_visible()
+            page.goto(BASE_URL + "/#presets", wait_until="domcontentloaded")
+            page.get_by_role("heading", name="Saved presets").wait_for(timeout=30000)
+            assert page.url.endswith("#my-settings"), page.url
+            page.goto(BASE_URL + "/#engines", wait_until="domcontentloaded")
+            page.get_by_role("navigation", name="Download engines").wait_for(timeout=30000)
+            assert page.url.endswith("#administration"), page.url
+            print("Real Chromium: legacy route redirects PASS", flush=True)
+
             print("BROWSER ENGINE SETTINGS ACCEPTANCE: PASS", flush=True)
         except Exception:
             page.screenshot(path="browser-failure.png", full_page=True)
