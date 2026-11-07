@@ -21,6 +21,7 @@ type Preset = { id: string; name: string; engine: Engine; settings: Record<strin
 type PresetDraft = { name: string; engine: Engine; settings: Record<string, unknown>; description: string; is_shared: boolean };
 type EngineRule = { id: string; host_suffix: string; path_prefix: string; engine: Engine; priority: number; enabled: boolean; description: string };
 type EngineRuleDraft = Omit<EngineRule, 'id'>;
+type DeliveryDraft = {mode: 'local' | 'webdav'; webdav_url: string | null; username: string | null; folder: string; app_password: null};
 type Job = {
   id: string; url: string; engine: Engine; status: string;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
@@ -216,6 +217,9 @@ export default function App() {
   const [passwordConfigured, setPasswordConfigured] = useState(false);
   const [deliveryModeSaving, setDeliveryModeSaving] = useState(false);
   const [deliveryModeStatus, setDeliveryModeStatus] = useState('');
+  const [deliveryFieldState, setDeliveryFieldState] = useState<SaveState>('loading');
+  const [deliveryFieldError, setDeliveryFieldError] = useState('');
+  const deliveryFieldQueue = useRef<EngineAutosaveQueue<DeliveryDraft> | null>(null);
   const deliverySaved = useRef<{mode: 'local' | 'webdav'; webdav_url: string; username: string; folder: string; password_configured: boolean} | null>(null);
   const [presetName, setPresetName] = useState('');
   const [presetEngine, setPresetEngine] = useState<Engine>('yt-dlp');
@@ -281,6 +285,8 @@ export default function App() {
     presetSaveQueue.current = null;
     ruleSaveQueue.current?.dispose();
     ruleSaveQueue.current = null;
+    deliveryFieldQueue.current?.dispose();
+    deliveryFieldQueue.current = null;
   }, [request]);
 
   useEffect(() => {
@@ -435,8 +441,34 @@ export default function App() {
       deliverySaved.current = {mode: data.mode, webdav_url: data.webdav_url ?? '', username: data.username ?? '',
         folder: data.folder ?? 'Downloader', password_configured: Boolean(data.password_configured)};
       setDeliveryModeStatus('');
+      deliveryFieldQueue.current?.dispose();
+      const queue = new EngineAutosaveQueue<DeliveryDraft>(async draft => {
+        const response = await request(API + '/delivery', {method: 'PUT', body: JSON.stringify(draft)});
+        deliverySaved.current = {mode: draft.mode, webdav_url: draft.webdav_url ?? '',
+          username: draft.username ?? '', folder: draft.folder,
+          password_configured: Boolean(response.password_configured)};
+        setPasswordConfigured(Boolean(response.password_configured));
+        setDeliveryVerified(false);
+      }, setDeliveryFieldState, 800);
+      deliveryFieldQueue.current = queue;
+      queue.hydrate({mode: data.mode, webdav_url: data.webdav_url ?? null,
+        username: data.username ?? null, folder: data.folder ?? 'Downloader', app_password: null});
+      setDeliveryFieldError('');
     }).catch(error => setMessage(String(error)));
   }, [apiKey, tab, adminArea, request]);
+
+  useEffect(() => {
+    const queue = deliveryFieldQueue.current;
+    if (!queue || mode !== 'webdav' || !passwordConfigured || deliveryDirty || deliveryModeSaving) return;
+    if (!/^https?:\/\//i.test(davUrl.trim()) || !davUser.trim() || !davFolder.trim()) {
+      setDeliveryFieldError('Enter a valid WebDAV URL, username and destination folder before changes can save.');
+      queue.pause();
+      return;
+    }
+    setDeliveryFieldError('');
+    queue.change({mode, webdav_url: davUrl.trim(), username: davUser.trim(),
+      folder: davFolder.trim(), app_password: null});
+  }, [mode, davUrl, davUser, davFolder, passwordConfigured, deliveryDirty, deliveryModeSaving]);
 
   useEffect(() => {
     if (!apiKey) { setHistoryChecked(false); return; }
@@ -933,7 +965,7 @@ export default function App() {
   }
 
   async function changeDeliveryMode(next: 'local' | 'webdav') {
-    if (next === mode || deliveryModeSaving) return;
+    if (next === mode || deliveryModeSaving || (deliveryFieldState !== 'saved' && !deliveryDirty)) return;
     const saved = deliverySaved.current;
     setDeliveryVerified(false);
     // Never silently submit unsaved WebDAV credentials or enable an incomplete destination.
@@ -954,6 +986,8 @@ export default function App() {
           username: saved.username || null, app_password: null, folder: saved.folder}),
       });
       deliverySaved.current = {...saved, mode: next, password_configured: Boolean(result.password_configured)};
+      deliveryFieldQueue.current?.hydrate({mode: next, webdav_url: saved.webdav_url || null,
+        username: saved.username || null, folder: saved.folder, app_password: null});
       setPasswordConfigured(Boolean(result.password_configured));
       setDeliveryModeStatus('Saved ✓ The new mode applies to new deliveries only.');
     } catch (error) {
@@ -975,6 +1009,9 @@ export default function App() {
       });
       setPasswordConfigured(Boolean(data.password_configured));
       setDavPassword(''); setDeliveryDirty(false); setDeliveryVerified(false);
+      deliveryFieldQueue.current?.hydrate({mode, webdav_url: davUrl || null,
+        username: davUser || null, folder: davFolder, app_password: null});
+      setDeliveryFieldError('');
       deliverySaved.current = {mode, webdav_url: davUrl, username: davUser,
         folder: davFolder, password_configured: Boolean(data.password_configured)};
       setDeliveryModeStatus('Saved ✓ Changes affect new deliveries only.');
@@ -1556,17 +1593,27 @@ export default function App() {
       <div className="eyebrow">OUTPUT DESTINATION</div><h2>Where finished files go</h2>
       <p className="muted">Local folder keeps files on this server. WebDAV delivers finished files into Nextcloud Files or another WebDAV service. Changes affect new deliveries only.</p>
       <form onSubmit={saveDelivery}>
-        <label>Delivery mode<select value={mode} disabled={deliveryModeSaving} onChange={event => void changeDeliveryMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
+        <label>Delivery mode<select value={mode} disabled={deliveryModeSaving || (deliveryFieldState !== 'saved' && !deliveryDirty)} onChange={event => void changeDeliveryMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
         {mode === 'webdav' && <>
-          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
-          <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} required /></label>
-          <label>App password<input type="password" value={davPassword} onChange={event => {setDavPassword(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder={passwordConfigured ? 'Stored; leave blank to keep' : 'Enter app password'} autoComplete="new-password" /></label>
-          <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} /></label>
+          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
+          <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);setDeliveryVerified(false);}} required /></label>
+          <label>App password<input type="password" value={davPassword} onChange={event => {setDavPassword(event.target.value);setDeliveryDirty(true);deliveryFieldQueue.current?.pause();setDeliveryVerified(false);}} placeholder={passwordConfigured ? 'Stored; leave blank to keep' : 'Enter app password'} autoComplete="new-password" /></label>
+          <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);setDeliveryVerified(false);}} /></label>
           <div className="secure-note">{passwordConfigured ? 'An app password is stored encrypted on the server.' : 'An app password is required.'} Credentials are never returned to the browser.</div>
         </>}
         {deliveryDirty && <button className="primary" disabled={deliveryModeSaving}>Save delivery settings</button>}
-        <p className="muted" role="status" aria-live="polite">{deliveryModeStatus || (deliveryDirty ? 'WebDAV details require explicit saving.' : 'Delivery mode saves automatically when its destination is configured.')}</p>
-        <button className="secondary" type="button" disabled={testingDelivery || deliveryDirty || deliveryModeSaving}
+        <p className="muted" role="status" aria-live="polite">{deliveryModeStatus || (deliveryDirty ? 'Password changes require explicit saving.' : 'Delivery settings save automatically when the destination is configured.')}</p>
+        {mode === 'webdav' && passwordConfigured && !deliveryDirty &&
+          <div className="engine-save-state" role="status" aria-live="polite">
+            {deliveryFieldError || (deliveryFieldState === 'saved' ? 'Saved ✓ Changes affect new deliveries.'
+              : deliveryFieldState === 'pending' ? 'Changes will save automatically…'
+              : deliveryFieldState === 'saving' ? 'Saving delivery changes…'
+              : 'Changes not saved. Check the destination and retry.')}
+            {deliveryFieldState === 'error' && !deliveryFieldError &&
+              <button className="secondary" type="button"
+                onClick={() => deliveryFieldQueue.current?.retry()}>Retry saving</button>}
+          </div>}
+        <button className="secondary" type="button" disabled={testingDelivery || deliveryDirty || deliveryModeSaving || deliveryFieldState !== 'saved'}
           onClick={() => void testDeliveryConnection()}>{testingDelivery ? 'Testing delivery…' : 'Test delivery'}</button>
         <p className="muted" role="status">{deliveryDirty ? 'Save changes before testing' :
           deliveryVerified ? '✓ Delivery verified using a temporary file' : 'Not tested in this browser session'}</p>
