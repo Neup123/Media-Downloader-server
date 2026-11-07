@@ -49,6 +49,13 @@ export class EngineAutosaveQueue<T> {
     this.schedule();
   }
 
+  pause() {
+    if (this.disposed) return;
+    this.clearTimer();
+    this.latest = null;
+    this.status('error');
+  }
+
   retry() {
     if (this.disposed || !this.latest) return;
     this.clearTimer();
