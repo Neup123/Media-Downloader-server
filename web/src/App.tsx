@@ -140,10 +140,19 @@ export default function App() {
   const [tab, setTab] = useState<View>(initialView);
   const [adminArea, setAdminArea] = useState<AdminArea>(() => initialNavigation().area ?? 'connection');
   useEffect(() => {
-    const canonical = initialNavigation().canonical;
-    if (window.location.hash !== '#' + canonical) {
-      window.history.replaceState(null, '', '#' + canonical);
-    }
+    const syncLocation = () => {
+      const destination = initialNavigation();
+      setTab(destination.view);
+      if (destination.area) setAdminArea(destination.area);
+      if (window.location.hash !== '#' + destination.canonical) {
+        window.history.replaceState(null, '', '#' + destination.canonical);
+      }
+    };
+    // Bookmarks, cross-page links and the browser Back button may all change
+    // the hash without remounting React. Keep the visible view in sync.
+    window.addEventListener('hashchange', syncLocation);
+    syncLocation();
+    return () => window.removeEventListener('hashchange', syncLocation);
   }, []);
   const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
   const [connected, setConnected] = useState(false);
