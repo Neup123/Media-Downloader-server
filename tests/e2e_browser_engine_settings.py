@@ -247,6 +247,22 @@ def run_browser_acceptance() -> None:
             )
             verify_webdav_bytes(aria_job)
             print("Real Chromium: aria2c global + per-job settings + WebDAV PASS", flush=True)
+            # Both screens must use the same locale-aware job card for verified jobs.
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="My settings", exact=True
+            ).click()
+            page.get_by_label("Language").select_option("he")
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="הורדה", exact=True
+            ).click()
+            page.get_by_text("הועבר ✓ אומת", exact=True).first.wait_for()
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="ההגדרות שלי", exact=True
+            ).click()
+            page.get_by_label("שפה").select_option("en")
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="Download", exact=True
+            ).click()
             # The same real browser exercises Automation routing cards, not
             # mocked DOM snapshots. Rule order must persist in the core DB.
             page.get_by_role("navigation", name="Main navigation").get_by_role(
