@@ -114,6 +114,14 @@ export default function App() {
   const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
   const [connected, setConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
+  const [deliveryVerified, setDeliveryVerified] = useState(false);
+  const [testingDelivery, setTestingDelivery] = useState(false);
+  const [deliveryDirty, setDeliveryDirty] = useState(false);
+  const [firstCompletedVerified, setFirstCompletedVerified] = useState(false);
+  const [historyChecked, setHistoryChecked] = useState(false);
+  const [accessAcknowledged, setAccessAcknowledged] = useState(
+    () => localStorage.getItem('downloader-admin-access-ack') === 'yes',
+  );
   function navigate(view: View) {
     setTab(view); window.history.replaceState(null, '', '#' + view);
   }
@@ -128,6 +136,7 @@ export default function App() {
       if (!Array.isArray(result)) throw new Error('Unexpected service response.');
       localStorage.setItem('downloader-api-key', key);
       setEngineStatus(result); setApiKey(key); setConnected(true);
+      setHistoryChecked(false); setDeliveryVerified(false);
       setMessage('Connected ✓');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not connect.');
@@ -136,6 +145,7 @@ export default function App() {
   function disconnect() {
     localStorage.removeItem('downloader-api-key');
     setApiKey(''); setConnectionDraft(''); setConnected(false); setJobs([]);
+    setHistoryChecked(false); setDeliveryVerified(false);
     setMessage('Disconnected. Reconnect to download.');
     navigate('my-settings');
   }
@@ -265,9 +275,22 @@ export default function App() {
     void request(API + '/delivery').then(data => {
       setMode(data.mode); setDavUrl(data.webdav_url ?? '');
       setDavUser(data.username ?? ''); setDavFolder(data.folder ?? 'Downloader');
-      setPasswordConfigured(Boolean(data.password_configured));
+      setPasswordConfigured(Boolean(data.password_configured)); setDeliveryDirty(false);
     }).catch(error => setMessage(String(error)));
   }, [apiKey, tab, adminArea, request]);
+
+  useEffect(() => {
+    if (!apiKey) { setHistoryChecked(false); return; }
+    let live = true;
+    void request(API + '/jobs?status=completed&limit=1')
+      .then((records: Job[]) => {
+        if (live) setFirstCompletedVerified(records.some(job =>
+          Boolean(job.output_files?.length) && job.output_files.every(file => file.verified)));
+      })
+      .catch(() => { if (live) setFirstCompletedVerified(false); })
+      .finally(() => { if (live) setHistoryChecked(true); });
+    return () => { live = false; };
+  }, [apiKey, request]);
 
   useEffect(() => {
     if (!apiKey || !selected) return;
@@ -686,12 +709,30 @@ export default function App() {
         }),
       });
       setPasswordConfigured(Boolean(data.password_configured));
-      setDavPassword(''); setMessage('Saved ✓ Changes apply to new deliveries only.');
+      setDavPassword(''); setDeliveryDirty(false); setDeliveryVerified(false);
+      setMessage('Saved ✓ Test the delivery destination to confirm it works.');
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not save delivery settings');
     }
   }
 
+  async function testDeliveryConnection() {
+    if (deliveryDirty) {
+      setMessage('Save the delivery settings before testing them.'); return;
+    }
+    setTestingDelivery(true); setDeliveryVerified(false);
+    try {
+      const tested = await request(API + '/delivery/test', {method: 'POST'});
+      if (!tested.verified || !tested.cleaned_up) throw new Error('Delivery was not fully verified.');
+      setDeliveryVerified(true);
+      setMessage('✓ Delivery test passed: file readback and cleanup verified.');
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Could not verify the delivery destination.');
+    } finally { setTestingDelivery(false); }
+  }
+
+  const verifiedDownload = firstCompletedVerified || jobs.some(job => job.status === 'completed'
+    && job.output_files?.length && job.output_files.every(file => file.verified));
   let sourceHint = '';
   if (url.trim()) {
     try {
@@ -735,6 +776,31 @@ export default function App() {
       <h2>Connect your downloader to get started</h2>
       <p>The service needs an administrator API key before it can download links or show your history.</p>
       <button className="primary" onClick={() => navigate('my-settings')}>Connect in My settings</button>
+    </section>}
+    {connected && historyChecked && !verifiedDownload && <section className="panel first-run" aria-label="Set up Downloader">
+      <h2>Get ready for your first download</h2>
+      <p className="muted">Complete these steps, then try a small public test file. The guide disappears after your first verified download.</p>
+      <ol>
+        <li><strong>✓ Connected to Downloader</strong><p>Your administrator API key works.</p></li>
+        <li><strong>{deliveryVerified ? '✓ ' : '② '}Choose where files go</strong>
+          <p>Save the local folder or WebDAV destination, then run its actual delivery test.</p>
+          <button className="secondary" type="button" onClick={() => {navigate('administration');setAdminArea('delivery');}}>
+            {deliveryVerified ? 'Review delivery' : 'Set up and test delivery'}
+          </button></li>
+        <li><strong>{accessAcknowledged ? '✓ ' : '③ '}Decide who can download</strong>
+          <p>Standalone Downloader currently uses one administrator API key. Only people with that key have access. Nextcloud user permissions are configured separately.</p>
+          <label className="check"><input type="checkbox" checked={accessAcknowledged}
+            onChange={event => {
+              setAccessAcknowledged(event.target.checked);
+              if (event.target.checked) localStorage.setItem('downloader-admin-access-ack', 'yes');
+              else localStorage.removeItem('downloader-admin-access-ack');
+            }} /> I understand who can access this service</label></li>
+        <li><strong>④ Download something first</strong><p>A small public PDF tests the complete download and delivery flow.</p>
+          <button className="primary" type="button" disabled={!deliveryVerified || !accessAcknowledged}
+            onClick={() => {setEngine('generic');setUrl('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');navigate('download');}}>
+            Try an example download
+          </button></li>
+      </ol>
     </section>}
     {tab === 'my-settings' && <section className="panel connection-settings">
       <h2>Service connection</h2>
@@ -1020,15 +1086,19 @@ export default function App() {
       <div className="eyebrow">OUTPUT DESTINATION</div><h2>Where finished files go</h2>
       <p className="muted">Local folder keeps files on this server. WebDAV delivers finished files into Nextcloud Files or another WebDAV service. Changes affect new deliveries only.</p>
       <form onSubmit={saveDelivery}>
-        <label>Delivery mode<select value={mode} onChange={event => setMode(event.target.value as 'local' | 'webdav')}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
+        <label>Delivery mode<select value={mode} onChange={event => {setMode(event.target.value as 'local' | 'webdav');setDeliveryDirty(true);setDeliveryVerified(false);}}><option value="local">Local folder</option><option value="webdav">WebDAV — Nextcloud Files</option></select></label>
         {mode === 'webdav' && <>
-          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => setDavUrl(event.target.value)} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
-          <label>Username<input value={davUser} onChange={event => setDavUser(event.target.value)} required /></label>
-          <label>App password<input type="password" value={davPassword} onChange={event => setDavPassword(event.target.value)} placeholder={passwordConfigured ? 'Stored; leave blank to keep' : 'Enter app password'} autoComplete="new-password" /></label>
-          <label>Destination folder<input value={davFolder} onChange={event => setDavFolder(event.target.value)} /></label>
+          <label>WebDAV base URL<input type="url" value={davUrl} onChange={event => {setDavUrl(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder="https://cloud.example.com/remote.php/dav/files/username" required /></label>
+          <label>Username<input value={davUser} onChange={event => {setDavUser(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} required /></label>
+          <label>App password<input type="password" value={davPassword} onChange={event => {setDavPassword(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} placeholder={passwordConfigured ? 'Stored; leave blank to keep' : 'Enter app password'} autoComplete="new-password" /></label>
+          <label>Destination folder<input value={davFolder} onChange={event => {setDavFolder(event.target.value);setDeliveryDirty(true);setDeliveryVerified(false);}} /></label>
           <div className="secure-note">{passwordConfigured ? 'An app password is stored encrypted on the server.' : 'An app password is required.'} Credentials are never returned to the browser.</div>
         </>}
         <button className="primary">Save delivery settings</button>
+        <button className="secondary" type="button" disabled={testingDelivery || deliveryDirty}
+          onClick={() => void testDeliveryConnection()}>{testingDelivery ? 'Testing delivery…' : 'Test delivery'}</button>
+        <p className="muted" role="status">{deliveryDirty ? 'Save changes before testing' :
+          deliveryVerified ? '✓ Delivery verified using a temporary file' : 'Not tested in this browser session'}</p>
       </form>
     </section>}
 

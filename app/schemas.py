@@ -158,6 +158,13 @@ class DeliverySettingsOut(BaseModel):
     username: str | None = None
 
 
+class DeliveryTestOut(BaseModel):
+    mode: Literal["local", "webdav"]
+    verified: bool
+    cleaned_up: bool
+    message: str
+
+
 class EngineSettingsIn(BaseModel):
     settings: dict[str, Any] = Field(default_factory=dict)
 

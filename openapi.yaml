@@ -477,6 +477,30 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/DeliverySettingsOut' }
         '422': { description: Invalid delivery settings }
+  /delivery/test:
+    post:
+      operationId: testDeliveryDestination
+      summary: Verify the configured destination by uploading and removing a small temporary test file
+      description: >-
+        Requires the administrator API token. Local mode writes, reads and removes
+        a temporary file in the local output folder. WebDAV mode creates the
+        configured folder when missing, then uploads, verifies size and exact
+        bytes by readback, and deletes a unique test file. A failed cleanup
+        must be treated as failed verification. No credentials are returned.
+      tags: [delivery]
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Destination verified and temporary file removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryTestOut' }
+              example:
+                mode: webdav
+                verified: true
+                cleaned_up: true
+                message: WebDAV test upload, readback and cleanup all succeeded
+        '422': { description: Destination not configured, unreachable, unverified or cleanup failed }
 components:
   responses:
     Unauthorized:
@@ -561,6 +585,14 @@ components:
       properties:
         deleted: { type: boolean }
         filename: { type: string }
+    DeliveryTestOut:
+      type: object
+      required: [mode, verified, cleaned_up, message]
+      properties:
+        mode: { type: string, enum: [local, webdav] }
+        verified: { type: boolean }
+        cleaned_up: { type: boolean }
+        message: { type: string }
     DeliverySettingsOut:
       type: object
       required: [mode, folder, password_configured]
