@@ -199,6 +199,7 @@ export default function App() {
   const [editingEngine, setEditingEngine] = useState<Engine>('yt-dlp');
   const [engineLoaded, setEngineLoaded] = useState<Partial<Record<Engine, boolean>>>({});
   const [engineLoadError, setEngineLoadError] = useState<Partial<Record<Engine, boolean>>>({});
+  const [optionCatalogLoaded, setOptionCatalogLoaded] = useState<Partial<Record<Engine, boolean>>>({});
   const [engineSaveStatus, setEngineSaveStatus] = useState<Partial<Record<Engine, SaveState>>>({});
   const engineSaveQueues = useRef<Partial<Record<Engine, EngineAutosaveQueue<unknown>>>>({});
   const [galleryOptionsText, setGalleryOptionsText] = useState('{}');
@@ -340,9 +341,10 @@ export default function App() {
     }).catch(() => setEngineLoadError(previous => ({...previous, ['gallery-dl']: true})));
     void request(API + '/engines').then(data => { setEngineStatus(data); setConnected(true); }).catch(() => { setConnected(false); setMessage('Your connection needs attention. Reconnect in My settings.'); });
     for (const name of ['yt-dlp', 'aria2c', 'gallery-dl', 'generic', 'you-get', 'svtplay-dl', 'get-sauce'] as Engine[]) {
-      void request(API + '/engines/' + name + '/options').then(data =>
-        setOptionCatalog(current => ({ ...current, [name]: data.fields }))
-      ).catch(error => setMessage(String(error)));
+      void request(API + '/engines/' + name + '/options').then(data => {
+        setOptionCatalog(current => ({ ...current, [name]: data.fields }));
+        setOptionCatalogLoaded(previous => ({...previous, [name]: true}));
+      }).catch(() => setMessage('Could not load the options for ' + name + '. Check the connection.'));
     }
     void request(API + '/cookies').then(setCookies).catch(error => setMessage(String(error)));
     void request(API + '/presets').then(setPresets).catch(error => setMessage(String(error)));
@@ -816,6 +818,10 @@ export default function App() {
     }
   }
   const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
+  const galleryOptionsValid = (() => {
+    try { parseOptionsJson(galleryOptionsText); return true; }
+    catch { return false; }
+  })();
 
   return <div className="shell">
     <header className="topbar">
@@ -1056,12 +1062,27 @@ export default function App() {
             {engineSaveStatus[editingEngine] === 'saved' ? 'Saved ✓ Changes affect new downloads.'
               : engineSaveStatus[editingEngine] === 'saving' ? 'Saving changes…'
               : engineSaveStatus[editingEngine] === 'pending' ? 'Changes will save automatically…'
-              : engineSaveStatus[editingEngine] === 'error' ? 'Changes not saved — check your settings or connection.'
+              : engineSaveStatus[editingEngine] === 'error' ? editingEngine === 'gallery-dl' && !galleryOptionsValid
+                ? 'Invalid advanced JSON. Correct the JSON before changes can save.'
+                : 'Changes not saved — check your settings or connection.'
               : 'Loading settings…'}
-            {engineSaveStatus[editingEngine] === 'error' && <button className="secondary" type="button"
+            {engineSaveStatus[editingEngine] === 'error' && (editingEngine !== 'gallery-dl' || galleryOptionsValid) &&
+              <button className="secondary" type="button"
               onClick={() => engineSaveQueues.current[editingEngine]?.retry()}>Retry saving</button>}
           </div>}
-{editingEngine === 'yt-dlp' && engineLoaded['yt-dlp'] &&
+{engineLoaded[editingEngine] && engineStatus.find(item => item.name === editingEngine)?.installed !== false &&
+          editingEngine !== 'yt-dlp' && editingEngine !== 'gallery-dl' &&
+          !optionCatalogLoaded[editingEngine] && <section className="panel" role="status">
+            <h3>Loading available options…</h3>
+          </section>}
+        {engineLoaded[editingEngine] && engineStatus.find(item => item.name === editingEngine)?.installed !== false &&
+          editingEngine !== 'yt-dlp' && editingEngine !== 'gallery-dl' &&
+          optionCatalogLoaded[editingEngine] && !optionCatalog[editingEngine].length &&
+          <section className="panel" role="status">
+            <h3>{ENGINE_DESCRIPTIONS[editingEngine].title} — Ready</h3>
+            <p>There are no additional settings to configure for this engine.</p>
+          </section>}
+        {editingEngine === 'yt-dlp' && engineLoaded['yt-dlp'] &&
           engineStatus.find(item => item.name === 'yt-dlp')?.installed !== false &&
           <section className="panel engine-editor" data-engine="yt-dlp">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>yt-dlp</h2><p className="muted">{engineVersion('yt-dlp')}. Global defaults apply to new jobs; per-download options take precedence.</p>
@@ -1082,6 +1103,7 @@ export default function App() {
       </section>}
 {editingEngine === 'aria2c' && engineLoaded['aria2c'] &&
           engineStatus.find(item => item.name === 'aria2c')?.installed !== false &&
+          optionCatalogLoaded['aria2c'] && optionCatalog['aria2c'].length > 0 &&
           <section className="panel engine-editor" data-engine="aria2c">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>aria2c</h2><p className="muted">{engineVersion('aria2c')}. These settings map to aria2 options; RPC access and output paths remain service-managed.</p>
         <CommonOptionFields fields={optionCatalog.aria2c} values={aria.options} onChange={(key, value) => updateAriaOption(key, value, true)} />
@@ -1107,6 +1129,7 @@ export default function App() {
       </section>}
 {editingEngine === 'generic' && engineLoaded['generic'] &&
           engineStatus.find(item => item.name === 'generic')?.installed !== false &&
+          optionCatalogLoaded['generic'] && optionCatalog['generic'].length > 0 &&
           <section className="panel engine-editor" data-engine="generic">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>generic / curl</h2>
         <p className="muted">{engineVersion('generic')}. For direct HTTP(S) links. Redirects are disabled by default.</p>
@@ -1115,6 +1138,7 @@ export default function App() {
       </section>}
 {editingEngine === 'you-get' && engineLoaded['you-get'] &&
           engineStatus.find(item => item.name === 'you-get')?.installed !== false &&
+          optionCatalogLoaded['you-get'] && optionCatalog['you-get'].length > 0 &&
           <section className="panel engine-editor" data-engine="you-get">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>you-get</h2>
         <p className="muted">{engineVersion('you-get')}. P1 fallback extractor with optional cookie file and format selection.</p>
@@ -1123,6 +1147,7 @@ export default function App() {
       </section>}
 {editingEngine === 'svtplay-dl' && engineLoaded['svtplay-dl'] &&
           engineStatus.find(item => item.name === 'svtplay-dl')?.installed !== false &&
+          optionCatalogLoaded['svtplay-dl'] && optionCatalog['svtplay-dl'].length > 0 &&
           <section className="panel engine-editor" data-engine="svtplay-dl">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>svtplay-dl</h2>
         <p className="muted">{engineVersion('svtplay-dl')}. Nordic video services; output path remains service-managed.</p>
@@ -1132,6 +1157,7 @@ export default function App() {
       </section>}
 {editingEngine === 'get-sauce' && engineLoaded['get-sauce'] &&
           engineStatus.find(item => item.name === 'get-sauce')?.installed !== false &&
+          optionCatalogLoaded['get-sauce'] && optionCatalog['get-sauce'].length > 0 &&
           <section className="panel engine-editor" data-engine="get-sauce">
         <div className="eyebrow">ENGINE DEFAULTS</div><h2>get-sauce</h2>
         <p className="muted">{engineVersion('get-sauce')}. Specialized media/gallery downloads, managed output directory.</p>
