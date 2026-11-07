@@ -26,6 +26,7 @@ class Job(Base):
     # Trusted gateway-only fields. The encrypted token is NEVER included in JobOut.
     owner_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     delivery_token: Mapped[str | None] = mapped_column(Text, nullable=True)
+    delivery_subfolder: Mapped[str | None] = mapped_column(String(100), nullable=True)
     engine: Mapped[str] = mapped_column(String(40), nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued", index=True)
     overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -119,6 +120,10 @@ def initialize_database(engine) -> None:
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_owner_id ON jobs (owner_id)"))
         if "delivery_token" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN delivery_token TEXT"))
+        if "delivery_subfolder" not in columns:
+            connection.execute(text(
+                "ALTER TABLE jobs ADD COLUMN delivery_subfolder VARCHAR(100)"
+            ))
         # Existing presets were private to the standalone administrator; they
         # must never become visible to Nextcloud users without an explicit grant.
         if "is_shared" not in preset_columns:
