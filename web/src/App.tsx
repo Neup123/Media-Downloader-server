@@ -4,6 +4,7 @@ import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
+import { moveRule, stepRule, isReordered } from './rule-order';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -223,6 +224,10 @@ export default function App() {
   const [ruleDescription, setRuleDescription] = useState('');
   const [ruleEnabled, setRuleEnabled] = useState(true);
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [ruleBusy, setRuleBusy] = useState(false);
+  const [draggedRuleId, setDraggedRuleId] = useState<string | null>(null);
+  const [ruleOverId, setRuleOverId] = useState<string | null>(null);
+  const [rulePriorityEdited, setRulePriorityEdited] = useState(false);
 
   const headers = useMemo(() => ({ 'Content-Type': 'application/json', 'X-API-Key': apiKey }), [apiKey]);
   const request = useCallback(async (path: string, init: RequestInit = {}) => {
@@ -670,6 +675,7 @@ export default function App() {
     setRulePath('/');
     setRuleEngine('yt-dlp');
     setRulePriority('100');
+    setRulePriorityEdited(false);
     setRuleDescription('');
     setRuleEnabled(true);
   }
@@ -680,39 +686,97 @@ export default function App() {
     setRulePath(rule.path_prefix);
     setRuleEngine(rule.engine);
     setRulePriority(String(rule.priority));
+    setRulePriorityEdited(true);
     setRuleDescription(rule.description);
     setRuleEnabled(rule.enabled);
     document.getElementById('rule-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
+  async function reloadRules() {
+    setEngineRules(await request(API + '/engine-rules'));
+  }
+
   async function saveEngineRule(event: React.FormEvent) {
     event.preventDefault();
+    if (ruleBusy) return;
+    setRuleBusy(true);
+    const editingId = editingRuleId;
     try {
-      const editingId = editingRuleId;
-      await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
+      const created = await request(API + '/engine-rules' + (editingId ? '/' + editingId : ''), {
         method: editingId ? 'PUT' : 'POST',
         body: JSON.stringify({
           host_suffix: ruleHost, path_prefix: rulePath, engine: ruleEngine,
-          priority: Number(rulePriority), enabled: ruleEnabled, description: ruleDescription,
+          priority: rulePriorityEdited ? Number(rulePriority) : 1000,
+          enabled: ruleEnabled, description: ruleDescription,
         }),
-      });
-      setEngineRules(await request(API + '/engine-rules'));
+      }) as EngineRule;
+      // A normal new rule goes to the top, keeping the displayed order equal
+      // to the matcher's numeric priority. Explicit Advanced priority bypasses it.
+      if (!editingId && !rulePriorityEdited && engineRules.length) {
+        const ids = [created.id, ...engineRules.map(item => item.id)];
+        await request(API + '/engine-rules/order', {
+          method: 'PUT', body: JSON.stringify({ids}),
+        });
+      }
+      await reloadRules();
       resetRuleEditor();
-      setMessage(editingId ? 'URL engine rule updated.' : 'URL engine rule saved.');
+      setMessage(editingId ? 'Rule saved ✓ New downloads use the updated rule.'
+        : 'Rule created ✓ Automatic downloads now consider this site.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not save URL rule');
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not save the rule.');
+    } finally { setRuleBusy(false); }
+  }
+
+  async function persistRuleOrder(next: EngineRule[]) {
+    if (ruleBusy || !isReordered(engineRules, next)) return;
+    setRuleBusy(true);
+    setEngineRules(next);
+    try {
+      const saved = await request(API + '/engine-rules/order', {
+        method: 'PUT', body: JSON.stringify({ids: next.map(item => item.id)}),
+      }) as EngineRule[];
+      setEngineRules(saved);
+      setMessage('Saved ✓ Routing order updated. New downloads follow this order.');
+    } catch (error) {
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not save routing order; changes were reloaded.');
+    } finally {
+      setRuleBusy(false);
+      setDraggedRuleId(null);
+      setRuleOverId(null);
     }
   }
 
+  async function toggleEngineRule(rule: EngineRule, enabled: boolean) {
+    if (ruleBusy) return;
+    setRuleBusy(true);
+    try {
+      await request(API + '/engine-rules/' + rule.id, {
+        method: 'PUT', body: JSON.stringify({
+          host_suffix: rule.host_suffix, path_prefix: rule.path_prefix, engine: rule.engine,
+          priority: rule.priority, enabled, description: rule.description,
+        }),
+      });
+      await reloadRules();
+      setMessage(enabled ? 'Saved ✓ Rule enabled for new downloads.' : 'Saved ✓ Rule disabled for new downloads.');
+    } catch (error) {
+      await reloadRules().catch(() => undefined);
+      setMessage(error instanceof Error ? error.message : 'Could not change rule. Reloaded current settings.');
+    } finally { setRuleBusy(false); }
+  }
+
   async function deleteEngineRule(id: string) {
+    if (ruleBusy || !window.confirm('Delete this site rule? Existing downloads are unaffected.')) return;
+    setRuleBusy(true);
     try {
       await request(API + '/engine-rules/' + id, { method: 'DELETE' });
       setEngineRules(current => current.filter(item => item.id !== id));
       if (editingRuleId === id) resetRuleEditor();
-      setMessage('URL engine rule deleted.');
+      setMessage('Rule deleted. New downloads no longer use it.');
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'Could not delete URL rule');
-    }
+      setMessage(error instanceof Error ? error.message : 'Could not delete rule.');
+    } finally { setRuleBusy(false); }
   }
 
   async function uploadCookie(file: File) {
