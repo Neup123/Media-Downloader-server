@@ -94,6 +94,20 @@ def run_browser_acceptance() -> None:
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
             assert page.locator("header input[type=password]").count() == 0
             page.get_by_role("button", name="My settings", exact=True).click()
+            # Real browser locale switch exercises direction and persisted UI state.
+            page.get_by_label("Language").select_option("he")
+            assert page.locator("html").get_attribute("dir") == "rtl"
+            assert page.locator("html").get_attribute("lang") == "he"
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="ספריית ההורדות", exact=True
+            ).wait_for()
+            page.reload(wait_until="domcontentloaded")
+            assert page.get_by_label("שפה").input_value() == "he"
+            page.get_by_label("שפה").select_option("el")
+            assert page.locator("html").get_attribute("dir") == "ltr"
+            assert page.locator("html").get_attribute("lang") == "el"
+            page.get_by_label("Γλώσσα").select_option("en")
+            assert page.get_by_label("Language").input_value() == "en"
             # A bad key yields a human recovery action, not a raw HTTP error.
             page.get_by_label("API key").fill("invalid-browser-key")
             page.get_by_role("button", name="Connect", exact=True).click()

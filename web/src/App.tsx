@@ -5,6 +5,7 @@ import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
 import { moveRule, stepRule, isReordered } from './rule-order';
+import { normalizeLocale, isRtl, translate, type Locale } from './i18n';
 
 type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
 type EngineSelection = 'auto' | Engine;
@@ -136,6 +137,13 @@ function label(value: string): string {
 }
 
 export default function App() {
+  const [locale, setLocale] = useState<Locale>(() => normalizeLocale(localStorage.getItem('downloader-locale') || navigator.language));
+  const t = (english: string) => translate(locale, english);
+  useEffect(() => {
+    document.documentElement.lang = locale;
+    document.documentElement.dir = isRtl(locale) ? 'rtl' : 'ltr';
+    localStorage.setItem('downloader-locale', locale);
+  }, [locale]);
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
   const [tab, setTab] = useState<View>(initialView);
   const [adminArea, setAdminArea] = useState<AdminArea>(() => initialNavigation().area ?? 'connection');
@@ -1090,7 +1098,7 @@ export default function App() {
     <header className="topbar">
       <div className="brandmark">D</div>
       <div><div className="brand">Downloader Server</div><div className="subbrand">Server-side media downloads</div></div>
-      <div className="top-actions"><span className={connected ? "status status-completed" : "status"}>{connected ? "Connected ✓" : "Not connected"}</span></div>
+      <div className="top-actions"><span className={connected ? "status status-completed" : "status"}>{t(connected ? 'Connected ✓' : 'Not connected')}</span></div>
     </header>
 
     {message && <div className="notice" role="status">{message}
@@ -1125,8 +1133,8 @@ export default function App() {
     </div>}
     <nav className="tabs" aria-label="Main navigation">
       {([['download','Download'],['library','Library'],['my-settings','My settings']] as const).map(([view,title]) =>
-        <button key={view} className={tab === view ? 'active' : ''} onClick={() => navigate(view)}>{title}</button>)}
-      {connected && <button className={tab === 'administration' ? 'active' : ''} onClick={() => navigate('administration')}>Administration</button>}
+        <button key={view} className={tab === view ? 'active' : ''} onClick={() => navigate(view)}>{t(title)}</button>)}
+      {connected && <button className={tab === 'administration' ? 'active' : ''} onClick={() => navigate('administration')}>{t('Administration')}</button>}
     </nav>
     {!connected && tab !== 'my-settings' && <section className="panel guidance" role="status">
       <h2>Connect your downloader to get started</h2>
@@ -1142,10 +1150,20 @@ export default function App() {
         {connected && <button type="button" className="secondary" onClick={disconnect}>Disconnect</button>}
       </div><p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
     </section>}
+    {tab === 'my-settings' && <section className="panel language-settings">
+      <h2>{t('Language')}</h2>
+      <label>{t('Language')}
+        <select value={locale} onChange={event => setLocale(event.target.value as Locale)}>
+          <option value="en">{t('English')}</option>
+          <option value="el">{t('Greek')}</option>
+          <option value="he">{t('Hebrew')}</option>
+        </select>
+      </label>
+    </section>}
     {tab === 'administration' && connected && <>
       <nav className="admin-nav" aria-label="Administration sections">
         {([['connection','Connection'],['delivery','Delivery'],['engines','Engines'],['automation','Automation'],['access','Who can download']] as const).map(([area,title]) =>
-          <button key={area} className={adminArea === area ? 'active' : ''} onClick={() => setAdminArea(area)}>{title}</button>)}
+          <button key={area} className={adminArea === area ? 'active' : ''} onClick={() => setAdminArea(area)}>{t(title)}</button>)}
       </nav>
       {adminArea === 'connection' && <section className="panel">
         <h2>Service connection</h2><p>Connected ✓ This administrator API key controls the standalone service.</p>
@@ -1162,21 +1180,21 @@ export default function App() {
     {(tab === 'download' || tab === 'library') && connected && <div className={'layout' + (tab === 'library' ? ' library-layout' : '')}>
       {tab === 'download' && <>
       <section className="panel submit-panel">
-        <div className="eyebrow">NEW DOWNLOAD</div><h2>What would you like to download?</h2>
-        <p className="muted">Paste a link and your download will appear below.</p>
+        <div className="eyebrow">NEW DOWNLOAD</div><h2>{t('What would you like to download?')}</h2>
+        <p className="muted">{t('Paste a link and your download will appear below.')}</p>
         <form onSubmit={event => {
           if (linkMode === 'many') { event.preventDefault(); void submitBatch(); }
           else void submit(event);
         }}>
           <div className="mode-switch" role="group" aria-label="Number of links">
-            <button type="button" className={linkMode === 'one' ? 'active' : ''} onClick={() => setLinkMode('one')}>One link</button>
-            <button type="button" className={linkMode === 'many' ? 'active' : ''} onClick={() => setLinkMode('many')}>Many links</button>
+            <button type="button" className={linkMode === 'one' ? 'active' : ''} onClick={() => setLinkMode('one')}>{t('One link')}</button>
+            <button type="button" className={linkMode === 'many' ? 'active' : ''} onClick={() => setLinkMode('many')}>{t('Many links')}</button>
           </div>
           {linkMode === 'one' ? <div>
-            <label>Link to download<div className="url-entry">
+            <label>{t('Link to download')}<div className="url-entry">
               <input type="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
               <button className="secondary" type="button" onClick={() => void navigator.clipboard.readText().then(setUrl).catch(() =>
-                setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>Paste</button>
+                setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>{t('Paste')}</button>
             </div></label>
             {sourceHint && <p className={sourceHint.startsWith('✓') ? 'input-valid' : 'input-help'} role="status">{sourceHint}</p>}
           </div> : <div>
@@ -1185,7 +1203,7 @@ export default function App() {
             <p className="muted">If any link is invalid, none of the downloads start.</p>
           </div>}
           <details className="download-options">
-            <summary>Options <span className="muted">Engine, preset and download choices</span></summary>
+            <summary>{t('Options')} <span className="muted">Engine, preset and download choices</span></summary>
           <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
             <option value="auto">Automatic</option>
             {engineStatus.filter(item => item.installed).map(item =>
@@ -1253,7 +1271,7 @@ export default function App() {
           </div>}
           </details>
           <button className="primary download-submit" disabled={busy || !apiKey || (linkMode === 'one' ? !url.trim() || !sourceHint.startsWith('✓') : !batchUrls.trim())}>
-            {busy ? 'Starting…' : linkMode === 'one' ? 'Download' : 'Add up to 50 links'}
+            {busy ? 'Starting…' : t(linkMode === 'one' ? 'Download' : 'Add up to 50 links')}
           </button>
         </form>
       </section>
@@ -1285,7 +1303,7 @@ export default function App() {
       </>}
 
       <section className="panel queue-panel">
-        <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{tab === 'library' ? 'Your downloads' : 'Recent downloads'}</h2></div><span className="count">{jobs.length} jobs</span></div>
+        <div className="section-heading"><div><div className="eyebrow">{tab === 'library' ? 'LIBRARY' : 'LIVE QUEUE'}</div><h2>{t(tab === 'library' ? 'Your downloads' : 'Recent downloads')}</h2></div><span className="count">{jobs.length} jobs</span></div>
         {tab === 'library' && <>
           <div className="library-filters">
             <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)}
@@ -1301,7 +1319,7 @@ export default function App() {
           </div>
           {libraryLoading && <p className="muted" role="status">Searching your Library…</p>}
         </>}
-        {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>See all downloads</button>}
+        {tab === 'download' && <button className="secondary" onClick={() => navigate('library')}>{t('See all downloads')}</button>}
         {!shownJobs.length ? <div className="empty">
           <p>{libraryLoading && tab === 'library' ? 'Searching your Library…'
             : tab === 'library' && (libraryQuery || libraryFilter !== 'all') ? 'No downloads match these filters.'
