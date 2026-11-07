@@ -112,6 +112,7 @@ def initialize_database(engine) -> None:
     # Additive migration of existing pre-Nextcloud standalone databases.
     # Never drop or recreate the jobs table: users may have active downloads.
     columns = {column["name"] for column in inspect(engine).get_columns("jobs")}
+    preset_columns = {column["name"] for column in inspect(engine).get_columns("presets")}
     with engine.begin() as connection:
         if "owner_id" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN owner_id VARCHAR(255)"))
@@ -120,7 +121,6 @@ def initialize_database(engine) -> None:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN delivery_token TEXT"))
         # Existing presets were private to the standalone administrator; they
         # must never become visible to Nextcloud users without an explicit grant.
-        preset_columns = {column["name"] for column in inspect(engine).get_columns("presets")}
         if "is_shared" not in preset_columns:
             connection.execute(text(
                 "ALTER TABLE presets ADD COLUMN is_shared BOOLEAN NOT NULL DEFAULT FALSE"
