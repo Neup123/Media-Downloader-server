@@ -1,5 +1,5 @@
 /**
- * Serializes autosaves for one engine so an older HTTP response cannot
+ * Serializes autosaves for one settings resource so an older HTTP response cannot
  * overwrite a newer edit. Initial server hydration never sends a PUT.
  * No storage or network decisions live in this component-agnostic queue.
  */
@@ -12,6 +12,7 @@ export class EngineAutosaveQueue<T> {
   private saving = false;
   private timer: ReturnType<typeof setTimeout> | undefined;
   private disposed = false;
+  private paused = false;
 
   private readonly persist: (value: T) => Promise<unknown>;
   private readonly status: (next: SaveState) => void;
@@ -30,6 +31,7 @@ export class EngineAutosaveQueue<T> {
   hydrate(value: T) {
     if (this.disposed) return;
     this.clearTimer();
+    this.paused = false;
     this.baseline = JSON.stringify(value);
     this.latest = null;
     this.status('saved');
@@ -37,6 +39,7 @@ export class EngineAutosaveQueue<T> {
 
   change(value: T) {
     if (this.disposed || this.baseline === null) return;
+    this.paused = false;
     const signature = JSON.stringify(value);
     if (signature === this.baseline && !this.saving) {
       this.clearTimer();
@@ -51,13 +54,14 @@ export class EngineAutosaveQueue<T> {
 
   pause() {
     if (this.disposed) return;
+    this.paused = true;
     this.clearTimer();
     this.latest = null;
     this.status('error');
   }
 
   retry() {
-    if (this.disposed || !this.latest) return;
+    if (this.disposed || this.paused || !this.latest) return;
     this.clearTimer();
     void this.flush();
   }
@@ -84,7 +88,7 @@ export class EngineAutosaveQueue<T> {
   }
 
   private async flush() {
-    if (this.disposed || this.saving || !this.latest) return;
+    if (this.disposed || this.paused || this.saving || !this.latest) return;
     const saving = this.latest;
     if (saving.signature === this.baseline) {
       this.latest = null;
@@ -97,20 +101,20 @@ export class EngineAutosaveQueue<T> {
     try {
       await this.persist(saving.value);
       this.baseline = saving.signature;
-      if (!this.disposed && this.latest?.signature === saving.signature) {
+      if (!this.disposed && !this.paused && this.latest?.signature === saving.signature) {
         this.latest = null;
         this.status('saved');
       }
     } catch {
       failed = true;
-      if (!this.disposed && this.latest?.signature === saving.signature) {
+      if (!this.disposed && !this.paused && this.latest?.signature === saving.signature) {
         this.status('error');
       }
     } finally {
       this.saving = false;
       if (!this.disposed && this.latest && this.latest.signature !== saving.signature) {
         this.schedule();
-      } else if (!this.disposed && !failed && !this.latest) {
+      } else if (!this.disposed && !this.paused && !failed && !this.latest) {
         this.status('saved');
       }
     }
