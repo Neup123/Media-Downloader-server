@@ -744,21 +744,16 @@ export default function App() {
         <button className="secondary" onClick={() => navigate('my-settings')}>Manage this browser's connection</button>
       </section>}
     </>}
-    {(tab === 'download' || tab === 'library') && connected && <div className="layout">
+    {(tab === 'download' || tab === 'library') && connected && <div className={'layout' + (tab === 'library' ? ' library-layout' : '')}>
       {tab === 'download' && <>
       <section className="panel submit-panel">
         <div className="eyebrow">NEW DOWNLOAD</div><h2>Download</h2>
         <form onSubmit={submit}>
           <label>Media URL<input type="url" value={url} onChange={event => setUrl(event.target.value)} placeholder="https://" required /></label>
           <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
-            <option value="auto">Automatic — use URL rules</option>
-            <option value="yt-dlp">yt-dlp — websites and media</option>
-            <option value="aria2c">aria2c — direct, torrent, magnet</option>
-            <option value="gallery-dl">gallery-dl — image galleries</option>
-            <option value="generic">generic / curl — direct file URLs</option>
-            <option value="you-get">you-get — fallback site extractor</option>
-            <option value="svtplay-dl">svtplay-dl — Nordic broadcasters</option>
-            <option value="get-sauce">get-sauce — specialized galleries/media</option>
+            <option value="auto">Automatic</option>
+            {engineStatus.filter(item => item.installed).map(item =>
+              <option key={item.name} value={item.name}>{item.name}</option>)}
           </select></label>
           <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
             <option value="">No preset</option>
@@ -848,7 +843,7 @@ export default function App() {
               <div className="job-meta"><span>{percent ? percent.toFixed(1) + '%' : 'Progress pending'}</span><span>{bytes(job.progress.downloaded_bytes)} / {bytes(job.progress.total_bytes)}</span><span>{bytes(job.progress.speed_bytes_per_second)}/s</span></div>
               {selected === job.id && <div className="job-actions" onClick={event => event.stopPropagation()}>
                 {['queued', 'starting', 'extracting', 'downloading', 'post-processing', 'delivering'].includes(job.status) && <button className="small danger" onClick={() => void jobAction(job.id, 'cancel')}>Cancel</button>}
-                {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Retry</button>}
+                {['failed', 'cancelled'].includes(job.status) && <button className="small secondary" onClick={() => void jobAction(job.id, 'retry')}>Try again</button>}
                 {job.status === 'completed' && <button className="small secondary" title="Deliver existing verified files again to the currently configured destination" onClick={() => void jobAction(job.id, 'redeliver')}>Re-deliver</button>}
               </div>}
             </article>;
