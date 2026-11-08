@@ -7,6 +7,8 @@ from scripts.cleanup_merged_branches import (
     AUDITED_SUPERSEDED_CORE_HEADS, audited_core_candidates,
     audited_core_port_verified,
     AUDITED_SUPERSEDED_ONEOFF_HEADS, audited_oneoff_candidates,
+    AUDITED_SUPERSEDED_STATE_MACHINE_HEADS, audited_state_machine_candidates,
+    audited_state_machine_port_verified,
     audited_oneoff_port_verified,
 )
 
@@ -108,3 +110,43 @@ def test_obsolete_102_retirement_fails_closed_when_replacement_missing(tmp_path)
     (tmp_path / "web/src/i18n.ts").write_bytes((root / "web/src/i18n.ts").read_bytes())
     (tmp_path / "tests/test_oneoff_delivery_subfolder.py").write_text("# missing verified delivery")
     assert not audited_oneoff_port_verified(tmp_path)
+
+
+
+def test_obsolete_alternative_139_branch_is_sha_locked_and_has_full_main_replacement():
+    name, sha = next(iter(AUDITED_SUPERSEDED_STATE_MACHINE_HEADS.items()))
+    assert name == "refactor/139-secondary-state-machines"
+    assert sha == "bf217d7234bfca840535089fc1688630b90044b8"
+    assert audited_state_machine_port_verified()
+    assert audited_state_machine_candidates(
+        [branch(name, sha)], [], replacements_verified=True,
+    ) == [(name, sha)]
+    for items, prs, verified in (
+        ([branch(name, sha)], [], False),
+        ([branch(name, "f" * 40)], [], True),
+        ([branch(name, sha, protected=True)], [], True),
+        ([branch("another-feature", sha)], [], True),
+        ([branch(name, sha)], [{"state": "open", "head": {"ref": name}}], True),
+    ):
+        assert audited_state_machine_candidates(
+            items, prs, replacements_verified=verified,
+        ) == []
+
+
+def test_alternative_139_retirement_is_blocked_without_replacement_tests(tmp_path):
+    assert not audited_state_machine_port_verified(tmp_path)
+    root = Path(__file__).resolve().parents[1]
+    paths = (
+        "app/completion.py", "app/worker.py", "app/adapters/aria2.py",
+        "app/main.py", "tests/test_worker_task_registry.py",
+        "tests/test_workspace_recovery_decision.py",
+        "tests/test_aria2_daemon_readiness.py",
+        "tests/test_engine_availability_status.py",
+    )
+    for relative in paths:
+        target = tmp_path / relative
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((root / relative).read_bytes())
+    assert audited_state_machine_port_verified(tmp_path)
+    (tmp_path / "tests/test_worker_task_registry.py").write_text("# missing supervision test")
+    assert not audited_state_machine_port_verified(tmp_path)
