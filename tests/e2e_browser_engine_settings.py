@@ -340,7 +340,7 @@ def run_browser_acceptance() -> None:
             assert page.evaluate(
                 "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
             ), "Library overflows at 360px after delivered file"
-            assert page.get_by_text("Verified", exact=False).count() > 0
+            page.get_by_text("Delivered ✓ Verified", exact=True).first.wait_for(timeout=20000)
             page.set_viewport_size({"width": 1440, "height": 1000})
             print("Real Chromium: 360px Download/Library/Administration + keyboard submission/WebDAV PASS", flush=True)
 
