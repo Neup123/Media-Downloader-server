@@ -40,7 +40,7 @@ def test_requeue_clears_terminal_fields_but_preserves_owner_and_delivery(operati
 def test_reset_does_not_commit_or_waive_endpoint_specific_eligibility():
     """The helper mutates only the supplied row, leaving caller transaction and gates in control."""
     job = Job(url="https://example.com/file", engine="generic", status="completed",
-              output_files=[{"verified": True}], progress={"state": "completed"})
+              output_files=[{"verified": True}], progress={"state": "completed"}, log_text="")
     requeue_job(job, reason="Verified re-delivery", operation="redeliver")
     assert job.progress.get("operation") == "redeliver"
     assert job.status == "queued"
