@@ -92,6 +92,23 @@ def run_browser_acceptance() -> None:
         page = browser.new_page(viewport={"width": 1440, "height": 1000})
         try:
             page.goto(BASE_URL, wait_until="domcontentloaded", timeout=30000)
+            # Scalar must render from our local pinned build in a real browser.
+            # Test the actual docs page, not only the checked-in YAML source.
+            docs = browser.new_page(viewport={"width": 360, "height": 780})
+            try:
+                docs.goto(BASE_URL + "/api-reference", wait_until="domcontentloaded", timeout=30000)
+                docs.get_by_role("heading", name="Downloader Server — API reference").wait_for()
+                docs.get_by_text("X-API-Key", exact=False).first.wait_for()
+                docs.wait_for_function(
+                    "() => !!document.querySelector('#scalar-reference')?.firstElementChild",
+                    timeout=20000,
+                )
+                assert docs.evaluate(
+                    "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
+                ), "Scalar reference has horizontal overflow at 360px"
+            finally:
+                docs.close()
+            print("Real Chromium: pinned Scalar API reference intro, auth and mobile render PASS", flush=True)
             assert page.locator("header input[type=password]").count() == 0
             page.get_by_role("button", name="My settings", exact=True).click()
             # Real browser locale switch exercises direction and persisted UI state.
@@ -281,6 +298,52 @@ def run_browser_acceptance() -> None:
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="Download", exact=True
             ).click()
+            # Phase #106: exercise the real built UI at narrow mobile width.
+            # A document that silently scrolls sideways cannot be used at 360px.
+            page.set_viewport_size({"width": 360, "height": 780})
+            nav = page.get_by_role("navigation", name="Main navigation")
+            for screen in ("Download", "Library", "Administration"):
+                nav.get_by_role("button", name=screen, exact=True).click()
+                assert page.evaluate(
+                    "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
+                ), f"{screen} overflows the 360px viewport"
+                assert page.locator("body").is_visible()
+            page.get_by_role("navigation", name="Administration sections").get_by_role(
+                "button", name="Engines", exact=True
+            ).click()
+            assert page.evaluate(
+                "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ), "Administration engine editor overflows the 360px viewport"
+            nav.get_by_role("button", name="Download", exact=True).click()
+            mobile_form = page.locator("section.submit-panel form")
+            url_input = mobile_form.locator('input[type="url"]')
+            url_input.focus()
+            page.keyboard.type(SOURCE_URL)
+            assert url_input.input_value() == SOURCE_URL
+            submit_button = mobile_form.locator("button.download-submit")
+            page.wait_for_function(
+                "() => !!document.querySelector('section.submit-panel button.download-submit')"
+                " && !document.querySelector('section.submit-panel button.download-submit').disabled",
+                timeout=15000,
+            )
+            submit_button.focus()
+            assert submit_button.evaluate("(el) => document.activeElement === el")
+            with page.expect_response(
+                lambda r: r.url.endswith("/api/v1/jobs") and r.request.method == "POST",
+                timeout=30000
+            ) as keyboard_submission:
+                page.keyboard.press("Enter")
+            assert keyboard_submission.value.status == 202
+            keyboard_job = await_completion(api, keyboard_submission.value.json()["id"], "aria2c")
+            verify_webdav_bytes(keyboard_job)
+            nav.get_by_role("button", name="Library", exact=True).click()
+            assert page.evaluate(
+                "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
+            ), "Library overflows at 360px after delivered file"
+            page.get_by_text("Delivered ✓ Verified", exact=True).first.wait_for(timeout=20000)
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            print("Real Chromium: 360px Download/Library/Administration + keyboard submission/WebDAV PASS", flush=True)
+
             # The same real browser exercises Automation routing cards, not
             # mocked DOM snapshots. Rule order must persist in the core DB.
             page.get_by_role("navigation", name="Main navigation").get_by_role(

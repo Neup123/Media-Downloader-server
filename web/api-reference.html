@@ -15,6 +15,16 @@
       .docs-intro code { background: #25374e; padding: 2px 6px; border-radius: 5px; }
       .docs-intro a { color: #9bc6ff; }
       :focus-visible { outline: 3px solid #bddbff; outline-offset: 3px; }
+      /* Scalar includes wide request samples. Keep the page within a phone
+         viewport while allowing code samples to scroll independently. */
+      html, body, main, #scalar-reference { max-width: 100%; min-width: 0; }
+      @media (max-width: 600px) {
+        html, body, main, #scalar-reference { overflow-x: clip; }
+        .docs-intro { padding: 18px 14px; overflow-wrap: anywhere; }
+        #scalar-reference pre, #scalar-reference .scalar-codeblock-pre {
+          max-width: 100%; overflow-x: auto;
+        }
+      }
     </style>
     <main>
       <header class="docs-intro">

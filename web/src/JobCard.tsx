@@ -80,7 +80,7 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
       <div className="job-card-info">
         <button type="button" className="job-card-title" onClick={onToggle}
           aria-expanded={expanded} aria-label={t('Details for ') + jobTitle(job)}>{t(jobTitle(job))}</button>
-        <div className="job-card-state">{progressText}</div>
+        <div className="job-card-state" role="status" aria-live="polite" aria-atomic="true">{progressText}</div>
         <div className="job-card-meta">{job.engine}
           {!TERMINAL.has(job.status) && job.progress?.downloaded_bytes !== undefined &&
             <span> · {amount(job.progress.downloaded_bytes)} {t('downloaded')}</span>}
