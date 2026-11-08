@@ -160,9 +160,12 @@ def requeue_job(job: Job, *, reason: str, operation: str | None = None) -> None:
     this helper is called. Preserve the redelivery operation marker so the
     worker reuses the completed manifest rather than downloading again.
     """
-    job.status = "queued"
+    from app.job_states import JobStatus, transition_job
+    transition_job(job, JobStatus.QUEUED, reset=True, progress={
+        "state": JobStatus.QUEUED.value,
+        **({"operation": operation} if operation else {}),
+    })
     job.cancel_requested = False
-    job.progress = {"state": "queued", **({"operation": operation} if operation else {})}
     job.output_files = []
     job.error = None
     job.finished_at = None
