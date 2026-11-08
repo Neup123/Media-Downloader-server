@@ -137,6 +137,7 @@ class Aria2Rpc:
                 filename = Path(files[0].get("path", "")).name or None
             await on_progress({
                 "state": "downloading",
+                "engine_status": status.get("status"),
                 "downloaded_bytes": completed,
                 "total_bytes": total,
                 "percent": percent,
@@ -160,8 +161,13 @@ class Aria2Rpc:
                 return result
             if current == "error":
                 raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
-            if current in {"removed", "paused"}:
-                raise RuntimeError(f"aria2 download ended with status: {current}")
+            if current == "removed":
+                raise RuntimeError("aria2 download was removed")
+            if current == "paused":
+                # Pause is not an error: report the state and await resume.
+                # The job-level bounded engine deadline prevents indefinite stall.
+                await asyncio.sleep(1.0)
+                continue
             await asyncio.sleep(1.0)
 
     async def close(self) -> None:
