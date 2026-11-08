@@ -356,6 +356,10 @@ class JobWorker:
                     else:
                         was_delivering = current.status == "delivering"
                         transition_job(current, JobStatus.CANCELLED)
+                        if was_delivering and current.output_files:
+                            current.progress = {**(current.progress or {}),
+                                                "partial_delivery": True,
+                                                "verified_file_count": len(current.output_files)}
                         if was_delivering:
                             append_log(
                                 current,
@@ -370,7 +374,12 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
+                    was_delivering = current.status == JobStatus.DELIVERING
                     transition_job(current, JobStatus.FAILED)
+                    if was_delivering and current.output_files:
+                        current.progress = {**(current.progress or {}),
+                                            "partial_delivery": True,
+                                            "verified_file_count": len(current.output_files)}
                     current.error = message[:2000]
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")
