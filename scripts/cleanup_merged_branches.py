@@ -300,6 +300,79 @@ def audited_core_candidates(
 
 
 
+# An alternative #139 implementation branch was never merged. Its unique
+# commits are superseded by the reviewed, fully tested PRs #143 and #145.
+# Never broaden this SHA-locked retirement to other active work.
+AUDITED_SUPERSEDED_STATE_MACHINE_HEADS = {
+    "refactor/139-secondary-state-machines":
+        "bf217d7234bfca840535089fc1688630b90044b8",
+}
+
+
+def audited_state_machine_port_verified(root: Path | None = None) -> bool:
+    """Prove all replacement #139 behavior and regression tests are on main."""
+    root = root or Path(__file__).resolve().parents[1]
+    required = {
+        "app/completion.py": (
+            "class WorkspaceRecoveryState", "inspect_workspace_recovery",
+            "DISCARD_UNVERIFIED",
+        ),
+        "app/worker.py": (
+            "self._active_jobs", "recovery = inspect_workspace_recovery(workdir)",
+            "WorkspaceRecoveryState.DISCARD_UNVERIFIED",
+        ),
+        "app/adapters/aria2.py": (
+            'self.call("aria2.getGlobalOption", [])', "JSON-RPC is unavailable",
+        ),
+        "app/main.py": (
+            '"available": executable is not None and version not in (None, "unknown")',
+            'if current["status"] in TERMINAL_STATUSES',
+        ),
+        "tests/test_worker_task_registry.py": (
+            "test_shutdown_marks_real_running_job_even_when_task_name_is_unrelated",
+            "test_stale_task_completion_does_not_drop_newer_attempt_for_same_job",
+        ),
+        "tests/test_workspace_recovery_decision.py": (
+            "test_verified_completion_reuses_all_exact_manifest_outputs",
+            "test_missing_invalid_or_tampered_manifest_is_never_reused",
+        ),
+        "tests/test_aria2_daemon_readiness.py": (
+            "test_running_daemon_revalidates_rpc_before_reuse",
+            "aria2.getGlobalOption",
+        ),
+        "tests/test_engine_availability_status.py": (
+            "test_availability_not_hardcoded_true_when_uninstalled_or_probe_fails",
+        ),
+    }
+    for relative, markers in required.items():
+        file = root / relative
+        if not file.is_file() or not all(
+            marker in file.read_text(encoding="utf-8") for marker in markers
+        ):
+            return False
+    worker_source = (root / "app/worker.py").read_text(encoding="utf-8")
+    return "task.get_name()" not in worker_source
+
+
+def audited_state_machine_candidates(
+    branches: list[dict], pulls: list[dict], *, replacements_verified: bool,
+) -> list[tuple[str, str]]:
+    if not replacements_verified:
+        return []
+    open_heads = {
+        (pr.get("head") or {}).get("ref")
+        for pr in pulls if pr.get("state") == "open"
+    }
+    return sorted(
+        (name, AUDITED_SUPERSEDED_STATE_MACHINE_HEADS[name])
+        for branch in branches
+        if (name := branch.get("name")) in AUDITED_SUPERSEDED_STATE_MACHINE_HEADS
+        and name not in open_heads and not branch.get("protected")
+        and (branch.get("commit") or {}).get("sha")
+           == AUDITED_SUPERSEDED_STATE_MACHINE_HEADS[name]
+    )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Delete eligible refs with a SHA lease")
@@ -330,6 +403,14 @@ def main() -> None:
         candidates += [
             pair for pair in audited_oneoff_candidates(
                 branches, pulls, replacements_verified=audited_oneoff_port_verified(),
+            )
+            if pair[0] not in excluded
+        ]
+    if args.retire_audited_core:
+        excluded = {name for name, _ in candidates}
+        candidates += [
+            pair for pair in audited_state_machine_candidates(
+                branches, pulls, replacements_verified=audited_state_machine_port_verified(),
             )
             if pair[0] not in excluded
         ]
