@@ -60,35 +60,41 @@ def _relative_output(source: Path, job_id: str, settings: Settings) -> Path:
 
 
 
-def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
-    """Read getcontentlength only for the requested resource's 200 propstat.
+def _successful_webdav_props(
+    payload: bytes, target_url: str, *, collection: bool = False,
+) -> list[ET.Element]:
+    """One RFC 4918 multistatus matching/200-property contract for every caller.
 
-    RFC 4918 returns property-level statuses inside 207 Multi-Status. A 207
-    alone does not establish that the uploaded resource exists or that its
-    getcontentlength property was retrieved successfully.
+    A generic 207 or a successful property for another href never verifies
+    the requested resource. Preserve duplicate entries: consumers may only
+    accept a single unambiguous property result.
     """
     if len(payload) > 1_000_000:
-        return None
+        return []
     try:
         root = ET.fromstring(payload)
     except ET.ParseError:
-        return None
+        return []
     ns = "{DAV:}"
     if root.tag != ns + "multistatus":
-        return None
+        return []
     expected = urlsplit(target_url)
-    sizes: list[int] = []
+    expected_path = unquote(expected.path)
+    if collection:
+        expected_path = expected_path.rstrip("/")
+    found_props: list[ET.Element] = []
     for response in root.findall(ns + "response"):
         href = response.findtext(ns + "href")
         if not href:
             continue
-        found = urlsplit(urljoin(target_url, href.strip()))
+        location = urljoin(target_url.rstrip("/") + "/" if collection else target_url, href.strip())
+        found = urlsplit(location)
+        found_path = unquote(found.path)
+        if collection:
+            found_path = found_path.rstrip("/")
         if (
-            found.scheme != expected.scheme
-            or found.netloc != expected.netloc
-            or unquote(found.path) != unquote(expected.path)
-            or found.query
-            or found.fragment
+            found.scheme != expected.scheme or found.netloc != expected.netloc
+            or found_path != expected_path or found.query or found.fragment
         ):
             continue
         for propstat in response.findall(ns + "propstat"):
@@ -96,98 +102,48 @@ def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
             if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
                 continue
             prop = propstat.find(ns + "prop")
-            length = prop.findtext(ns + "getcontentlength") if prop is not None else None
-            if length is None:
-                continue
-            try:
-                size = int(length)
-            except ValueError:
-                continue
-            if size >= 0:
-                sizes.append(size)
+            if prop is not None:
+                found_props.append(prop)
+    return found_props
+
+
+def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
+    """Read only one matching successful DAV:getcontentlength property."""
+    ns = "{DAV:}"
+    sizes: list[int] = []
+    for prop in _successful_webdav_props(payload, target_url):
+        length = prop.findtext(ns + "getcontentlength")
+        if length is None:
+            continue
+        try:
+            size = int(length)
+        except ValueError:
+            continue
+        if size >= 0:
+            sizes.append(size)
     return sizes[0] if len(sizes) == 1 else None
 
 
-
 def _nextcloud_file_id(payload: bytes, target_url: str) -> str | None:
-    """Read the stable Nextcloud file ID only from this file's successful DAV propstat.
-
-    File IDs survive rename/move within Nextcloud, unlike WebDAV URL paths.
-    Return None for generic WebDAV servers without the Nextcloud extension.
-    """
-    if len(payload) > 1_000_000:
-        return None
-    try:
-        root = ET.fromstring(payload)
-    except ET.ParseError:
-        return None
-    ns = "{DAV:}"
+    """Read only one successful ownCloud fileid for this exact resource."""
     nc = "{http://owncloud.org/ns}"
-    if root.tag != ns + "multistatus":
-        return None
-    expected = urlsplit(target_url)
-    ids: list[str] = []
-    for response in root.findall(ns + "response"):
-        href = response.findtext(ns + "href")
-        if not href:
-            continue
-        found = urlsplit(urljoin(target_url, href.strip()))
-        if (found.scheme != expected.scheme or found.netloc != expected.netloc
-                or unquote(found.path) != unquote(expected.path)
-                or found.query or found.fragment):
-            continue
-        for propstat in response.findall(ns + "propstat"):
-            status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
-                continue
-            prop = propstat.find(ns + "prop")
-            file_id = prop.findtext(nc + "fileid") if prop is not None else None
-            if file_id and file_id.isdecimal() and len(file_id) <= 32:
-                ids.append(file_id)
+    ids = [
+        file_id for prop in _successful_webdav_props(payload, target_url)
+        if (file_id := prop.findtext(nc + "fileid"))
+        and file_id.isdecimal() and len(file_id) <= 32
+    ]
     return ids[0] if len(ids) == 1 else None
 
 
 def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
-    """Verify a successful DAV:resourcetype collection property for this URL.
-
-    MKCOL 405 is ambiguous: the name may be occupied by a regular file,
-    or the endpoint may refuse MKCOL entirely. Only a matching collection
-    with a successful property status is safe to use as a parent folder.
-    """
-    if len(payload) > 1_000_000:
-        return False
-    try:
-        root = ET.fromstring(payload)
-    except ET.ParseError:
-        return False
+    """An MKCOL 405 is safe only for one verified existing collection."""
     ns = "{DAV:}"
-    if root.tag != ns + "multistatus":
-        return False
-    expected = urlsplit(target_url)
-    successful_collections = 0
-    for response in root.findall(ns + "response"):
-        href = response.findtext(ns + "href")
-        if not href:
-            continue
-        found = urlsplit(urljoin(target_url.rstrip("/") + "/", href.strip()))
-        if (
-            found.scheme != expected.scheme
-            or found.netloc != expected.netloc
-            or unquote(found.path).rstrip("/") != unquote(expected.path).rstrip("/")
-            or found.query or found.fragment
-        ):
-            continue
-        for propstat in response.findall(ns + "propstat"):
-            status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
-                continue
-            prop = propstat.find(ns + "prop")
-            resource_type = prop.find(ns + "resourcetype") if prop is not None else None
-            if resource_type is not None and resource_type.find(ns + "collection") is not None:
-                successful_collections += 1
-    # A 207 response can contain multiple entries for the same href. Do not
-    # treat duplicate successful collection properties as unambiguous proof.
-    return successful_collections == 1
+    matches = [
+        prop for prop in _successful_webdav_props(payload, target_url, collection=True)
+        if (resource_type := prop.find(ns + "resourcetype")) is not None
+        and resource_type.find(ns + "collection") is not None
+    ]
+    return len(matches) == 1
 
 
 async def _ensure_webdav_collection(client: httpx.AsyncClient, url: str, label: str) -> None:
