@@ -97,6 +97,20 @@ def verify(compose: list[str]) -> dict[str, object]:
     if reject_packets(after, "127.0.0.0/8") <= loopback_before:
         raise AcceptanceError("Loopback probe did not hit the kernel REJECT rule")
 
+    # Prove both RFC1918 policies are enforced by the same kernel namespace.
+    # A failed DNS/socket request without a matching firewall counter is NOT
+    # sufficient: that could be only an unreachable route or DNS failure.
+    private_before = {
+        cidr: reject_packets(after, cidr)
+        for cidr in ("10.0.0.0/8", "192.168.0.0/16")
+    }
+    reject_probe(compose, "10.0.0.1")
+    reject_probe(compose, "192.168.0.1")
+    private_after = require_ok(compose, table_command, "Private IPv4 rule counters")
+    for cidr, count in private_before.items():
+        if reject_packets(private_after, cidr) <= count:
+            raise AcceptanceError("Private IPv4 probe did not hit the kernel REJECT policy")
+
     # Actual API 307 redirect, then follow it from the downloader namespace.
     target = "169.254.169.254"
     location = require_ok(compose, [
@@ -108,7 +122,7 @@ def verify(compose: list[str]) -> dict[str, object]:
     ], "Controlled local redirect")
     if location != f"http://{target}/healthz":
         raise AcceptanceError("Controlled redirect was not emitted as expected")
-    redirect_before = reject_packets(after, "169.254.0.0/16")
+    redirect_before = reject_packets(private_after, "169.254.0.0/16")
     reject_probe(compose, target, redirect=True)
     redirected = require_ok(compose, table_command, "IPv4 rule counters")
     if reject_packets(redirected, "169.254.0.0/16") <= redirect_before:
@@ -128,6 +142,7 @@ def verify(compose: list[str]) -> dict[str, object]:
         "guarded_namespace_health": "passed",
         "ipv4_and_ipv6_chains": "present",
         "private_dns_override": "blocked_by_ipv4_reject_counter",
+        "rfc1918_10_and_192_ranges": "blocked_by_ipv4_reject_counters",
         "metadata_destination": "blocked_by_ipv4_reject_counter",
         "loopback_destination": "blocked_by_ipv4_reject_counter",
         "actual_http_redirect": "blocked_by_ipv4_reject_counter",
