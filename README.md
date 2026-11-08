@@ -219,3 +219,22 @@ trusted gateway can resolve `GET /api/v1/provenance?owner_id=...&file_id=...`
 to the original source URL, engine and job. Owner and file ID are both required.
 Generic WebDAV services do not have to provide Nextcloud's file ID.
 No credentials or destination app passwords are returned by provenance.
+
+## License
+
+Original Media Downloader Server code is source-available under the
+[Business Source License 1.1 with Additional Use Grant](LICENSE), not an
+OSI-approved open-source license. **Free production use requires BOTH**:
+no more than **20 employees and contractors combined** and no more than
+**USD 250,000 total organization revenue in the previous tax year**.
+The count includes parents, subsidiaries and affiliates under common
+control. Exceeding either threshold requires a separate paid commercial
+license from Neup123 for production use. Non-production rights under
+standard BSL 1.1 remain available.
+
+Redistribution must include the complete LICENSE and its Required Notice.
+Each version converts under GPL-3.0-or-later on the specified Change Date
+(or its fourth anniversary under BSL 1.1, whichever is earlier).
+Third-party components retain their own respective licenses. Earlier
+released copies retain their own applicable license terms.
+
