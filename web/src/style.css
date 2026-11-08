@@ -247,3 +247,18 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 @media(max-width:600px) {
   :root[dir="rtl"] .delivery-panel button + button { margin-right: 0; }
 }
+
+/* #106: prevent narrow device viewports from clipping controls or long file names.
+   Keep Hebrew's existing semantic RTL rules above intact. */
+@media (max-width: 600px) {
+  .topbar { flex-wrap: wrap; padding-block: 12px; }
+  .brand, .subbrand, .top-actions { min-width: 0; overflow-wrap: anywhere; }
+  .top-actions { margin-inline-start: auto; }
+  .layout, .settings-layout, .library-layout,
+  .submit-panel, .queue-panel, .job-card, .engine-editor-area { min-width: 0; }
+  .job-card-file-link, .job-card-state, .notice { overflow-wrap: anywhere; }
+  .download-options, .options-block { min-width: 0; }
+  .download-options input, .download-options select, .download-options textarea {
+    max-width: 100%;
+  }
+}
