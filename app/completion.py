@@ -6,6 +6,8 @@ import hashlib
 import json
 import os
 import re
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from uuid import uuid4
 
@@ -106,3 +108,35 @@ def save_completed_files(workdir: Path, files: list[Path]) -> None:
         os.replace(temp, workdir / MANIFEST_FILENAME)
     finally:
         temp.unlink(missing_ok=True)
+
+
+class WorkspaceRecoveryState(StrEnum):
+    """Explicit status of the on-disk engine output at worker resumption."""
+
+    EMPTY = "empty"
+    VERIFIED_COMPLETION = "verified-completion"
+    DISCARD_UNVERIFIED = "discard-unverified"
+
+
+@dataclass(frozen=True)
+class WorkspaceRecovery:
+    state: WorkspaceRecoveryState
+    files: tuple[Path, ...] = ()
+
+
+def inspect_workspace_recovery(workdir: Path) -> WorkspaceRecovery:
+    """Decide restart behavior from the **complete** verified manifest.
+
+    This function is deliberately read-only: callers first reconcile DB
+    delivery records, then discard unverified files if directed. A partial
+    ordinary-looking media file cannot be promoted into a valid completed
+    download just because it exists on disk.
+    """
+    files = load_completed_files(workdir)
+    if files:
+        return WorkspaceRecovery(
+            state=WorkspaceRecoveryState.VERIFIED_COMPLETION, files=tuple(files)
+        )
+    if any(workdir.iterdir()):
+        return WorkspaceRecovery(state=WorkspaceRecoveryState.DISCARD_UNVERIFIED)
+    return WorkspaceRecovery(state=WorkspaceRecoveryState.EMPTY)
