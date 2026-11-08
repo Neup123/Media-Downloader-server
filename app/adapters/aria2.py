@@ -53,6 +53,12 @@ class Aria2Rpc:
 
     async def start(self) -> None:
         if self.process and self.process.poll() is None:
+            # Process existence is not proof of a live authenticated RPC
+            # channel; fail closed instead of silently accepting a hung daemon.
+            try:
+                await self.call("aria2.getGlobalOption", [])
+            except (httpx.HTTPError, RuntimeError, ValueError) as exc:
+                raise RuntimeError("aria2 process is running but JSON-RPC is unavailable") from exc
             return
         args = [
             self.executable,
@@ -78,7 +84,7 @@ class Aria2Rpc:
             if self.process.poll() is not None:
                 raise RuntimeError("aria2c exited during startup; check that aria2c is installed and the RPC port is available")
             try:
-                await self.call("system.listMethods", [], include_token=False)
+                await self.call("aria2.getGlobalOption", [])
                 return
             except (httpx.HTTPError, RuntimeError, ValueError):
                 await asyncio.sleep(0.25)

@@ -14,7 +14,7 @@ from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
-from app.completion import load_completed_files, save_completed_files
+from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
@@ -245,8 +245,11 @@ class JobWorker:
                     session.commit()
 
         try:
-            existing_files = load_completed_files(workdir)
-            if not existing_files:
+            recovery = inspect_workspace_recovery(workdir)
+            existing_files = list(recovery.files)
+            if recovery.state != WorkspaceRecoveryState.VERIFIED_COMPLETION:
+                # The only durable authority to preserve previous delivery
+                # records is a verified complete-download manifest.
                 with self.session_factory() as session:
                     current = session.get(Job, job_id)
                     if current and current.output_files:
@@ -256,9 +259,9 @@ class JobWorker:
                             "Cleared prior delivery records: no verified completed-download manifest survived recovery",
                         )
                         session.commit()
-            if not existing_files and any(workdir.iterdir()):
-                # Partial outputs may have ordinary extensions. Only a valid
-                # completion manifest permits reuse; otherwise start clean.
+            if recovery.state == WorkspaceRecoveryState.DISCARD_UNVERIFIED:
+                # Treat partial files (with or without an invalid manifest)
+                # explicitly as interrupted output, never reusable media.
                 shutil.rmtree(workdir)
                 workdir.mkdir(parents=True, exist_ok=True)
                 await on_log("Discarded unverified output left by an interrupted download")

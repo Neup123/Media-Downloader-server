@@ -129,7 +129,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 except (OSError, subprocess.TimeoutExpired, IndexError):
                     version = "unknown"
             result.append({
-                **item, "installed": executable is not None, "version": version,
+                **item, "installed": executable is not None,
+                "available": executable is not None and version not in (None, "unknown"),
+                "version": version,
                 "defaults": ENGINE_DEFAULTS[item["name"]],
             })
         return result
