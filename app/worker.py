@@ -14,7 +14,7 @@ from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
-from app.completion import load_completed_files, save_completed_files
+from app.completion import inspect_workspace_for_recovery, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
@@ -242,7 +242,7 @@ class JobWorker:
                     session.commit()
 
         try:
-            existing_files = load_completed_files(workdir)
+            recovery_state, existing_files = inspect_workspace_for_recovery(workdir)
             if not existing_files:
                 with self.session_factory() as session:
                     current = session.get(Job, job_id)
@@ -253,7 +253,7 @@ class JobWorker:
                             "Cleared prior delivery records: no verified completed-download manifest survived recovery",
                         )
                         session.commit()
-            if not existing_files and any(workdir.iterdir()):
+            if recovery_state == "unverified":
                 # Partial outputs may have ordinary extensions. Only a valid
                 # completion manifest permits reuse; otherwise start clean.
                 shutil.rmtree(workdir)
