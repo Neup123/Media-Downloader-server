@@ -70,6 +70,9 @@ class JobWorker:
         self.aria2: Aria2Rpc | None = None
         self._task: asyncio.Task | None = None
         self._active: set[asyncio.Task] = set()
+        # Explicit identity mapping: names are diagnostic only, never an
+        # authority for deciding which DB jobs to cancel at shutdown.
+        self._active_jobs: dict[str, asyncio.Task] = {}
         self._active_engines: dict[str, str] = {}
         self._stopping = False
 
@@ -87,11 +90,7 @@ class JobWorker:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        active_ids = []
-        for task in list(self._active):
-            name = task.get_name()
-            if name.startswith("download-"):
-                active_ids.append(name.removeprefix("download-"))
+        active_ids = list(self._active_jobs)
         if active_ids:
             with self.session_factory() as session:
                 for job_id in active_ids:
@@ -145,7 +144,10 @@ class JobWorker:
 
     def _task_done(self, job_id: str, task: asyncio.Task) -> None:
         self._active.discard(task)
-        self._active_engines.pop(job_id, None)
+        # A delayed callback must not erase a newer attempt with the same ID.
+        if self._active_jobs.get(job_id) is task:
+            self._active_jobs.pop(job_id, None)
+            self._active_engines.pop(job_id, None)
 
     async def _run_loop(self) -> None:
         while not self._stopping:
@@ -169,6 +171,7 @@ class JobWorker:
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
                         self._active.add(task)
+                        self._active_jobs[job_id] = task
                         self._active_engines[job_id] = job.engine
                         task.add_done_callback(
                             lambda done, identifier=job_id: self._task_done(identifier, done)
