@@ -258,7 +258,8 @@ def run_browser_acceptance() -> None:
                 {"options.max-connection-per-server": ARIA_OVERRIDE},
             )
             assert research_job["delivery_subfolder"] == "Research", research_job
-            assert all("/Downloads/Research/" in urlsplit(item["path"]).path
+            saved_root = api.get("/delivery").json()["folder"].strip("/")
+            assert all("/" + saved_root + "/Research/" in urlsplit(item["path"]).path
                        for item in research_job["output_files"]), research_job
             verify_webdav_bytes(research_job)
             assert not form.get_by_label("Folder for this download (optional)").input_value()
