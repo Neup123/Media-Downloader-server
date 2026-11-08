@@ -207,6 +207,7 @@ export default function App() {
   const [batchUrls, setBatchUrls] = useState('');
   const [linkMode, setLinkMode] = useState<'one' | 'many'>('one');
   const [url, setUrl] = useState('');
+  const [deliverySubfolder, setDeliverySubfolder] = useState('');
   const [mediaPreview, setMediaPreview] = useState<MediaPreview | null>(null);
   const [selectedPlaylistEntries, setSelectedPlaylistEntries] = useState<number[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -707,9 +708,11 @@ export default function App() {
         method: 'POST',
         body: JSON.stringify({
           url, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
+          delivery_subfolder: deliverySubfolder.trim() || null,
         }),
       });
-      setSelected(job.id); setUrl(''); setMediaPreview(null); setMessage('Download started. Follow its progress below.'); await refresh();
+      setSelected(job.id); setUrl(''); setDeliverySubfolder(''); setMediaPreview(null);
+      setMessage('Download started. Follow its progress below.'); await refresh();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : 'Could not submit job');
     } finally { setBusy(false); }
@@ -726,11 +729,13 @@ export default function App() {
         body: JSON.stringify({
           items: urls.map(itemUrl => ({
             url: itemUrl, engine, preset_id: selectedPresetId || null, overrides: currentOverrides(),
+            delivery_subfolder: deliverySubfolder.trim() || null,
           })),
         }),
       });
       setSelected(response.jobs?.[0]?.id ?? null);
       setBatchUrls('');
+      setDeliverySubfolder('');
       setMessage(response.created + ' downloads started.');
       await refresh();
     } catch (error) {
@@ -1214,6 +1219,14 @@ export default function App() {
               <option key={preset.id} value={preset.id}>{preset.name} ({preset.engine})</option>
             ))}
           </select></label>
+          <label>Folder for this download (optional)
+            <input maxLength={100} value={deliverySubfolder}
+              placeholder="For example: Research"
+              onChange={event => setDeliverySubfolder(event.target.value)} />
+          </label>
+          <p className="muted">Place this download in a named folder inside the administrator's
+            configured destination. Leave blank to use the usual location.
+            This never changes another user's Nextcloud Files destination.</p>
           {engine === 'yt-dlp' ? <div className="options-block">
             <div className="field-title">Per-download overrides</div>
             <QualityControl value={ytOverride.format} onChange={format => setYtOverride(value => ({ ...value, format }))} />

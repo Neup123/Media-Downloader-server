@@ -711,6 +711,7 @@ components:
         id: { type: string }
         url: { type: string }
         owner_id: { type: [string, 'null'], default: null }
+        delivery_subfolder: { type: [string, 'null'], default: null, description: One-off subfolder under the configured standalone destination. }
         engine: { type: string }
         status: { type: string }
         overrides: { type: object, additionalProperties: true }
@@ -736,6 +737,7 @@ components:
         engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce], default: auto }
         preset_id: { type: [string, 'null'], maxLength: 36, default: null }
         overrides: { type: object, additionalProperties: true }
+        delivery_subfolder: { type: [string, 'null'], maxLength: 100, default: null, description: Standalone jobs only; one safe folder name inside the administrator-configured delivery target. }
         owner_id: { type: [string, 'null'], minLength: 1, maxLength: 255, pattern: '^[^/\\\\\x00-\x1f]+$', default: null }
         delivery: { type: [object, 'null'], additionalProperties: true, default: null }
     JobBatchCreate:

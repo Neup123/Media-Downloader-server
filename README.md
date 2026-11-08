@@ -98,6 +98,29 @@ The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine r
 
 The worker requeues interrupted downloads on restart. Files in a job directory are **not** considered completed merely because they have a normal extension. After an engine reports success, the service atomically writes a completion manifest containing each output path, size, modification time, and SHA-256 digest. New manifests verify the file contents again before recovery or re-delivery, so same-size corruption with a preserved timestamp cannot silently reuse damaged bytes. Older manifests without a digest remain supported for compatibility and retain their original size/mtime-only assurance. Reusing previously downloaded files (for example, after a WebDAV delivery failure) requires a valid manifest and unchanged output files. Otherwise, stale partial output is discarded before downloading again. Manual cancellation is preserved; stale queued cancellation flags from an unclean service shutdown are cleared during startup. When delivery was interrupted after individual files were verified, their audit records remain visible during recovery if the completed-download manifest is still valid. Re-verifying an already recorded destination replaces its entry rather than duplicating it. If the completed-download manifest is missing or invalid, stale delivery records are cleared before a fresh download; explicitly retrying a failed/cancelled job also clears the previous attempt's output records.
 
+## One-off destination folder (standalone)
+
+From **Download → Options**, choose an optional **Folder for this download**
+before submitting one or many links. The download keeps the administrator's
+configured **Local** or **WebDAV** destination; the value is only one safe
+subfolder name under that location, not a new server URL, login or credential.
+For example, `Research` delivers into `<configured output>/Research/<job id>/`
+in local mode or `<configured WebDAV folder>/Research/<job id>/` in global
+WebDAV mode. The regular default remains unchanged if the field is empty,
+and the one-off value clears after successful submission.
+
+The server rejects slash/backslash traversal, `.` / `..`, control characters
+and overlong names before queuing, and checks that local output resolves
+inside the configured output root. The value is persisted with the job across
+processing/retries and is included in job status responses. The existing
+local SHA-256 copy checks and WebDAV PUT + PROPFIND verification still run.
+An additive nullable DB migration preserves old jobs.
+
+**Nextcloud per-user downloads do not accept `delivery_subfolder`**: their
+Files destination remains selected by the trusted, signed Nextcloud gateway.
+Neither the form nor the one-off API field can supply another user's
+WebDAV URL, password or Files path.
+
 ## Delivery
 
 Local delivery copies files into the job's output folder and checks the resulting file. Relative paths beneath the download workspace are preserved: `album-a/image.jpg` and `album-b/image.jpg` remain separate files. Outputs outside the workspace and symlinked output paths are rejected. Generic WebDAV delivery:

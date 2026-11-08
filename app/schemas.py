@@ -23,8 +23,23 @@ class JobCreate(BaseModel):
     preset_id: str | None = Field(default=None, max_length=36)
     overrides: dict[str, Any] = Field(default_factory=dict)
     owner_id: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^/\\\\\x00-\x1f]+$")
+    # One-off destination choice is constrained to one folder below the
+    # administrator-configured target; it cannot set a URL or credentials.
+    delivery_subfolder: str | None = Field(default=None, max_length=100)
     # Trusted server-side gateway input only. Never included in JobOut.
     delivery: dict[str, Any] | None = None
+
+    @field_validator("delivery_subfolder")
+    @classmethod
+    def validate_oneoff_subfolder(cls, name: str | None) -> str | None:
+        if name is None:
+            return None
+        value = name.strip()
+        if not value:
+            return None
+        if value in {".", ".."} or "/" in value or "\\" in value or any(ord(char) < 32 for char in value):
+            raise ValueError("Choose one folder name, without slashes or parent paths")
+        return value
 
 
 class JobBatchCreate(BaseModel):
@@ -100,6 +115,7 @@ class JobOut(BaseModel):
     id: str
     url: str
     owner_id: str | None = None
+    delivery_subfolder: str | None = None
     engine: str
     status: str
     overrides: dict[str, Any]
