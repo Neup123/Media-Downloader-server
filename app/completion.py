@@ -106,3 +106,21 @@ def save_completed_files(workdir: Path, files: list[Path]) -> None:
         os.replace(temp, workdir / MANIFEST_FILENAME)
     finally:
         temp.unlink(missing_ok=True)
+
+
+
+def inspect_workspace_for_recovery(workdir: Path) -> tuple[str, list[Path]]:
+    """Classify a job workspace before deciding whether to reuse or restart.
+
+    Only a fully validated completion manifest allows reuse; ordinary-looking
+    partial output is *never* trusted. The caller owns destructive cleanup,
+    preserving a single explicit decision point before any unlink.
+    """
+    if not workdir.is_dir():
+        return "empty", []
+    verified = load_completed_files(workdir)
+    if verified:
+        return "verified", verified
+    if any(workdir.iterdir()):
+        return "unverified", []
+    return "empty", []
