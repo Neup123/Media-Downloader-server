@@ -72,16 +72,15 @@ def test_webdav_oneoff_mkcol_put_and_profind_verified_under_saved_root(settings)
     engine, sessions, source, data = _setup(settings, "webdav")
     written = {}
     created = []
-    def handler(request: httpx.Request):
+    async def handler(request: httpx.Request):
         url = str(request.url)
         assert "private-test-secret" not in url
         if request.method == "MKCOL":
             created.append(url)
             return httpx.Response(201)
         if request.method == "PUT":
-            # Memory payload from a real file yielded by the delivery stream.
-            # httpx.MockTransport invokes a sync handler: request.read() is supported.
-            written[url] = request.read()
+            # Read the real async file stream, then verify the DAV metadata.
+            written[url] = await request.aread()
             return httpx.Response(201)
         if request.method == "PROPFIND":
             if url not in written:
