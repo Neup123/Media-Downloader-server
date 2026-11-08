@@ -17,8 +17,11 @@ def test_job_timeout_env_is_bounded(monkeypatch, value, expected):
     assert Settings.from_env().job_timeout_seconds == expected
 
 
-@pytest.mark.asyncio
-async def test_asyncio_engine_deadline_fails_on_stalled_operation():
+def test_asyncio_engine_deadline_fails_on_stalled_operation():
+    asyncio.run(_deadline_expires())
+
+
+async def _deadline_expires():
     async def stalled():
         await asyncio.sleep(1)
     with pytest.raises(TimeoutError):
