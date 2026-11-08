@@ -74,8 +74,8 @@ python3 scripts/guarded_host_acceptance.py --env-file .env \
 The script does not create or delete containers, files, credentials, app
 passwords, or destinations. It checks real policy chains inside the guard
 container, probes the actual downloader namespace, and requires the kernel
-`REJECT` counters to advance for DNS-override/metadata, loopback, and
-controlled redirect requests. A socket failure alone is not sufficient
+`REJECT` counters to advance for DNS-override/metadata, loopback, RFC1918
+10/8 and 192.168/16, and controlled redirect requests. A socket failure alone is not sufficient
 evidence; the output is sanitized JSON without credentials or media URLs.
 IPv6 probes can also fail because no route exists, so the report
 distinguishes that from a verified IPv6 packet counter.
@@ -97,3 +97,33 @@ loopback and IPv6 destinations. It also checks that an actual HTTP redirect\nfro
 
 This is the first concrete deployment boundary for issues #9 and #72;
 keep them open until platform and production acceptance are complete.
+
+## Production readiness decision — Core #9 and #72
+
+The repository/CI acceptance covers kernel destination denial for private and
+metadata IPv4, controlled HTTP redirects, simulated DNS rebinding, and
+negative IPv6 attempts in the **disposable Linux runner**. The guard applies
+to all downloader engines because they share the same network namespace; this
+is not proof of individual engine behavior on arbitrary lawful public sites.
+A failed IPv6 socket without a route is not a verified firewall packet hit.
+
+The following are **owner-target gates, not CI achievements**:
+
+1. On the actual Docker Desktop/WSL/Linux engine, start the opted-in guarded
+   stack, record the guard/downloader health, and run the read-only
+   `scripts/guarded_host_acceptance.py` probe with the real Compose overlay.
+   Require the sanitized JSON and a clear PASS; do not include tokens or URLs.
+2. From that same running stack, submit a legally authorized public media URL
+   through the authenticated gateway and verify that a completed output
+   arrives in the authorized user's Nextcloud Files with matching bytes.
+   Confirm that the publicly routable WebDAV origin, DNS, TLS and hairpin
+   routing work without granting blanket private-network exceptions.
+3. Verify the actual host's reverse proxy/TLS and administrator-only access,
+   plus host-level IPv6 behavior. If the host has no usable IPv6 route, mark
+   IPv6 runtime enforcement *unverified*, not passed by a failed socket.
+4. Verify the process/Compose config still drops downloader privileges after
+   restart, and test an intentional private destination/redirect using only
+   reserved targets, never live cloud metadata services.
+
+Until those gates are signed off on the target, **Core #9 and #72 remain open;
+untrusted production URL submission is not approved.**
