@@ -264,59 +264,62 @@ class JobWorker:
                 # defense in depth, not DNS pinning: an egress firewall is
                 # still required for redirects and engine-discovered URLs.
                 await asyncio.to_thread(preflight_source_dns, url)
-            if existing_files:
-                await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
-                files = existing_files
-            elif engine == "yt-dlp":
-                files = await run_ytdlp(
-                    executable="yt-dlp", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "gallery-dl":
-                files = await run_gallery_dl(
-                    executable="gallery-dl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "generic":
-                files = await run_generic(
-                    executable="curl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                    allow_private_targets=self.settings.allow_private_targets,
-                )
-            elif engine == "you-get":
-                files = await run_you_get(
-                    executable="you-get", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "get-sauce":
-                files = await run_get_sauce(
-                    executable="get-sauce", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "svtplay-dl":
-                files = await run_svtplay(
-                    executable="svtplay-dl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "aria2c":
-                if self.aria2 is None:
-                    self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
-                files = await self.aria2.download(
-                    url=url, job_id=job_id, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            else:
-                raise ValueError(f"Unsupported engine: {engine}")
+            # Deadline covers the engine invocation, not verified delivery or
+            # checksum readback; an expired engine fails with a distinct error.
+            async with asyncio.timeout(self.settings.job_timeout_seconds):
+                if existing_files:
+                    await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
+                    files = existing_files
+                elif engine == "yt-dlp":
+                    files = await run_ytdlp(
+                        executable="yt-dlp", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "gallery-dl":
+                    files = await run_gallery_dl(
+                        executable="gallery-dl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "generic":
+                    files = await run_generic(
+                        executable="curl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        allow_private_targets=self.settings.allow_private_targets,
+                    )
+                elif engine == "you-get":
+                    files = await run_you_get(
+                        executable="you-get", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "get-sauce":
+                    files = await run_get_sauce(
+                        executable="get-sauce", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "svtplay-dl":
+                    files = await run_svtplay(
+                        executable="svtplay-dl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "aria2c":
+                    if self.aria2 is None:
+                        self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
+                    files = await self.aria2.download(
+                        url=url, job_id=job_id, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                else:
+                    raise ValueError(f"Unsupported engine: {engine}")
             if await is_cancelled():
                 raise asyncio.CancelledError
             if not existing_files:
