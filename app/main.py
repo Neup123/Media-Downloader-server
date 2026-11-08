@@ -24,7 +24,7 @@ from app.completion import load_completed_files
 from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
-from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
+from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
@@ -464,13 +464,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if len(failed) > 1000:
             raise HTTPException(status_code=422, detail="More than 1000 failed jobs; retry in smaller batches")
         for job in failed:
-            job.status = "queued"
-            job.cancel_requested = False
-            job.progress = {"state": "queued"}
-            job.output_files = []
-            job.error = None
-            job.finished_at = None
-            append_log(job, "Job queued for retry from Library")
+            requeue_job(job, reason="Job queued for retry from Library")
         session.commit()
         return {"retried": len(failed)}
 
@@ -550,13 +544,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=404, detail="Job not found")
         if job.status not in {"failed", "cancelled"}:
             raise HTTPException(status_code=409, detail="Only failed or cancelled jobs can be retried")
-        job.status = "queued"
-        job.cancel_requested = False
-        job.progress = {"state": "queued"}
-        job.output_files = []
-        job.error = None
-        job.finished_at = None
-        append_log(job, "Job queued for retry")
+        requeue_job(job, reason="Job queued for retry")
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
@@ -578,13 +566,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 status_code=409,
                 detail="Completed download files are no longer verified or available; submit a new download",
             )
-        job.status = "queued"
-        job.cancel_requested = False
-        job.progress = {"state": "queued", "operation": "redeliver"}
-        job.output_files = []
-        job.error = None
-        job.finished_at = None
-        append_log(job, "Re-delivery queued using verified existing files; earlier destination files are not removed")
+        requeue_job(
+            job,
+            operation="redeliver",
+            reason="Re-delivery queued using verified existing files; earlier destination files are not removed",
+        )
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
