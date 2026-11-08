@@ -60,35 +60,41 @@ def _relative_output(source: Path, job_id: str, settings: Settings) -> Path:
 
 
 
-def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
-    """Read getcontentlength only for the requested resource's 200 propstat.
+def _successful_webdav_props(
+    payload: bytes, target_url: str, *, collection: bool = False,
+) -> list[ET.Element]:
+    """One RFC 4918 multistatus matching/200-property contract for every caller.
 
-    RFC 4918 returns property-level statuses inside 207 Multi-Status. A 207
-    alone does not establish that the uploaded resource exists or that its
-    getcontentlength property was retrieved successfully.
+    A generic 207 or a successful property for another href never verifies
+    the requested resource. Preserve duplicate entries: consumers may only
+    accept a single unambiguous property result.
     """
     if len(payload) > 1_000_000:
-        return None
+        return []
     try:
         root = ET.fromstring(payload)
     except ET.ParseError:
-        return None
+        return []
     ns = "{DAV:}"
     if root.tag != ns + "multistatus":
-        return None
+        return []
     expected = urlsplit(target_url)
-    sizes: list[int] = []
+    expected_path = unquote(expected.path)
+    if collection:
+        expected_path = expected_path.rstrip("/")
+    found_props: list[ET.Element] = []
     for response in root.findall(ns + "response"):
         href = response.findtext(ns + "href")
         if not href:
             continue
-        found = urlsplit(urljoin(target_url, href.strip()))
+        location = urljoin(target_url.rstrip("/") + "/" if collection else target_url, href.strip())
+        found = urlsplit(location)
+        found_path = unquote(found.path)
+        if collection:
+            found_path = found_path.rstrip("/")
         if (
-            found.scheme != expected.scheme
-            or found.netloc != expected.netloc
-            or unquote(found.path) != unquote(expected.path)
-            or found.query
-            or found.fragment
+            found.scheme != expected.scheme or found.netloc != expected.netloc
+            or found_path != expected_path or found.query or found.fragment
         ):
             continue
         for propstat in response.findall(ns + "propstat"):
@@ -96,98 +102,48 @@ def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
             if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
                 continue
             prop = propstat.find(ns + "prop")
-            length = prop.findtext(ns + "getcontentlength") if prop is not None else None
-            if length is None:
-                continue
-            try:
-                size = int(length)
-            except ValueError:
-                continue
-            if size >= 0:
-                sizes.append(size)
+            if prop is not None:
+                found_props.append(prop)
+    return found_props
+
+
+def _webdav_uploaded_size(payload: bytes, target_url: str) -> int | None:
+    """Read only one matching successful DAV:getcontentlength property."""
+    ns = "{DAV:}"
+    sizes: list[int] = []
+    for prop in _successful_webdav_props(payload, target_url):
+        length = prop.findtext(ns + "getcontentlength")
+        if length is None:
+            continue
+        try:
+            size = int(length)
+        except ValueError:
+            continue
+        if size >= 0:
+            sizes.append(size)
     return sizes[0] if len(sizes) == 1 else None
 
 
-
 def _nextcloud_file_id(payload: bytes, target_url: str) -> str | None:
-    """Read the stable Nextcloud file ID only from this file's successful DAV propstat.
-
-    File IDs survive rename/move within Nextcloud, unlike WebDAV URL paths.
-    Return None for generic WebDAV servers without the Nextcloud extension.
-    """
-    if len(payload) > 1_000_000:
-        return None
-    try:
-        root = ET.fromstring(payload)
-    except ET.ParseError:
-        return None
-    ns = "{DAV:}"
+    """Read only one successful ownCloud fileid for this exact resource."""
     nc = "{http://owncloud.org/ns}"
-    if root.tag != ns + "multistatus":
-        return None
-    expected = urlsplit(target_url)
-    ids: list[str] = []
-    for response in root.findall(ns + "response"):
-        href = response.findtext(ns + "href")
-        if not href:
-            continue
-        found = urlsplit(urljoin(target_url, href.strip()))
-        if (found.scheme != expected.scheme or found.netloc != expected.netloc
-                or unquote(found.path) != unquote(expected.path)
-                or found.query or found.fragment):
-            continue
-        for propstat in response.findall(ns + "propstat"):
-            status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
-                continue
-            prop = propstat.find(ns + "prop")
-            file_id = prop.findtext(nc + "fileid") if prop is not None else None
-            if file_id and file_id.isdecimal() and len(file_id) <= 32:
-                ids.append(file_id)
+    ids = [
+        file_id for prop in _successful_webdav_props(payload, target_url)
+        if (file_id := prop.findtext(nc + "fileid"))
+        and file_id.isdecimal() and len(file_id) <= 32
+    ]
     return ids[0] if len(ids) == 1 else None
 
 
 def _webdav_is_collection(payload: bytes, target_url: str) -> bool:
-    """Verify a successful DAV:resourcetype collection property for this URL.
-
-    MKCOL 405 is ambiguous: the name may be occupied by a regular file,
-    or the endpoint may refuse MKCOL entirely. Only a matching collection
-    with a successful property status is safe to use as a parent folder.
-    """
-    if len(payload) > 1_000_000:
-        return False
-    try:
-        root = ET.fromstring(payload)
-    except ET.ParseError:
-        return False
+    """An MKCOL 405 is safe only for one verified existing collection."""
     ns = "{DAV:}"
-    if root.tag != ns + "multistatus":
-        return False
-    expected = urlsplit(target_url)
-    successful_collections = 0
-    for response in root.findall(ns + "response"):
-        href = response.findtext(ns + "href")
-        if not href:
-            continue
-        found = urlsplit(urljoin(target_url.rstrip("/") + "/", href.strip()))
-        if (
-            found.scheme != expected.scheme
-            or found.netloc != expected.netloc
-            or unquote(found.path).rstrip("/") != unquote(expected.path).rstrip("/")
-            or found.query or found.fragment
-        ):
-            continue
-        for propstat in response.findall(ns + "propstat"):
-            status = (propstat.findtext(ns + "status") or "").strip()
-            if re.match(r"^HTTP/\d+(?:\.\d+)?\s+200(?:\s|$)", status) is None:
-                continue
-            prop = propstat.find(ns + "prop")
-            resource_type = prop.find(ns + "resourcetype") if prop is not None else None
-            if resource_type is not None and resource_type.find(ns + "collection") is not None:
-                successful_collections += 1
-    # A 207 response can contain multiple entries for the same href. Do not
-    # treat duplicate successful collection properties as unambiguous proof.
-    return successful_collections == 1
+    matches = [
+        prop for prop in _successful_webdav_props(payload, target_url, collection=True)
+        if (resource_type := prop.find(ns + "resourcetype")) is not None
+        and resource_type.find(ns + "collection") is not None
+    ]
+    return len(matches) == 1
 
 
 async def _ensure_webdav_collection(client: httpx.AsyncClient, url: str, label: str) -> None:
@@ -292,99 +248,94 @@ async def verify_delivery_destination(
     settings: Settings,
     transport: httpx.AsyncBaseTransport | None = None,
 ) -> dict[str, Any]:
-    """Verify the configured destination without creating a download job.
+    """Exercise the real delivery function on a unique probe and clean it up.
 
-    Local mode writes/reads/deletes a small file. WebDAV mode uploads, PROPFINDs,
-    reads back and deletes a unique small file. This is a real remote test, not
-    proof of general internet or unrestricted SSRF safety: guarded host egress
-    is still mandatory for untrusted inputs.
+    No alternate MKCOL/PUT/PROPFIND implementation: the very same code that
+    handles production jobs writes this probe. GET byte readback and DELETE
+    cleanup are deliberately extra acceptance checks for the probe only.
     """
     payload = b"Downloader delivery preflight\n"
+    jobs_root = settings.data_dir / "jobs"
+    jobs_root.mkdir(parents=True, exist_ok=True)
     with session_factory() as session:
         row = session.get(DeliverySetting, 1)
-        if row is None or row.mode == "local":
-            mode = "local"
-            destination = settings.output_dir
-        else:
-            mode = "webdav"
+        mode = "webdav" if row and row.mode == "webdav" else "local"
+        if mode == "webdav":
             base_url = row.webdav_url or ""
             username = row.username or ""
-            folder = row.folder
             password = decrypt_password(row.password_encrypted, settings)
-    if mode == "local":
-        try:
-            destination.mkdir(parents=True, exist_ok=True)
-            with tempfile.NamedTemporaryFile(
-                mode="w+b", dir=destination, prefix=".downloader-check-", delete=True
-            ) as check:
-                check.write(payload)
-                check.flush()
-                check.seek(0)
-                if check.read() != payload:
+            folder = row.folder
+            _validate_webdav_destination(base_url, settings)
+            if not base_url or not username:
+                raise DeliveryError("Configure the WebDAV URL and username before testing delivery")
+            segments = [part for part in folder.split("/") if part]
+            if any(part in {".", ".."} or "\\x00" in part for part in segments):
+                raise DeliveryError("WebDAV test folder contains invalid path segments")
+
+    # tempfile is never shared with a real job and does not create a DB row.
+    # Delivery's normal per-job folder avoids touching existing Files.
+    with tempfile.TemporaryDirectory(prefix=".downloader-check-", dir=jobs_root) as tmp:
+        workspace = Path(tmp)
+        job_id = workspace.name
+        source = workspace / "probe.bin"
+        source.write_bytes(payload)
+        if mode == "local":
+            target = settings.output_dir.resolve() / job_id
+            try:
+                delivered = await deliver_files([source], job_id, session_factory, settings, transport=transport)
+                if len(delivered) != 1:
+                    raise DeliveryError("Local test did not deliver exactly one probe file")
+                target_file = Path(delivered[0]["path"])
+                if not target_file.is_file() or target_file.read_bytes() != payload:
                     raise DeliveryError("Local directory readback did not match the temporary file")
-                sample = Path(check.name)
-            if sample.exists():
+            finally:
+                # Only delete the unique probe's output directory.
+                if target.exists():
+                    import shutil
+                    shutil.rmtree(target)
+            if target.exists():
                 raise DeliveryError("Local temporary file cleanup could not be verified")
             return {"mode": mode, "verified": True, "cleaned_up": True,
                     "message": "Local destination was writable and the test file was removed"}
-        except OSError as exc:
-            raise DeliveryError("Local destination is not writable or cannot be verified") from exc
-    if not base_url or not username:
-        raise DeliveryError("Configure the WebDAV URL and username before testing delivery")
-    _validate_webdav_destination(base_url, settings)
-    if transport is None and not settings.allow_private_webdav_targets:
+
+        prefix = base_url.rstrip("/") + "".join("/" + quote(part, safe="") for part in segments)
+        probe_folder = prefix + "/" + quote(job_id, safe="")
+        uploaded_url = probe_folder + "/" + quote(source.name, safe="")
+        uploaded = False
         try:
-            await asyncio.to_thread(resolve_http_target, base_url, False)
-        except UnsafeUrlError as exc:
-            raise DeliveryError("WebDAV test destination DNS is not allowed") from exc
-    parsed = urlsplit(base_url)
-    if parsed.scheme not in {"https", "http"} or not parsed.netloc or parsed.username or parsed.password:
-        raise DeliveryError("WebDAV test requires an absolute URL without embedded credentials")
-    parts = [part for part in folder.split("/") if part]
-    if any(part in {".", ".."} or "\x00" in part for part in parts):
-        raise DeliveryError("WebDAV test folder contains invalid path segments")
-    current = base_url.rstrip("/")
-    try:
-        async with httpx.AsyncClient(
-            auth=(username, password), timeout=httpx.Timeout(25.0, connect=10.0),
-            trust_env=False, follow_redirects=False, transport=transport,
-        ) as client:
-            for segment in parts:
-                current += "/" + quote(segment, safe="")
-                await _ensure_webdav_collection(client, current, "Could not access WebDAV test folder")
-            temporary_url = current + "/.downloader-check-" + secrets.token_hex(12)
-            uploaded = False
-            try:
-                response = await client.put(
-                    temporary_url, content=payload,
-                    headers={"Content-Type": "application/octet-stream"},
-                )
-                if response.status_code not in {200, 201, 204}:
-                    raise _delivery_failure(response.status_code, "WebDAV test upload was rejected")
-                uploaded = True
-                info = await client.request(
-                    "PROPFIND", temporary_url,
-                    headers={"Depth": "0", "Content-Type": "application/xml"},
-                    content='<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontentlength/></d:prop></d:propfind>',
-                )
-                if info.status_code != 207 or _webdav_uploaded_size(info.content, temporary_url) != len(payload):
-                    raise DeliveryError("WebDAV test could not verify the uploaded file size")
-                content = await client.get(temporary_url)
-                if content.status_code != 200 or content.content != payload:
+            delivered = await deliver_files([source], job_id, session_factory, settings, transport=transport)
+            if len(delivered) != 1 or delivered[0].get("path") != uploaded_url or not delivered[0].get("verified"):
+                raise DeliveryError("WebDAV destination did not verify the probe through normal delivery")
+            uploaded = True
+            async with httpx.AsyncClient(
+                auth=(username, password), timeout=httpx.Timeout(25.0, connect=10.0),
+                trust_env=False, follow_redirects=False, transport=transport,
+            ) as client:
+                response = await client.get(uploaded_url)
+                if response.status_code != 200 or response.content != payload:
                     raise DeliveryError("WebDAV test readback did not match the uploaded bytes")
-            finally:
-                if uploaded:
-                    try:
-                        cleanup = await client.delete(temporary_url)
-                    except httpx.RequestError as exc:
-                        raise DeliveryError("Temporary WebDAV test file cleanup could not be verified") from exc
-                    if cleanup.status_code not in {200, 202, 204}:
+        except httpx.RequestError as exc:
+            raise DeliveryError("Could not reach the WebDAV test destination") from exc
+        finally:
+            # Even on failed PUT/PROPFIND, attempt to remove a potentially
+            # uploaded probe. Never delete the user's configured parent folder.
+            try:
+                async with httpx.AsyncClient(
+                    auth=(username, password), timeout=httpx.Timeout(25.0, connect=10.0),
+                    trust_env=False, follow_redirects=False, transport=transport,
+                ) as client:
+                    remove_file = await client.delete(uploaded_url)
+                    remove_folder = await client.delete(probe_folder)
+                    if remove_file.status_code not in {200, 202, 204, 404} or (
+                        remove_folder.status_code not in {200, 202, 204, 404}
+                    ):
                         raise DeliveryError("Temporary WebDAV test file cleanup failed")
-    except httpx.RequestError as exc:
-        # Never echo the remote URL or credentials from exception strings.
-        raise DeliveryError("Could not reach the WebDAV destination; check URL, TLS and app password") from exc
-    return {"mode": mode, "verified": True, "cleaned_up": True,
-            "message": "WebDAV test upload, readback and cleanup all succeeded"}
+            except httpx.RequestError as exc:
+                raise DeliveryError("Temporary WebDAV test file cleanup could not be verified") from exc
+        if not uploaded:
+            raise DeliveryError("WebDAV probe was not verified")
+        return {"mode": mode, "verified": True, "cleaned_up": True,
+                "message": "WebDAV delivery path, byte readback and cleanup all succeeded"}
 
 
 async def deliver_files(

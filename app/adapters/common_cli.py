@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import asyncio
-import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.redaction import _redact
 
 Callback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
@@ -29,13 +29,6 @@ def _output_files(workdir: Path) -> list[Path]:
             continue
         result.append(resolved)
     return sorted(result)
-
-
-def _redact(value: str) -> str:
-    value = re.sub(r"(?i)(authorization|cookie|set-cookie|password|token|secret)(\s*[:=]\s*)[^\s,;]+", r"\1\2[REDACTED]", value)
-    value = re.sub(r"https?://[^\s/@:]+:[^\s/@]+@", "https://[REDACTED]@", value)
-    value = re.sub(r"([?&](?:token|key|auth|password|signature|sig|session|cookie)=)[^&#\s]+", r"\1[REDACTED]", value, flags=re.IGNORECASE)
-    return value[:4000]
 
 
 async def run_cli(

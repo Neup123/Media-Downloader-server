@@ -25,12 +25,12 @@ def test_local_destination_preflight_really_writes_and_cleans(client, auth_heade
 
 def _mock_dav(*, bad_readback=False, bad_cleanup=False):
     calls = []
-    def handle(request: httpx.Request) -> httpx.Response:
+    async def handle(request: httpx.Request) -> httpx.Response:
         calls.append((request.method, request.url.path))
         if request.method == "MKCOL":
             return httpx.Response(201)
         if request.method == "PUT":
-            assert request.read() == PAYLOAD
+            assert await request.aread() == PAYLOAD
             return httpx.Response(201)
         if request.method == "PROPFIND":
             href = request.url.path
@@ -64,7 +64,7 @@ def test_webdav_preflight_verifies_real_put_propfind_get_delete(client, settings
     result = asyncio.run(verify_delivery_destination(
         client.app.state.session_factory, settings, transport=transport))
     assert result["mode"] == "webdav" and result["cleaned_up"] and result["verified"]
-    assert [method for method, _ in calls] == ["MKCOL", "PUT", "PROPFIND", "GET", "DELETE"]
+    assert [method for method, _ in calls] == ["MKCOL", "MKCOL", "PUT", "PROPFIND", "GET", "DELETE", "DELETE"]
     assert not any("private-password" in str(x) for x in calls)
 
 
@@ -77,4 +77,4 @@ def test_webdav_preflight_does_not_claim_success_if_readback_or_cleanup_fails(
     with pytest.raises(DeliveryError):
         asyncio.run(verify_delivery_destination(
             client.app.state.session_factory, settings, transport=transport))
-    assert [method for method, _ in calls][-1] == "DELETE"
+    assert [method for method, _ in calls][-2:] == ["DELETE", "DELETE"]
