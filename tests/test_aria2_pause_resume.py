@@ -1,4 +1,5 @@
 """aria2 pause/resume is a live state, not a terminal failure."""
+import asyncio
 from unittest.mock import AsyncMock
 
 import pytest
@@ -6,8 +7,11 @@ import pytest
 from app.adapters.aria2 import Aria2Rpc
 
 
-@pytest.mark.asyncio
-async def test_paused_aria2_is_reported_and_can_complete_after_resume(tmp_path, monkeypatch):
+def test_paused_aria2_is_reported_and_can_complete_after_resume(tmp_path, monkeypatch):
+    asyncio.run(_paused_then_completed(tmp_path, monkeypatch))
+
+
+async def _paused_then_completed(tmp_path, monkeypatch):
     workdir = tmp_path / "media"
     workdir.mkdir()
     output = workdir / "complete.bin"
