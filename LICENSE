@@ -2,9 +2,12 @@ Business Source License 1.1
 
 Licensor: Neup123
 
-Licensed Work: Media Downloader Server — original source code and distributed
-artifacts in this repository. Dependencies and third-party material retain their
-own licenses.
+Licensed Work: The original Media Downloader Server source and its
+Nextcloud ExApp adaptation, as distributed in
+Neup123/Media-Downloader-server and Neup123/downloader-server-nextcloud.
+The native Nextcloud bridge/ component is separately licensed under
+AGPL-3.0-or-later and excluded from this Licensed Work. Independently
+licensed third-party components and dependencies retain their own licenses.
 
 Additional Use Grant:
 You may make production use of the Licensed Work without a separate commercial
