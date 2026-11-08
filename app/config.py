@@ -17,6 +17,9 @@ class Settings:
     allow_private_targets: bool
     allow_private_webdav_targets: bool = False
     allow_insecure_webdav: bool = False
+    # Maximum time spent in a single downloader engine invocation. Long video
+    # and playlist jobs can opt into a larger bounded deadline.
+    job_timeout_seconds: int = 86400
     max_concurrent_per_engine: dict[str, int] = field(
         default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1, "get-sauce": 1}
     )
@@ -36,6 +39,7 @@ class Settings:
             allow_private_targets=os.getenv("ALLOW_PRIVATE_TARGETS", "false").lower() == "true",
             allow_private_webdav_targets=os.getenv("ALLOW_PRIVATE_WEBDAV_TARGETS", "false").lower() == "true",
             allow_insecure_webdav=os.getenv("ALLOW_INSECURE_WEBDAV", "false").lower() == "true",
+            job_timeout_seconds=max(60, min(604800, int(os.getenv("JOB_TIMEOUT_SECONDS", "86400")))),
             max_concurrent_per_engine={
                 "yt-dlp": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YTDLP", "1")))),
                 "aria2c": max(1, min(8, int(os.getenv("MAX_CONCURRENT_ARIA2", "1")))),
