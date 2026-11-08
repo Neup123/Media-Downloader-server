@@ -18,6 +18,7 @@ from app.adapters.yt_dlp import run_ytdlp
 from app.completion import load_completed_files, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
+from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
 from app.security import preflight_source_dns
 
@@ -95,7 +96,7 @@ class JobWorker:
             with self.session_factory() as session:
                 for job_id in active_ids:
                     current = session.get(Job, job_id)
-                    if current and current.status not in {"completed", "failed", "cancelled"}:
+                    if current and current.status not in TERMINAL_STATUSES:
                         current.cancel_requested = True
                 session.commit()
         if self._active:
@@ -111,9 +112,9 @@ class JobWorker:
 
     def _recover_jobs(self) -> None:
         with self.session_factory() as session:
-            running = session.scalars(select(Job).where(Job.status.in_(["starting", "extracting", "downloading", "post-processing", "delivering"]))).all()
+            running = session.scalars(select(Job).where(Job.status.in_([s.value for s in ACTIVE_STATUSES if s != JobStatus.QUEUED]))).all()
             for job in running:
-                job.status = "queued"
+                transition_job(job, JobStatus.QUEUED)
                 job.cancel_requested = False
                 append_log(job, "Service restarted; job returned to the queue for recovery.")
             # An unclean shutdown can strand queued work with a stale cancellation flag.
@@ -183,7 +184,7 @@ class JobWorker:
             job = session.get(Job, job_id)
             if not job or job.status != "queued":
                 return
-            job.status = "starting"
+            transition_job(job, JobStatus.STARTING)
             # Preserve previously verified delivery records on crash recovery.
             # The explicit retry API clears these records itself; if the
             # completed-download manifest is missing we clear them below.
@@ -209,8 +210,10 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    current.status = data.get("state", "downloading")
-                    current.progress = data
+                    state = data.get("state", JobStatus.DOWNLOADING.value)
+                    if state not in ENGINE_PROGRESS_STATUSES:
+                        raise InvalidJobTransition("Engine emitted an unsupported progress state")
+                    transition_job(current, state, progress={**data, "state": state})
                     current.updated_at = utcnow()
                     session.commit()
 
@@ -261,59 +264,62 @@ class JobWorker:
                 # defense in depth, not DNS pinning: an egress firewall is
                 # still required for redirects and engine-discovered URLs.
                 await asyncio.to_thread(preflight_source_dns, url)
-            if existing_files:
-                await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
-                files = existing_files
-            elif engine == "yt-dlp":
-                files = await run_ytdlp(
-                    executable="yt-dlp", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "gallery-dl":
-                files = await run_gallery_dl(
-                    executable="gallery-dl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "generic":
-                files = await run_generic(
-                    executable="curl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                    allow_private_targets=self.settings.allow_private_targets,
-                )
-            elif engine == "you-get":
-                files = await run_you_get(
-                    executable="you-get", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    cookie_dir=self.settings.data_dir / "cookies",
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "get-sauce":
-                files = await run_get_sauce(
-                    executable="get-sauce", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "svtplay-dl":
-                files = await run_svtplay(
-                    executable="svtplay-dl", url=url, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            elif engine == "aria2c":
-                if self.aria2 is None:
-                    self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
-                files = await self.aria2.download(
-                    url=url, job_id=job_id, workdir=workdir,
-                    global_settings=global_settings, overrides=overrides,
-                    on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                )
-            else:
-                raise ValueError(f"Unsupported engine: {engine}")
+            # Deadline covers the engine invocation, not verified delivery or
+            # checksum readback; an expired engine fails with a distinct error.
+            async with asyncio.timeout(self.settings.job_timeout_seconds):
+                if existing_files:
+                    await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
+                    files = existing_files
+                elif engine == "yt-dlp":
+                    files = await run_ytdlp(
+                        executable="yt-dlp", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "gallery-dl":
+                    files = await run_gallery_dl(
+                        executable="gallery-dl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "generic":
+                    files = await run_generic(
+                        executable="curl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        allow_private_targets=self.settings.allow_private_targets,
+                    )
+                elif engine == "you-get":
+                    files = await run_you_get(
+                        executable="you-get", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        cookie_dir=self.settings.data_dir / "cookies",
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "get-sauce":
+                    files = await run_get_sauce(
+                        executable="get-sauce", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "svtplay-dl":
+                    files = await run_svtplay(
+                        executable="svtplay-dl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "aria2c":
+                    if self.aria2 is None:
+                        self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
+                    files = await self.aria2.download(
+                        url=url, job_id=job_id, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                else:
+                    raise ValueError(f"Unsupported engine: {engine}")
             if await is_cancelled():
                 raise asyncio.CancelledError
             if not existing_files:
@@ -321,7 +327,7 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    current.status = "delivering"
+                    transition_job(current, JobStatus.DELIVERING)
                     append_log(current, "Download complete; delivering output files")
                     session.commit()
             delivered = await deliver_files(
@@ -333,7 +339,7 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    current.status = "completed"
+                    transition_job(current, JobStatus.COMPLETED)
                     current.output_files = delivered
                     current.progress = {**(current.progress or {}), "state": "completed", "percent": 100}
                     current.finished_at = utcnow()
@@ -344,13 +350,16 @@ class JobWorker:
                 current = session.get(Job, job_id)
                 if current:
                     if self._stopping:
-                        current.status = "queued"
+                        transition_job(current, JobStatus.QUEUED)
                         current.cancel_requested = False
                         append_log(current, "Service is stopping; unfinished job returned to the queue")
                     else:
                         was_delivering = current.status == "delivering"
-                        current.status = "cancelled"
-                        current.finished_at = utcnow()
+                        transition_job(current, JobStatus.CANCELLED)
+                        if was_delivering and current.output_files:
+                            current.progress = {**(current.progress or {}),
+                                                "partial_delivery": True,
+                                                "verified_file_count": len(current.output_files)}
                         if was_delivering:
                             append_log(
                                 current,
@@ -365,7 +374,12 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    current.status = "failed"
+                    was_delivering = current.status == JobStatus.DELIVERING
+                    transition_job(current, JobStatus.FAILED)
+                    if was_delivering and current.output_files:
+                        current.progress = {**(current.progress or {}),
+                                            "partial_delivery": True,
+                                            "verified_file_count": len(current.output_files)}
                     current.error = message[:2000]
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")

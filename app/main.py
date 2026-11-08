@@ -24,7 +24,8 @@ from app.completion import load_completed_files
 from app.config import Settings
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
-from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, utcnow
+from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
+from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
@@ -425,17 +426,17 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=422, detail="Limit must be 1–200 and offset 0–10000")
         query = select(Job)
         if status:
-            if status not in {"queued", "starting", "extracting", "downloading", "post-processing", "delivering", "completed", "failed", "cancelled"}:
+            if status not in JobStatus._value2member_map_:
                 raise HTTPException(status_code=422, detail="Unknown job status")
             query = query.where(Job.status == status)
         if state not in {"all", "active", "delivered", "failed"}:
             raise HTTPException(status_code=422, detail="Unknown Library state")
         if state == "active":
-            query = query.where(Job.status.not_in(("completed", "failed", "cancelled")))
+            query = query.where(Job.status.not_in(tuple(TERMINAL_STATUSES)))
         elif state == "delivered":
             query = query.where(Job.status == "completed")
         elif state == "failed":
-            query = query.where(Job.status.in_(("failed", "cancelled")))
+            query = query.where(Job.status.in_((JobStatus.FAILED, JobStatus.CANCELLED)))
         if owner_id is not None:
             query = query.where(Job.owner_id == owner_id)
         if standalone_only:
@@ -464,13 +465,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if len(failed) > 1000:
             raise HTTPException(status_code=422, detail="More than 1000 failed jobs; retry in smaller batches")
         for job in failed:
-            job.status = "queued"
-            job.cancel_requested = False
-            job.progress = {"state": "queued"}
-            job.output_files = []
-            job.error = None
-            job.finished_at = None
-            append_log(job, "Job queued for retry from Library")
+            requeue_job(job, reason="Job queued for retry from Library")
         session.commit()
         return {"retried": len(failed)}
 
@@ -483,7 +478,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if not confirm:
             raise HTTPException(status_code=422, detail="Confirm clearing standalone history explicitly")
         query = delete(Job).where(
-            Job.owner_id.is_(None), Job.status.in_(("completed", "failed", "cancelled"))
+            Job.owner_id.is_(None), Job.status.in_(tuple(TERMINAL_STATUSES))
         )
         result = session.execute(query)
         session.commit()
@@ -530,12 +525,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        if job.status in {"completed", "failed", "cancelled"}:
+        if job.status in TERMINAL_STATUSES:
             raise HTTPException(status_code=409, detail=f"Cannot cancel a {job.status} job")
         job.cancel_requested = True
         if job.status == "queued":
-            job.status = "cancelled"
-            job.finished_at = utcnow()
+            transition_job(job, JobStatus.CANCELLED)
             append_log(job, "Queued job cancelled before execution")
         else:
             append_log(job, "Cancellation requested")
@@ -550,13 +544,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=404, detail="Job not found")
         if job.status not in {"failed", "cancelled"}:
             raise HTTPException(status_code=409, detail="Only failed or cancelled jobs can be retried")
-        job.status = "queued"
-        job.cancel_requested = False
-        job.progress = {"state": "queued"}
-        job.output_files = []
-        job.error = None
-        job.finished_at = None
-        append_log(job, "Job queued for retry")
+        requeue_job(job, reason="Job queued for retry")
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
@@ -578,13 +566,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 status_code=409,
                 detail="Completed download files are no longer verified or available; submit a new download",
             )
-        job.status = "queued"
-        job.cancel_requested = False
-        job.progress = {"state": "queued", "operation": "redeliver"}
-        job.output_files = []
-        job.error = None
-        job.finished_at = None
-        append_log(job, "Re-delivery queued using verified existing files; earlier destination files are not removed")
+        requeue_job(
+            job,
+            operation="redeliver",
+            reason="Re-delivery queued using verified existing files; earlier destination files are not removed",
+        )
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
@@ -609,7 +595,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 if fingerprint != previous:
                     yield f"event: job\ndata: {json.dumps(current, default=str)}\n\n"
                     previous = fingerprint
-                if current["status"] in {"completed", "failed", "cancelled"}:
+                if current["status"] in TERMINAL_STATUSES:
                     break
                 await asyncio.sleep(1)
         return StreamingResponse(event_stream(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
