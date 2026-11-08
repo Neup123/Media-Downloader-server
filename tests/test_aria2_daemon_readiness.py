@@ -16,7 +16,7 @@ def test_running_daemon_revalidates_rpc_before_reuse(tmp_path):
     asyncio.run(adapter.start())
 
     adapter.call.assert_awaited_once_with(
-        "system.listMethods", [], include_token=False
+        "aria2.getGlobalOption", []
     )
     asyncio.run(adapter.client.aclose())
 
