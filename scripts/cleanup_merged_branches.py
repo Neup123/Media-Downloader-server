@@ -188,6 +188,66 @@ AUDITED_SUPERSEDED_CORE_HEADS = {
 }
 
 
+# Historical #102 branch predates restored Hebrew/RTL. Its replacement was
+# reviewed and merged in PR #129. This SHA-locked exception must never
+# generalize to branches with unmerged work.
+AUDITED_SUPERSEDED_ONEOFF_HEADS = {
+    "ui/102-oneoff-destination-subfolder":
+        "4b6db8fc0ef2efb7ce0be825712183d42d3960ea",
+}
+
+
+def audited_oneoff_port_verified(root: Path | None = None) -> bool:
+    """Prove the safe #102 replacement (including RTL) is already on main."""
+    root = root or Path(__file__).resolve().parents[1]
+    required = {
+        "app/db.py": ("delivery_subfolder", "ALTER TABLE jobs ADD COLUMN delivery_subfolder"),
+        "app/schemas.py": ("validate_oneoff_subfolder", "delivery_subfolder"),
+        "app/main.py": ("delivery_subfolder=payload.delivery_subfolder",
+                        "Nextcloud user destinations are selected by the trusted gateway"),
+        "app/delivery.py": ("subfolder = job.delivery_subfolder if job and not per_user else None",
+                             "target_dir = (root / subfolder / job_id).resolve()"),
+        "web/src/App.tsx": ("Folder for this download (optional)", "delivery_subfolder: deliverySubfolder.trim()"),
+        "web/src/i18n.ts": ("he", "translate"),
+        "tests/test_oneoff_delivery_subfolder.py": (
+            "test_local_oneoff_folder_verified_and_regular_destination_unchanged",
+            "test_webdav_oneoff_mkcol_put_and_profind_verified_under_saved_root",
+            "test_api_persists_folder_but_rejects_per_user_gateway_override",
+        ),
+        "tests/e2e_browser_engine_settings.py": (
+            "one-off destination subfolder + verified Nextcloud WebDAV bytes PASS",
+            'select_option("he")',
+        ),
+    }
+    for relative, markers in required.items():
+        path = root / relative
+        if not path.is_file():
+            return False
+        content = path.read_text(encoding="utf-8")
+        if not all(marker in content for marker in markers):
+            return False
+    return True
+
+
+def audited_oneoff_candidates(
+    branches: list[dict], pulls: list[dict], *, replacements_verified: bool,
+) -> list[tuple[str, str]]:
+    """Only the historical exact SHA, never a changed or currently reviewed head."""
+    if not replacements_verified:
+        return []
+    open_heads = {
+        (pr.get("head") or {}).get("ref")
+        for pr in pulls if pr.get("state") == "open"
+    }
+    return sorted(
+        (name, AUDITED_SUPERSEDED_ONEOFF_HEADS[name])
+        for branch in branches
+        if (name := branch.get("name")) in AUDITED_SUPERSEDED_ONEOFF_HEADS
+        and name not in open_heads and not branch.get("protected")
+        and (branch.get("commit") or {}).get("sha") == AUDITED_SUPERSEDED_ONEOFF_HEADS[name]
+    )
+
+
 def audited_core_port_verified() -> bool:
     """Require replacement source, more complete tests and response models."""
     root = Path(__file__).resolve().parents[1]
@@ -244,7 +304,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apply", action="store_true", help="Delete eligible refs with a SHA lease")
     parser.add_argument("--prune-equivalent", action="store_true", help="Retire ancestor and identical-file branches, never unique work")
-    parser.add_argument("--retire-audited-core", action="store_true", help="Retire only seven reviewed, SHA-locked superseded pre-main branches")
+    parser.add_argument("--retire-audited-core", action="store_true", help="Retire exact, separately reviewed, SHA-locked superseded Core branches")
     args = parser.parse_args()
     repository = os.environ["GITHUB_REPOSITORY"]
     token = os.environ["GH_TOKEN"]
@@ -262,6 +322,14 @@ def main() -> None:
         candidates += [
             pair for pair in audited_core_candidates(
                 branches, pulls, replacements_verified=audited_core_port_verified(),
+            )
+            if pair[0] not in excluded
+        ]
+    if args.retire_audited_core:
+        excluded = {name for name, _ in candidates}
+        candidates += [
+            pair for pair in audited_oneoff_candidates(
+                branches, pulls, replacements_verified=audited_oneoff_port_verified(),
             )
             if pair[0] not in excluded
         ]
