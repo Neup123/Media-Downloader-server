@@ -70,6 +70,8 @@ class JobWorker:
         self.aria2: Aria2Rpc | None = None
         self._task: asyncio.Task | None = None
         self._active: set[asyncio.Task] = set()
+        # The task-to-job binding is data, not an asyncio task-name convention.
+        self._task_jobs: dict[asyncio.Task, str] = {}
         self._active_engines: dict[str, str] = {}
         self._stopping = False
 
@@ -87,11 +89,7 @@ class JobWorker:
                 await self._task
             except asyncio.CancelledError:
                 pass
-        active_ids = []
-        for task in list(self._active):
-            name = task.get_name()
-            if name.startswith("download-"):
-                active_ids.append(name.removeprefix("download-"))
+        active_ids = list(self._task_jobs.values())
         if active_ids:
             with self.session_factory() as session:
                 for job_id in active_ids:
@@ -145,6 +143,7 @@ class JobWorker:
 
     def _task_done(self, job_id: str, task: asyncio.Task) -> None:
         self._active.discard(task)
+        self._task_jobs.pop(task, None)
         self._active_engines.pop(job_id, None)
 
     async def _run_loop(self) -> None:
@@ -169,6 +168,7 @@ class JobWorker:
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
                         self._active.add(task)
+                        self._task_jobs[task] = job_id
                         self._active_engines[job_id] = job.engine
                         task.add_done_callback(
                             lambda done, identifier=job_id: self._task_done(identifier, done)
