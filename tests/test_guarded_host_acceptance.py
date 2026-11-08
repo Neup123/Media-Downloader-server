@@ -17,7 +17,9 @@ TABLE_HEAD = (
 def table(meta=0, loop=0, private10=0, private192=0):
     return TABLE_HEAD + (
         f" {meta} {meta*50} REJECT all -- * * 0.0.0.0/0 169.254.0.0/16 reject-with icmp-port-unreachable\n"
-        f" {loop} {loop*50} REJECT all -- * * 0.0.0.0/0 127.0.0.0/8 reject-with icmp-port-unreachable\n"\n        f" {private10} {private10*50} REJECT all -- * * 0.0.0.0/0 10.0.0.0/8 reject-with icmp-port-unreachable\n"\n        f" {private192} {private192*50} REJECT all -- * * 0.0.0.0/0 192.168.0.0/16 reject-with icmp-port-unreachable\n"
+        f" {loop} {loop*50} REJECT all -- * * 0.0.0.0/0 127.0.0.0/8 reject-with icmp-port-unreachable\n"
+        f" {private10} {private10*50} REJECT all -- * * 0.0.0.0/0 10.0.0.0/8 reject-with icmp-port-unreachable\n"
+        f" {private192} {private192*50} REJECT all -- * * 0.0.0.0/0 192.168.0.0/16 reject-with icmp-port-unreachable\n"
     )
 
 
@@ -25,7 +27,7 @@ def test_reject_packet_counters_are_matched_by_exact_destination():
     assert reject_packets(table(meta=7), "169.254.0.0/16") == 7
     assert reject_packets(table(loop=3), "127.0.0.0/8") == 3
     with pytest.raises(AcceptanceError):
-        reject_packets(table(), "192.168.0.0/16")
+        reject_packets(table(), "172.16.0.0/12")
 
 
 def test_private_probe_must_fail_closed_if_curl_succeeds():
@@ -36,7 +38,9 @@ def test_private_probe_must_fail_closed_if_curl_succeeds():
 
 
 def test_full_probe_requires_kernel_counter_confirmation():
-    tables = iter([table(), table(meta=1, loop=1),\n                   table(meta=1, loop=1, private10=1, private192=1),\n                   table(meta=2, loop=1, private10=1, private192=1)])
+    tables = iter([table(), table(meta=1, loop=1),
+                   table(meta=1, loop=1, private10=1, private192=1),
+                   table(meta=2, loop=1, private10=1, private192=1)])
     seen = []
 
     def fake_run(compose, args):
@@ -52,7 +56,8 @@ def test_full_probe_requires_kernel_counter_confirmation():
     with patch("scripts.guarded_host_acceptance.run_on_host", side_effect=fake_run):
         report = verify(["docker", "compose"])
     assert report["metadata_destination"] == "blocked_by_ipv4_reject_counter"
-    assert report["actual_http_redirect"] == "blocked_by_ipv4_reject_counter"\n    assert report["rfc1918_10_and_192_ranges"] == "blocked_by_ipv4_reject_counters"
+    assert report["actual_http_redirect"] == "blocked_by_ipv4_reject_counter"
+    assert report["rfc1918_10_and_192_ranges"] == "blocked_by_ipv4_reject_counters"
     assert report["production_approved"] is False
     assert any("--resolve" in args for args in seen)
     assert any("--location" in args for args in seen)
