@@ -6,6 +6,8 @@ from pathlib import Path
 from scripts.cleanup_merged_branches import (
     AUDITED_SUPERSEDED_CORE_HEADS, audited_core_candidates,
     audited_core_port_verified,
+    AUDITED_SUPERSEDED_ONEOFF_HEADS, audited_oneoff_candidates,
+    audited_oneoff_port_verified,
 )
 
 
@@ -59,3 +61,50 @@ def test_cleanup_runs_audited_scan_and_sha_lease_only_on_main():
     assert "--force-with-lease=refs/heads" in (
         Path(__file__).resolve().parents[1] /
         "scripts/cleanup_merged_branches.py").read_text()
+
+
+def test_obsolete_102_branch_replaced_without_losing_hebrew_rtl():
+    assert audited_oneoff_port_verified()
+    # Retiring the historical branch must depend on each replacement feature;
+    # a copied tree with one missing feature or its RTL verification is unsafe.
+    assert AUDITED_SUPERSEDED_ONEOFF_HEADS == {
+        "ui/102-oneoff-destination-subfolder":
+            "4b6db8fc0ef2efb7ce0be825712183d42d3960ea"
+    }
+
+
+def test_obsolete_102_retirement_requires_exact_head_and_no_open_pr():
+    name, sha = next(iter(AUDITED_SUPERSEDED_ONEOFF_HEADS.items()))
+    expected = [(name, sha)]
+    assert audited_oneoff_candidates([branch(name, sha)], [], replacements_verified=True) == expected
+    assert audited_oneoff_candidates([branch(name, sha)], [], replacements_verified=False) == []
+    assert audited_oneoff_candidates([branch(name, "f" * 40)], [], replacements_verified=True) == []
+    assert audited_oneoff_candidates([branch(name, sha, protected=True)], [], replacements_verified=True) == []
+    assert audited_oneoff_candidates(
+        [branch(name, sha)], [{"state": "open", "head": {"ref": name}}],
+        replacements_verified=True,
+    ) == []
+    assert audited_oneoff_candidates(
+        [branch("ui/102-other-work", sha)], [], replacements_verified=True
+    ) == []
+
+
+def test_obsolete_102_retirement_fails_closed_when_replacement_missing(tmp_path):
+    assert not audited_oneoff_port_verified(tmp_path)
+    root = Path(__file__).resolve().parents[1]
+    relative = [
+        "app/db.py", "app/schemas.py", "app/main.py", "app/delivery.py",
+        "web/src/App.tsx", "web/src/i18n.ts",
+        "tests/test_oneoff_delivery_subfolder.py",
+        "tests/e2e_browser_engine_settings.py",
+    ]
+    for name in relative:
+        dest = tmp_path / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes((root / name).read_bytes())
+    assert audited_oneoff_port_verified(tmp_path)
+    (tmp_path / "web/src/i18n.ts").write_text("// Missing approved Hebrew RTL")
+    assert not audited_oneoff_port_verified(tmp_path)
+    (tmp_path / "web/src/i18n.ts").write_bytes((root / "web/src/i18n.ts").read_bytes())
+    (tmp_path / "tests/test_oneoff_delivery_subfolder.py").write_text("# missing verified delivery")
+    assert not audited_oneoff_port_verified(tmp_path)
