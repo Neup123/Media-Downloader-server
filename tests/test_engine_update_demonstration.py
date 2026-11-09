@@ -66,3 +66,10 @@ def test_demonstrations_cannot_open_pr_merge_or_release_but_red_records_issue():
 def test_fallback_never_downgrades_or_substitutes_a_different_pin(version):
     with pytest.raises(ValueError, match="refusing downgrade"):
         prepare(PINS, "published", lambda _: metadata(version))
+
+
+def test_candidate_unit_gate_uses_writable_isolated_data_directory():
+    workflow = yaml.safe_load(Path('.github/workflows/pinned-engine-updates.yml').read_text())
+    step = next(s for s in workflow["jobs"]["candidate-gate"]["steps"]
+                if "python -m pytest -q" in s.get("run", ""))
+    assert step["env"]["DATA_DIR"] == "${{ runner.temp }}/downloader-candidate-tests"

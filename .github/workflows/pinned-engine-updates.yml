@@ -131,6 +131,8 @@ jobs:
             ${{ inputs.demonstration == 'published' && '--revalidate-current' || '' }} 2>&1 | tee engine-update-policy.log
 
       - name: Install pinned dependencies and test requirements
+        env:
+          DATA_DIR: ${{ runner.temp }}/downloader-candidate-tests
         if: steps.detect.outputs.changed == 'true'
         shell: bash
         run: |
