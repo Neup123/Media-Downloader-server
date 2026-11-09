@@ -38,5 +38,23 @@ async def _paused_then_completed(tmp_path, monkeypatch):
     assert result == [output]
     assert on_progress.await_args_list[0].args[0]["engine_status"] == "paused"
     assert on_progress.await_args_list[1].args[0]["engine_status"] == "complete"
-    assert all(call.args[0]["state"] == "downloading" for call in on_progress.await_args_list)
+    assert [call.args[0]["state"] for call in on_progress.await_args_list] == ["paused", "downloading"]
+    assert adapter.can_control("test") is False
     await adapter.close()
+
+
+def test_pause_and_resume_control_same_gid_without_adding_a_new_uri(tmp_path):
+    async def exercise():
+        adapter = Aria2Rpc(tmp_path, 16801)
+        adapter._job_gids["job"] = "gid-123"
+        adapter.call = AsyncMock(return_value="OK")
+        assert adapter.can_control("job")
+        await adapter.pause("job")
+        await adapter.resume("job")
+        assert [(call.args[0], call.args[1]) for call in adapter.call.await_args_list] == [
+            ("aria2.pause", ["gid-123"]), ("aria2.unpause", ["gid-123"]),
+        ]
+        with pytest.raises(RuntimeError, match="no active aria2 transfer"):
+            await adapter.pause("different-job")
+        await adapter.close()
+    asyncio.run(exercise())
