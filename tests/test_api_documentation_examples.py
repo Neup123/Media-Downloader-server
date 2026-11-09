@@ -14,6 +14,7 @@ def test_scalar_reference_has_product_intro_and_local_pinned_config():
     assert 'url: \'/openapi.yaml\'' in script
     assert "theme: 'kepler'" in script
     assert '"@scalar/api-reference": "1.62.4"' in package
+    assert "import '@scalar/api-reference/style.css'" in script
     for remote in ("https://cdn.", "latest", "unpkg.com"):
         assert remote not in script
 
@@ -38,3 +39,15 @@ def test_openapi_has_grouped_descriptions_and_realistic_examples():
         assert "example" in body or "examples" in body, (path, method)
     assert spec["components"]["securitySchemes"]["ApiKeyAuth"]["name"] == "X-API-Key"
     assert spec["security"] == [{"ApiKeyAuth": []}]
+    response_examples = [
+        ("/preview", "post", "200"), ("/jobs", "get", "200"),
+        ("/jobs", "post", "202"), ("/jobs/{job_id}", "get", "200"),
+        ("/jobs/batch", "post", "202"), ("/engines", "get", "200"),
+        ("/engines/{engine_name}/settings", "get", "200"),
+        ("/engines/{engine_name}/settings", "put", "200"),
+        ("/presets", "post", "201"), ("/engine-rules", "post", "201"),
+        ("/delivery", "put", "200"), ("/delivery/test", "post", "200"),
+    ]
+    for path, method, status in response_examples:
+        body = paths[path][method]["responses"][status]["content"]["application/json"]
+        assert "example" in body or "examples" in body, (path, method, status)
