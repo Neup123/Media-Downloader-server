@@ -50,6 +50,7 @@ class Aria2Rpc:
         self.client = httpx.AsyncClient(timeout=5.0, trust_env=False)
         self.endpoint = f"http://127.0.0.1:{port}/jsonrpc"
         self._counter = 0
+        self._job_gids: dict[str, str] = {}
 
     async def start(self) -> None:
         if self.process and self.process.poll() is None:
@@ -104,6 +105,21 @@ class Aria2Rpc:
             raise RuntimeError(f"aria2 RPC {method} failed ({error.get('code')}): {error.get('message', 'unknown error')}")
         return payload.get("result")
 
+    def can_control(self, job_id: str) -> bool:
+        return job_id in self._job_gids
+
+    async def pause(self, job_id: str) -> None:
+        gid = self._job_gids.get(job_id)
+        if not gid:
+            raise RuntimeError("This job has no active aria2 transfer to pause")
+        await self.call("aria2.pause", [gid])
+
+    async def resume(self, job_id: str) -> None:
+        gid = self._job_gids.get(job_id)
+        if not gid:
+            raise RuntimeError("This job has no paused aria2 transfer to resume")
+        await self.call("aria2.unpause", [gid])
+
     async def download(
         self,
         *,
@@ -122,59 +138,64 @@ class Aria2Rpc:
         options["dir"] = str(workdir)
         options["check-integrity"] = "true"
         gid = await self.call("aria2.addUri", [[url], options])
+        self._job_gids[job_id] = gid
         await on_log(f"Queued with aria2 JSON-RPC (GID {gid})")
-        while True:
-            if await is_cancelled():
-                try:
-                    await self.call("aria2.remove", [gid])
-                except RuntimeError:
-                    await self.call("aria2.forceRemove", [gid])
-                raise asyncio.CancelledError
-            status = await self.call("aria2.tellStatus", [gid, [
-                "status", "totalLength", "completedLength", "downloadSpeed", "errorCode", "errorMessage", "files",
-            ]])
-            total = _int_or_none(status.get("totalLength"))
-            completed = _int_or_none(status.get("completedLength"))
-            speed = _int_or_none(status.get("downloadSpeed"))
-            percent = round(completed / total * 100, 2) if total and completed is not None else None
-            filename = None
-            files = status.get("files") or []
-            if files:
-                filename = Path(files[0].get("path", "")).name or None
-            await on_progress({
-                "state": "downloading",
-                "engine_status": status.get("status"),
-                "downloaded_bytes": completed,
-                "total_bytes": total,
-                "percent": percent,
-                "speed_bytes_per_second": speed,
-                "eta_seconds": int((total - completed) / speed) if total and completed is not None and speed and speed > 0 else None,
-                "filename": filename,
-            })
-            current = status.get("status")
-            if current == "complete":
-                result = []
-                for item in status.get("files") or []:
-                    path = Path(item.get("path", "")).resolve()
+        try:
+            while True:
+                if await is_cancelled():
                     try:
-                        path.relative_to(workdir.resolve())
-                    except ValueError:
-                        continue
-                    if path.is_file():
-                        result.append(path)
-                if not result:
-                    raise RuntimeError("aria2 reported completion but no output file was found")
-                return result
-            if current == "error":
-                raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
-            if current == "removed":
-                raise RuntimeError("aria2 download was removed")
-            if current == "paused":
-                # Pause is not an error: report the state and await resume.
-                # The job-level bounded engine deadline prevents indefinite stall.
+                        await self.call("aria2.remove", [gid])
+                    except RuntimeError:
+                        await self.call("aria2.forceRemove", [gid])
+                    raise asyncio.CancelledError
+                status = await self.call("aria2.tellStatus", [gid, [
+                    "status", "totalLength", "completedLength", "downloadSpeed", "errorCode", "errorMessage", "files",
+                ]])
+                total = _int_or_none(status.get("totalLength"))
+                completed = _int_or_none(status.get("completedLength"))
+                speed = _int_or_none(status.get("downloadSpeed"))
+                percent = round(completed / total * 100, 2) if total and completed is not None else None
+                filename = None
+                files = status.get("files") or []
+                if files:
+                    filename = Path(files[0].get("path", "")).name or None
+                await on_progress({
+                    "state": "paused" if status.get("status") == "paused" else "downloading",
+                    "engine_status": status.get("status"),
+                    "downloaded_bytes": completed,
+                    "total_bytes": total,
+                    "percent": percent,
+                    "speed_bytes_per_second": speed,
+                    "eta_seconds": int((total - completed) / speed) if total and completed is not None and speed and speed > 0 else None,
+                    "filename": filename,
+                })
+                current = status.get("status")
+                if current == "complete":
+                    result = []
+                    for item in status.get("files") or []:
+                        path = Path(item.get("path", "")).resolve()
+                        try:
+                            path.relative_to(workdir.resolve())
+                        except ValueError:
+                            continue
+                        if path.is_file():
+                            result.append(path)
+                    if not result:
+                        raise RuntimeError("aria2 reported completion but no output file was found")
+                    return result
+                if current == "error":
+                    raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
+                if current == "removed":
+                    raise RuntimeError("aria2 download was removed")
+                if current == "paused":
+                    # Pause is not an error: report the state and await resume.
+                    # The job-level bounded engine deadline prevents indefinite stall.
+                    await asyncio.sleep(1.0)
+                    continue
                 await asyncio.sleep(1.0)
-                continue
-            await asyncio.sleep(1.0)
+
+        finally:
+            self._job_gids.pop(job_id, None)
 
     async def close(self) -> None:
         try:
