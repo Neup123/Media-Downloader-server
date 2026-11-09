@@ -540,6 +540,52 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.refresh(job)
         return job_to_dict(job)
 
+    @app.post("/api/v1/jobs/{job_id}/pause", response_model=JobOut, tags=["jobs"])
+    async def pause_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        capability = pause_capability(job)
+        if not capability["can_pause"]:
+            raise HTTPException(status_code=409, detail=capability["reason"])
+        controller = app.state.worker
+        if controller is None:
+            raise HTTPException(status_code=409, detail="This job has no active engine transfer to pause")
+        try:
+            await controller.pause_job(job_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        session.refresh(job)
+        if job.status == JobStatus.DOWNLOADING:
+            transition_job(job, JobStatus.PAUSED)
+        append_log(job, "Paused current aria2 transfer (same job and GID)")
+        session.commit()
+        session.refresh(job)
+        return job_to_dict(job)
+
+    @app.post("/api/v1/jobs/{job_id}/resume", response_model=JobOut, tags=["jobs"])
+    async def resume_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        capability = pause_capability(job)
+        if not capability["can_resume"]:
+            raise HTTPException(status_code=409, detail=capability["reason"])
+        controller = app.state.worker
+        if controller is None:
+            raise HTTPException(status_code=409, detail="This job has no paused engine transfer to resume")
+        try:
+            await controller.resume_job(job_id)
+        except RuntimeError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        session.refresh(job)
+        if job.status == JobStatus.PAUSED:
+            transition_job(job, JobStatus.DOWNLOADING)
+        append_log(job, "Resumed the same aria2 transfer (no restart)")
+        session.commit()
+        session.refresh(job)
+        return job_to_dict(job)
+
     @app.post("/api/v1/jobs/{job_id}/retry", status_code=202, response_model=JobOut, tags=["jobs"])
     def retry_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
@@ -927,6 +973,24 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
     )
 
 
+def pause_capability(job: Job) -> dict[str, Any]:
+    """Per-job reversible action contract; other engines must never fake pause."""
+    status = str(job.status)
+    if job.engine != "aria2c":
+        reason = f"{job.engine} cannot pause this job without restarting the download"
+    elif status == JobStatus.DOWNLOADING:
+        reason = None
+    elif status == JobStatus.PAUSED:
+        reason = None
+    else:
+        reason = f"This aria2c job is {status}; pause is available during active transfer"
+    return {
+        "can_pause": job.engine == "aria2c" and status == JobStatus.DOWNLOADING,
+        "can_resume": job.engine == "aria2c" and status == JobStatus.PAUSED,
+        "reason": reason,
+    }
+
+
 def job_to_dict(job: Job) -> dict:
     return {
         "id": job.id,
@@ -935,6 +999,7 @@ def job_to_dict(job: Job) -> dict:
         "delivery_subfolder": job.delivery_subfolder,
         "engine": job.engine,
         "status": job.status,
+        "pause_capability": pause_capability(job),
         "overrides": job.overrides or {},
         "progress": job.progress or {},
         "output_files": job.output_files or [],
