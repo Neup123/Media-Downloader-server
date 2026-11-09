@@ -39,6 +39,9 @@ jobs:
           else
             echo "publish=true" >> "$GITHUB_OUTPUT"
           fi
+      - name: Ensure the release version matches the shipped VERSION source
+        if: steps.check.outputs.publish == 'true'
+        run: test "$(cat VERSION)" = "$VERSION"
       - name: Run release unit acceptance
         if: steps.check.outputs.publish == 'true'
         run: |

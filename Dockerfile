@@ -33,6 +33,7 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
+COPY VERSION ./VERSION
 COPY openapi.yaml ./openapi.yaml
 COPY --from=web-build /web/dist ./web/dist
 COPY --from=get-sauce-build /go/bin/get-sauce /usr/local/bin/get-sauce
