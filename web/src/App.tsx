@@ -1173,7 +1173,7 @@ export default function App() {
         <h2>Service connection</h2><p>Connected ✓ This administrator API key controls the standalone service.</p>
         <button className="secondary" onClick={() => void checkConnection()}>Check connection</button>
         <p className="muted">Developer tools and API examples:</p>
-        <a href="/api-reference" target="_blank" rel="noreferrer">For developers: API reference</a>
+        <a href="/api-reference" target="_blank" rel="noopener noreferrer">For developers</a>
       </section>}
       {adminArea === 'access' && <section className="panel">
         <h2>Who can download</h2>

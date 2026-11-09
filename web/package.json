@@ -1,9 +1,9 @@
 {
   "name": "downloader-server-web",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.3.1",
   "type": "module",
-  "scripts": {"test": "node --experimental-strip-types --test tests/*.test.mjs", "build": "tsc -b && vite build"},
+  "scripts": {"test": "node --experimental-strip-types --test tests/*.test.mjs", "build": "tsc -b && vite build && node scripts/verify-api-reference-build.mjs"},
   "dependencies": {"react": "19.2.0", "react-dom": "19.2.0", "@scalar/api-reference": "1.62.4"},
   "devDependencies": {"@types/react": "19.2.2", "@types/react-dom": "19.2.2", "typescript": "5.9.3", "vite": "7.1.12"}
 }

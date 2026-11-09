@@ -1,7 +1,14 @@
 import { defineConfig } from 'vite';
+import { fileURLToPath } from 'node:url';
 
+// Both HTML entry points must be compiled. A default Vite build only includes index.html.
 export default defineConfig({
-  base: '/',
-  build: { outDir: 'dist', emptyOutDir: true, rollupOptions: { input: ['index.html', 'api-reference.html'] } },
-  server: { host: '0.0.0.0', port: 5173 },
+  build: {
+    rollupOptions: {
+      input: {
+        index: fileURLToPath(new URL('./index.html', import.meta.url)),
+        'api-reference': fileURLToPath(new URL('./api-reference.html', import.meta.url)),
+      },
+    },
+  },
 });
