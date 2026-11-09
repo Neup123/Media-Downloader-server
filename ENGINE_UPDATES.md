@@ -89,6 +89,55 @@ end-to-end P2 site test or a production release demonstration. The
 repository variable `DOWNLOADER_AUTOMATED_RELEASES_APPROVED` remains
 untouched and the real target Nextcloud remains unverified.
 
+## Observed branch-only demonstrations (2026-11-09)
+
+The approved issue #20 task checked official PyPI metadata for the three
+smoke-covered engines. All were already newest stable, non-yanked releases:
+`yt-dlp==2026.10.26`, `gallery-dl==1.32.19`, `you-get==0.4.1743`.
+Accordingly, this run used the explicitly requested newest-published fallback;
+**it was not an actual engine version bump** and invented no previous version.
+
+- [Published candidate acceptance, successful](https://github.com/Neup123/Media-Downloader-server/actions/runs/42636595881),
+  source `1423f4c9d5eb3ad81222d1deb22db631fee5e791`: real upstream artifact
+  metadata, 496 Python tests, production image build, and actual five-engine
+  disposable Nextcloud SHA-256 delivery, Compose restart and re-delivery passed.
+- [Deliberately broken candidate, rejected](https://github.com/Neup123/Media-Downloader-server/actions/runs/42636356980),
+  source `53fcd2435bd638907a3c8d3dcfeb84180bc5e7fe`: bogus yt-dlp
+  `2026.10.26 -> 9999.0.0` lacked required artifact provenance. The policy gate
+  failed before installation/build, retained the exception in diagnostics and
+  created [blocked-update record #150](https://github.com/Neup123/Media-Downloader-server/issues/150).
+  No demonstration candidate PR was created; this work is reviewed in PR #151.
+- The [initial published attempt](https://github.com/Neup123/Media-Downloader-server/actions/runs/42636351613)
+  exposed the existing host-test `/data` permission error and produced
+  [blocked record #149](https://github.com/Neup123/Media-Downloader-server/issues/149).
+  The candidate unit step now uses a writable runner temporary data directory,
+  covered by an offline regression test. The successful run above includes it.
+
+Durable copies of reports, source SHAs, candidate patches and sanitized logs
+are in [evidence/issue20](evidence/issue20/README.md); workflow artifacts also
+retain the originals for 30 days. PyPI digests provide traceability, not a
+complete pip installation hash lock.
+
+To repeat without promotion, dispatch `pinned-engine-updates.yml` on a reviewed
+**non-main branch** with `demonstration=published` or `demonstration=broken`.
+The published mode applies newer exact pins when available; otherwise it
+explicitly revalidates the current published pins using `--revalidate-current`.
+Ordinary candidate policy continues rejecting unchanged pins. Both demonstration
+modes skip candidate PR creation, merging and publishing regardless of the
+repository approval variable. A red demonstration deliberately creates or
+refreshes a blocked-update issue. These are manual-only modes; weekly discovery
+and the current-pin synthetic rehearsal retain their separate behavior.
+
+The existing aria2 Debian track was audited and needed no implementation
+change: runtime trixie apt-policy discovery, `dpkg --compare-versions`, exact
+Dockerfile candidate pin replacement, fixture tests and the combined WebDAV
+gate already exist. This demonstration did not propose an aria2 version bump.
+Production merge/GHCR/release and a real newer-version transition remain
+undemonstrated. `DOWNLOADER_AUTOMATED_RELEASES_APPROVED` remains untouched and
+unset. Core #9/#72 target-host egress and #63 P2 legal-site acceptance remain
+outstanding; svtplay-dl and get-sauce stay excluded from unattended promotion.
+Issue #20 stays open.
+
 ## Combined candidate eligibility and exact release provenance
 
 The pinned PyPI and Debian tracks now use
@@ -130,8 +179,9 @@ reconciliation; the job intentionally refuses to mutate that tag on retry.
 `tests/test_engine_candidate_gate.py` exercises deterministic red and
 green PyPI/Debian cases, missing or malformed provenance, duplicates,
 unverified P2 updates and a CLI run that produces no acceptance artifact
-on a red candidate. A **real live GitHub Actions release red/green
-demonstration remains open**. No automated release has been enabled by
+on a red candidate. A **real live GitHub Actions production release red/green
+demonstration remains open**; the observed branch-only published-version
+acceptance and policy-red rejection above do not publish anything. No automated release has been enabled by
 these offline simulations, and real P2 source acceptance and host-level
 network security require separate approval.
 
@@ -215,9 +265,10 @@ Creating this workflow does not by itself close those acceptance requirements.
 - `python -m pytest -q tests/test_engine_updates.py` validates offline
   version selection, yanked-release filtering, pin updates, and workflow structure.
 - Both scheduled engine-update workflows require installation on the default branch before they can run. The get-sauce watcher has only offline parser and workflow tests while in the core review branch.
-- The workflow's live red and green branches still require a real dispatch
-  after its installation on the default branch. A YAML parse test is not a
-  substitute for that acceptance.
+- Branch-only published-version acceptance and policy-red rejection were
+  dispatched successfully as recorded above. A real newer-version transition
+  and production merge/release still require their separate acceptance and
+  approval. A YAML parse test is not a substitute for that evidence.
 - The Debian candidate track is wired into the existing test/merge gate but its
   scheduled red-issue/green-release paths have not been demonstrated on main.
   The base image tag, OS dependencies and transitive Python dependencies are not

@@ -1,0 +1,36 @@
+{
+  "auto_release_authorized": false,
+  "candidate_engines": [
+    "gallery-dl",
+    "you-get",
+    "yt-dlp"
+  ],
+  "change_count": 3,
+  "changes": {
+    "gallery-dl": {
+      "from": "1.32.19",
+      "source": "pypi",
+      "to": "1.32.19"
+    },
+    "you-get": {
+      "from": "0.4.1743",
+      "source": "pypi",
+      "to": "0.4.1743"
+    },
+    "yt-dlp": {
+      "from": "2026.10.26",
+      "source": "pypi",
+      "to": "2026.10.26"
+    }
+  },
+  "current_pin_revalidation": true,
+  "pypi_artifact_sha256_is_pip_hash_lock": false,
+  "required_gates": [
+    "full Python and parser fixtures",
+    "production Docker image build",
+    "real disposable Nextcloud WebDAV delivery SHA-256",
+    "explicit manual repository release approval",
+    "exact merged commit == remote main before creating tag"
+  ],
+  "status": "candidate-smoke-eligible; NOT release-approved"
+}
