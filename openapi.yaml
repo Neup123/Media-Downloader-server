@@ -863,13 +863,7 @@ components:
         delivery_subfolder: { type: [string, 'null'], default: null, description: One-off subfolder under the configured standalone destination. }
         engine: { type: string }
         status: { type: string, description: Includes paused for a suspended live aria2 transfer. }
-        pause_capability:
-          type: object
-          required: [can_pause, can_resume, reason]
-          properties:
-            can_pause: { type: boolean }
-            can_resume: { type: boolean }
-            reason: { type: [string, 'null'], description: Exact per-job explanation when control is unavailable. }
+        pause_capability: { type: object, additionalProperties: true, description: 'Per-job can_pause boolean, can_resume boolean, and reason string or null.' }
         overrides: { type: object, additionalProperties: true }
         progress: { type: object, additionalProperties: true }
         output_files: { type: array, items: { type: object, additionalProperties: true } }
