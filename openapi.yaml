@@ -606,6 +606,36 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/pause:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: pauseJob
+      summary: Pause a live transfer when that job reports can_pause
+      tags: [jobs]
+      responses:
+        '200': { description: Same job paused, content: { application/json: { schema: { $ref: '#/components/schemas/JobOut' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Job not found }
+        '409': { description: Per-job engine or current state cannot pause without restarting }
+  /jobs/{job_id}/resume:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: resumeJob
+      summary: Resume the same paused aria2 transfer without a new job
+      tags: [jobs]
+      responses:
+        '200': { description: Same job resumed, content: { application/json: { schema: { $ref: '#/components/schemas/JobOut' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Job not found }
+        '409': { description: No resumable transfer for this job }
   /jobs/{job_id}/retry:
     parameters:
       - name: job_id
@@ -825,14 +855,15 @@ components:
         username: { type: [string, 'null'], default: null }
     JobOut:
       type: object
-      required: [id, url, engine, status, overrides, progress, output_files, log_text, error, cancel_requested, created_at, updated_at, finished_at]
+      required: [id, url, engine, status, pause_capability, overrides, progress, output_files, log_text, error, cancel_requested, created_at, updated_at, finished_at]
       properties:
         id: { type: string }
         url: { type: string }
         owner_id: { type: [string, 'null'], default: null }
         delivery_subfolder: { type: [string, 'null'], default: null, description: One-off subfolder under the configured standalone destination. }
         engine: { type: string }
-        status: { type: string }
+        status: { type: string, description: Includes paused for a suspended live aria2 transfer. }
+        pause_capability: { type: object, additionalProperties: true, description: 'Per-job can_pause boolean, can_resume boolean, and reason string or null.' }
         overrides: { type: object, additionalProperties: true }
         progress: { type: object, additionalProperties: true }
         output_files: { type: array, items: { type: object, additionalProperties: true } }

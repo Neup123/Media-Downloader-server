@@ -118,6 +118,8 @@ JOB_RESPONSE_OPERATIONS = [
     ("post", "/jobs/batch", "202"),
     ("get", "/jobs/{job_id}", "200"),
     ("post", "/jobs/{job_id}/cancel", "200"),
+    ("post", "/jobs/{job_id}/pause", "200"),
+    ("post", "/jobs/{job_id}/resume", "200"),
     ("post", "/jobs/{job_id}/retry", "202"),
     ("post", "/jobs/{job_id}/redeliver", "202"),
 ]
@@ -148,7 +150,7 @@ def test_job_response_models_preserve_log_and_state(client, auth_headers):
     })
     assert job.status_code == 202
     expected = {
-        "id", "url", "owner_id", "delivery_subfolder", "engine", "status", "overrides", "progress",
+        "id", "url", "owner_id", "delivery_subfolder", "engine", "status", "pause_capability", "overrides", "progress",
         "output_files", "log_text", "error", "cancel_requested",
         "created_at", "updated_at", "finished_at",
     }

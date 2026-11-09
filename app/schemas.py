@@ -118,6 +118,7 @@ class JobOut(BaseModel):
     delivery_subfolder: str | None = None
     engine: str
     status: str
+    pause_capability: dict[str, Any]
     overrides: dict[str, Any]
     progress: dict[str, Any]
     output_files: list[dict[str, Any]]

@@ -90,3 +90,14 @@ def test_api_and_worker_route_all_external_statuses_through_contract():
     assert 'current.status = data.get("state"' not in worker
     assert "if status not in JobStatus._value2member_map_" in main
     assert "in TERMINAL_STATUSES" in main
+
+
+def test_paused_job_lifecycle_is_reversible_but_not_terminal():
+    job = make_job("downloading", {"state": "downloading", "percent": 42})
+    transition_job(job, JobStatus.PAUSED)
+    assert job.status == "paused"
+    assert job.progress == {"state": "paused", "percent": 42}
+    assert job.finished_at is None
+    transition_job(job, JobStatus.DOWNLOADING)
+    assert job.status == "downloading"
+    assert job.progress["percent"] == 42
