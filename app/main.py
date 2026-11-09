@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
+from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
@@ -60,7 +61,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     app = FastAPI(
         title="Downloader Server API",
-        version="0.1.0",
+        version=product_version(),
         description="Standalone media download job manager. The checked-in OpenAPI YAML is the public API contract.",
         docs_url=None,
         redoc_url=None,

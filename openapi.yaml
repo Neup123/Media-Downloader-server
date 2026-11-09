@@ -1,12 +1,29 @@
 openapi: 3.1.0
 info:
-  title: Downloader Server — developer API
-  version: 0.1.0
-  description: >-
-    Submit and manage downloads, inspect installed engines and configure file delivery.
-    Send your administrator API key in the X-API-Key header on protected requests.
-    This token gives full service access and must never appear in public browser code.
-    Only the health check and API reference are unauthenticated.
+  title: Downloader Server API
+  version: 0.3.1
+  description: |-
+    # Downloader Server API
+
+    Use the standalone server to queue and monitor media downloads, inspect
+    downloader engines, save presets and URL routing rules, and configure local
+    or WebDAV file delivery. API operations use the /api/v1 base path.
+
+    ## Authentication
+
+    Every /api/v1 request requires the administrator API key in the
+    `X-API-Key` HTTP header, for example `X-API-Key: YOUR_API_KEY`.
+    This key grants full access. Keep it in trusted server-side integrations,
+    never in public browser code or URL parameters.
+
+    The informational `/healthz`, `/openapi.yaml` and `/api-reference`
+    routes are public exceptions and do not require an API key.
+
+    ## Getting started
+
+    Start with `POST /jobs` to enqueue a job, `GET /jobs` to track progress,
+    and `GET /jobs/{job_id}` to view status and delivered files. The sections
+    below cover download engines, saved settings, and delivery destinations.
 tags:
   - name: jobs
     description: Submit links, inspect progress, cancel or retry, and verify deliveries.
@@ -39,7 +56,20 @@ paths:
             example: {url: 'https://example.org/video', max_entries: 20}
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '200': { description: Sanitized formats or selected playlist entry metadata }
+        '200':
+          description: Sanitized formats or selected playlist entry metadata
+          content:
+            application/json:
+              example:
+                title: Example clip
+                id: example-clip
+                extractor: Generic
+                kind: video
+                entry_count: 0
+                entries: []
+                formats:
+                  - {format_id: '720p', ext: mp4, resolution: 1280x720, vcodec: h264, acodec: aac, filesize: null}
+                subtitle_languages: []
         '422': { description: Invalid or unsupported URL, or preview failed }
   /engines:
     get:
@@ -97,6 +127,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EngineSettingsOut' }
+              example: {engine: yt-dlp, settings: {format: 'best[height<=720]/best'}}
     put:
       operationId: updateEngineSettings
       summary: Update global settings for one engine
@@ -115,6 +146,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EngineSettingsOut' }
+              example: {engine: yt-dlp, settings: {format: 'best[height<=720]/best', write_subtitles: false}}
         '422': { description: Invalid setting }
   /cookies:
     get:
@@ -192,7 +224,19 @@ paths:
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '422': { $ref: '#/components/responses/InvalidRequest' }
-        '201': { description: Preset created }
+        '201':
+          description: Preset created
+          content:
+            application/json:
+              example:
+                id: 11111111-1111-4111-8111-111111111111
+                name: Video at 720p
+                engine: yt-dlp
+                description: Save bandwidth
+                settings: {format: 'best[height<=720]/best'}
+                is_shared: false
+                created_at: '2026-11-01T12:00:00Z'
+                updated_at: '2026-11-01T12:00:00Z'
         '409': { description: Preset name already exists for the engine }
   /presets/shared:
     get:
@@ -254,7 +298,20 @@ paths:
             example: {host_suffix: example.org, path_prefix: /media, engine: yt-dlp, priority: 100, enabled: true}
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
-        '201': { description: Rule created }
+        '201':
+          description: Rule created
+          content:
+            application/json:
+              example:
+                id: 22222222-2222-4222-8222-222222222222
+                host_suffix: example.org
+                path_prefix: /media
+                engine: yt-dlp
+                priority: 100
+                enabled: true
+                description: Videos from example.org
+                created_at: '2026-11-01T12:00:00Z'
+                updated_at: '2026-11-01T12:00:00Z'
         '422': { description: Invalid host or path rule }
   /engine-rules/order:
     put:
@@ -370,6 +427,7 @@ paths:
           content:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/JobOut' } }
+              example: []
     post:
       operationId: submitJob
       summary: Submit a download job
@@ -431,6 +489,24 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/JobBatchOut' }
+              example:
+                created: 1
+                jobs:
+                  - id: 11111111-1111-4111-8111-111111111111
+                    url: https://example.org/one.mp4
+                    owner_id: null
+                    delivery_subfolder: null
+                    engine: yt-dlp
+                    status: queued
+                    overrides: {}
+                    progress: {}
+                    output_files: []
+                    log_text: ''
+                    error: null
+                    cancel_requested: false
+                    created_at: '2026-11-01T12:00:00Z'
+                    updated_at: '2026-11-01T12:00:00Z'
+                    finished_at: null
         '422': { description: Invalid batch item; no items are queued }
   /jobs/retry-failed:
     post:
@@ -495,6 +571,22 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
+              example:
+                id: 11111111-1111-4111-8111-111111111111
+                url: https://example.org/sample.mp4
+                owner_id: null
+                delivery_subfolder: null
+                engine: yt-dlp
+                status: completed
+                overrides: {}
+                progress: {percent: 100}
+                output_files: [{filename: sample.mp4, size_bytes: 1024}]
+                log_text: ''
+                error: null
+                cancel_requested: false
+                created_at: '2026-11-01T12:00:00Z'
+                updated_at: '2026-11-01T12:01:00Z'
+                finished_at: '2026-11-01T12:01:00Z'
         '404': { description: Job not found }
   /jobs/{job_id}/cancel:
     parameters:
@@ -604,6 +696,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/DeliverySettingsOut' }
+              example: {mode: webdav, folder: Downloads, password_configured: true, webdav_url: 'https://cloud.example.org/remote.php/dav/files/example', username: example}
         '422': { description: Invalid delivery settings }
   /delivery/test:
     post:
