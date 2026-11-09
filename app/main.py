@@ -643,7 +643,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         index_file = WEB_DIST / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)
-        return HTMLResponse("<h1>Downloader Server</h1><p>Web UI build is not present. See <a href='/api-reference'>API reference</a>.</p>")
+        return HTMLResponse("<h1>Downloader Server</h1><p>Web UI build is not present.</p>")
 
     if WEB_DIST.is_dir():
         from fastapi.staticfiles import StaticFiles

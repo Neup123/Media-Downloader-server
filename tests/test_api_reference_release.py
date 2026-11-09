@@ -37,7 +37,10 @@ def test_openapi_version_follows_release_metadata(settings):
 
 
 def test_latest_release_workflow_guards_the_version_source():
-    workflow = (ROOT / ".github/workflows/release-v0.3.1.yml").read_text(encoding="utf-8")
+    releases = list((ROOT / ".github/workflows").glob("release-v*.yml"))
+    assert releases
+    latest = max(releases, key=lambda path: tuple(int(part) for part in path.stem.removeprefix("release-v").split(".")))
+    workflow = latest.read_text(encoding="utf-8")
     release = re.search(r"^\s+VERSION:\s+(\d+\.\d+\.\d+)\s*$", workflow, re.MULTILINE)
     assert release and release.group(1) == product_version()
     assert 'test "$(cat VERSION)" = "$VERSION"' in workflow
@@ -57,3 +60,15 @@ def test_reference_link_is_admin_only_and_named_for_developers():
     assert '>For developers</a>' in source
     assert source.index('href="/api-reference"') > source.index("tab === 'administration' && connected")
     assert source.index('href="/api-reference"') < source.index("adminArea === 'access'")
+
+
+def test_fallback_home_page_does_not_expose_developer_link(settings, monkeypatch, tmp_path):
+    from app import main
+    from fastapi.testclient import TestClient
+    monkeypatch.setattr(main, "WEB_DIST", tmp_path)
+    app = main.create_app(settings, start_worker=False)
+    with TestClient(app) as client:
+        response = client.get("/")
+        assert response.status_code == 200
+        assert '/api-reference' not in response.text
+    app.state.engine.dispose()
