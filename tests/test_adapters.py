@@ -77,6 +77,18 @@ def test_aria2_settings_allowlist_rejects_rpc_exposure():
         raise AssertionError("RPC exposure option must not be user-overridable")
 
 
+
+def test_aria2_select_file_reaches_rpc_options_and_rejects_invalid_values():
+    import pytest
+
+    for selection in ("3", "4,6", "1,2,3,4,5,6", "003"):
+        assert _effective_options({}, {"options": {"select-file": selection}})["select-file"] == selection
+
+    for invalid in ("", "0", "1,0", "-1", "1,,2", "1-3", " 1", 3, None):
+        with pytest.raises(ValueError, match="aria2c select-file"):
+            _effective_options({}, {"options": {"select-file": invalid}})
+
+
 def test_gallery_dl_adapter_uses_managed_output_and_discovers_downloads(tmp_path: Path):
     executable = tmp_path / "fake-gallery-dl"
     executable.write_text(
@@ -175,7 +187,7 @@ def test_torrent_magnet_manifest_only_reads_metadata_and_cleans_up(tmp_path: Pat
                 options = params[1]
                 workdirs.append(Path(options["dir"]))
                 assert options["seed-time"] == "0"
-                assert options["bt-metadata-only"] == "true"
+                assert "bt-metadata-only" not in options
                 assert options["pause-metadata"] == "true"
                 assert options["bt-save-metadata"] == "false"
                 return "magnet-gid"

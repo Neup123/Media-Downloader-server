@@ -21,7 +21,20 @@ ARIA2_OPTION_ALLOWLIST = {
     "connect-timeout", "timeout", "lowest-speed-limit", "max-download-limit",
     "user-agent", "referer", "header", "allow-overwrite", "auto-file-renaming",
     "check-integrity", "seed-time", "seed-ratio", "bt-max-peers", "bt-stop-timeout",
+    "select-file",
 }
+
+
+
+def validate_select_file(value: Any) -> str:
+    """Validate aria2's comma-separated, one-based torrent file indexes."""
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9]+(?:,[0-9]+)*", value) is None
+        or any(not index.strip("0") for index in value.split(","))
+    ):
+        raise ValueError("aria2c select-file must be comma-separated positive integer file indexes")
+    return value
 
 
 def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]) -> dict[str, str]:
@@ -33,6 +46,8 @@ def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]
         for key, value in options.items():
             if key not in ARIA2_OPTION_ALLOWLIST:
                 raise ValueError(f"aria2 option is not allowed through the settings API: {key}")
+            if key == "select-file":
+                validate_select_file(value)
             text = str(value)
             if len(text) > 1024 or "\x00" in text:
                 raise ValueError(f"Invalid value for aria2 option {key}")
@@ -147,7 +162,6 @@ class Aria2Rpc:
                 else:
                     if not url or not url.startswith("magnet:?"):
                         raise ValueError("Manifest URL must be a magnet link")
-                    options["bt-metadata-only"] = "true"
                     gid = await self.call("aria2.addUri", [[url], options])
                 tracked.add(str(gid))
                 deadline = asyncio.get_running_loop().time() + timeout_seconds

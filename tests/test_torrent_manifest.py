@@ -92,7 +92,7 @@ def test_aria2_magnet_manifest_waits_for_follow_on_gid(tmp_path, monkeypatch):
             preview_root = Path(options["dir"])
             assert options["seed-time"] == "0"
             assert options["pause-metadata"] == "true"
-            assert options["bt-metadata-only"] == "true"
+            assert "bt-metadata-only" not in options
             assert options["bt-save-metadata"] == "false"
             return "metadata-gid"
         if method == "aria2.tellStatus":

@@ -851,7 +851,7 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
         unknown = set(values) - {"options"}
         if unknown:
             raise ValueError(f"Unknown aria2c setting(s): {', '.join(sorted(unknown))}")
-        from app.adapters.aria2 import ARIA2_OPTION_ALLOWLIST
+        from app.adapters.aria2 import ARIA2_OPTION_ALLOWLIST, validate_select_file
         options = values.get("options", {})
         if not isinstance(options, dict):
             raise ValueError("aria2c options must be an object")
@@ -860,6 +860,8 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                 raise ValueError(f"aria2c option is not allowed: {key}")
             if len(str(value)) > 1024:
                 raise ValueError(f"aria2c option value is too long: {key}")
+            if key == "select-file":
+                validate_select_file(value)
         return {"options": {str(k): str(v) for k, v in options.items()}} if "options" in values else {}
     raise ValueError("Unsupported engine")
 
