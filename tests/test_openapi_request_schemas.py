@@ -13,12 +13,13 @@ import yaml
 
 from app.schemas import (
     CookieUploadIn, DeliverySettingsIn, EngineRuleInput, EngineRuleOrderInput,
-    EngineSettingsIn, JobBatchCreate, JobCreate, MediaPreviewIn, PresetInput,
+    EngineSettingsIn, JobBatchCreate, JobCreate, MediaPreviewIn, TorrentManifestIn, PresetInput,
 )
 
 
 OPERATIONS = {
     ("post", "/preview"): MediaPreviewIn,
+    ("post", "/torrent/manifest"): TorrentManifestIn,
     ("put", "/engines/{engine_name}/settings"): EngineSettingsIn,
     ("put", "/cookies/{filename}"): CookieUploadIn,
     ("post", "/presets"): PresetInput,
