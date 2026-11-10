@@ -21,7 +21,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DATABASE_URL=sqlite:////data/downloader.db
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends aria2=1.37.0+debian-3 curl ffmpeg ca-certificates \
+    && apt-get install -y --no-install-recommends aria2=1.37.0+debian-3 curl=8.14.1-2+deb13u7 ffmpeg ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --system --gid 10001 downloader \
     && useradd --system --uid 10001 --gid downloader --home-dir /data --shell /usr/sbin/nologin downloader \
