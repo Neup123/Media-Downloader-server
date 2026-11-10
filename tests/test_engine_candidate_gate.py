@@ -9,6 +9,10 @@ import sys
 import pytest
 
 from scripts.engine_candidate_gate import CandidateBlocked, review_candidate
+from scripts.engine_update_diagnostics import (
+    GENERIC_INTERPRETATION, PR_CREATION_PERMISSION_ERROR,
+    blocked_issue_body, diagnostic_excerpt,
+)
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -116,3 +120,67 @@ def test_workflow_checks_candidate_before_python_docker_webdav_and_release():
     assert "git ls-remote origin refs/heads/main" in workflow
     assert '--target "$merged_sha"' in workflow
     assert '--target main' not in workflow
+
+
+def test_blocked_issue_identifies_actions_pr_creation_setting_not_candidate_rejection():
+    error = "pull request create failed: GraphQL: " + PR_CREATION_PERMISSION_ERROR
+    diagnostics = "===== engine-update-pr.log =====\nbranch pushed\n" + error + "\n"
+    body = blocked_issue_body(
+        "generic (unpinned) -> 8.14.1-2+deb13u7",
+        "https://github.com/Neup123/Media-Downloader-server/actions/runs/42842171411",
+        diagnostics,
+    )
+    assert error in body
+    assert 'Allow GitHub Actions to create and approve pull requests' in body
+    assert "can_approve_pull_request_reviews=false" in body
+    assert "Settings > Actions > General > Workflow permissions" in body
+    assert "no workflow-file permission change" in body
+    assert "never acceptance-tested" in body
+    assert GENERIC_INTERPRETATION not in body
+
+
+def test_unclassified_blocker_keeps_original_generic_interpretation():
+    body = blocked_issue_body("yt-dlp 1 -> 2", "https://example.invalid/run", "unknown failed gate")
+    assert GENERIC_INTERPRETATION in body
+    assert "can_approve_pull_request_reviews" not in body
+    assert "unknown failed gate" in body
+
+
+def test_long_diagnostic_excerpt_retains_first_failed_permission_gate():
+    error = "pull request create failed: GraphQL: " + PR_CREATION_PERMISSION_ERROR
+    diagnostics = "===== engine-update-pr.log =====\n" + error + "\n" + ("later log data\n" * 1600)
+    excerpt = diagnostic_excerpt(diagnostics)
+    assert len(excerpt) <= 12000
+    assert error in excerpt
+
+
+def test_workflow_captures_unteeed_gates_and_keeps_credential_masks_out_of_stdout_log():
+    import yaml
+
+    workflow = yaml.safe_load((ROOT / ".github/workflows/pinned-engine-updates.yml").read_text())
+    assert workflow["permissions"] == {
+        "contents": "write", "packages": "write", "pull-requests": "write", "issues": "write"
+    }
+    steps = workflow["jobs"]["candidate-gate"]["steps"]
+    for name, log in (
+        ("Detect stable PyPI and Debian trixie release candidates", "engine-update-detect-gate.log"),
+        ("Open a dedicated candidate PR (the remaining steps test that exact candidate)", "engine-update-pr.log"),
+        ("Install pinned dependencies and test requirements", "engine-update-install-gate.log"),
+        ("Create a deterministic legal media fixture from the candidate image", "engine-update-fixture-gate.log"),
+        ("Merge green candidate (normal branch protection still applies)", "engine-update-promote-gate.log"),
+        ("Cut a patch release from the tested merged main", "engine-update-release-gate.log"),
+    ):
+        step = next(s for s in steps if s.get("name") == name)
+        assert step["run"].startswith("set -euo pipefail\n{\n")
+        assert step["run"].rstrip().endswith("} 2>&1 | tee " + log)
+    credentials = next(s for s in steps if s.get("name") == "Create ephemeral credentials (never committed)")
+    assert "2>engine-update-credentials-gate.log" in credentials["run"]
+    assert "2>&1 | tee engine-update-credentials-gate.log" not in credentials["run"]
+    collector = next(s for s in steps if s.get("name") == "Collect sanitized diagnostic logs and release manifest")
+    for log in ("engine-update-pr.log", "engine-update-fixture-gate.log",
+                "engine-update-install-gate.log", "engine-update-credentials-gate.log",
+                "engine-update-promote-gate.log", "engine-update-release-gate.log"):
+        assert '"' + log + '"' in collector["run"]
+    issue = next(s for s in steps if s.get("name") == "Open or refresh blocked-update issue on any red gate")
+    assert "blocked_issue_body(summary, url, diagnostics)" in issue["run"]
+    assert "failure()" in issue["if"]

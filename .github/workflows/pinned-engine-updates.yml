@@ -50,6 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
           if [[ "${{ inputs.demonstration }}" != "" && "${{ inputs.demonstration }}" != "none" ]]; then
             test "$GITHUB_REF" != "refs/heads/main"
             test "${{ inputs.rehearsal_only }}" != "true"
@@ -85,12 +86,14 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
+          } 2>&1 | tee engine-update-detect-gate.log
       - name: Open a dedicated candidate PR (the remaining steps test that exact candidate)
         if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none')
         id: open_pr
         shell: bash
         run: |
           set -euo pipefail
+          {
           branch="automatic/engine-update-$GITHUB_RUN_ID"
           git switch -c "$branch"
           git config user.name "github-actions[bot]"
@@ -116,6 +119,7 @@ jobs:
           number=$(gh pr view "$branch" --json number --jq .number)
           echo "number=$number" >> "$GITHUB_OUTPUT"
 
+          } 2>&1 | tee engine-update-pr.log
       - name: Require a real smoke test and reviewed source provenance for every updated engine
         if: steps.detect.outputs.changed == 'true'
         shell: bash
@@ -137,10 +141,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
           python -m pip install -r requirements.txt pytest
           python -m compileall -q app tests
           python -m pytest -q 2>&1 | tee engine-update-tests.log
 
+          } 2>&1 | tee engine-update-install-gate.log
       - name: Compile the production image with candidate engine versions
         if: steps.detect.outputs.changed == 'true'
         shell: bash
@@ -153,6 +159,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
           # The previous step builds exactly the candidate downloader image.
           # Generate and inspect the fixture with its bundled FFmpeg instead
           # of a separate, potentially stalled Ubuntu apt installation.
@@ -170,12 +177,14 @@ jobs:
             -of default=noprint_wrappers=1 /fixtures/sample.mp4
           sha256sum fixture/sample.mp4
 
+          } 2>&1 | tee engine-update-fixture-gate.log
       - name: Create ephemeral credentials (never committed)
         if: steps.detect.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
+          # Capture failures without logging generated credentials.
+          python - <<'PY' 2>engine-update-credentials-gate.log
           import os, secrets
           from cryptography.fernet import Fernet
           values = {
@@ -220,10 +229,14 @@ jobs:
           from pathlib import Path
           import re
           files = [
-              "engine-update-policy.log", "engine-update-detection.log", "debian-engine-detection.log",
-              "debian-engine-policy.log", "engine-update-tests.log",
-              "engine-update-docker.log", "engine-update-compose.log",
-              "engine-update-webdav.log",
+              "engine-update-detection.log", "debian-engine-detection.log",
+              "debian-engine-policy.log", "engine-update-detect-gate.log",
+              "engine-update-pr.log", "engine-update-policy.log",
+              "engine-update-install-gate.log", "engine-update-tests.log",
+              "engine-update-docker.log", "engine-update-fixture-gate.log",
+              "engine-update-credentials-gate.log", "engine-update-compose.log",
+              "engine-update-webdav.log", "engine-update-promote-gate.log",
+              "engine-update-release-gate.log",
           ]
           output = Path("engine-update-diagnostics.txt")
           with output.open("w", encoding="utf-8") as stream:
@@ -266,6 +279,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          {
           number="${{ steps.open_pr.outputs.number }}"
           candidate_sha="${{ steps.open_pr.outputs.head_sha }}"
           observed_sha=$(gh pr view "$number" --json headRefOid --jq .headRefOid)
@@ -286,11 +300,13 @@ jobs:
           fi
           echo "merged_sha=$merged_sha" >> "$GITHUB_OUTPUT"
 
+          } 2>&1 | tee engine-update-promote-gate.log
       - name: Cut a patch release from the tested merged main
         if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none') && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
+          {
           tag=$(gh release list --limit 100 --json tagName --jq '.[].tagName' | python -c '
           import re,sys
           versions=[tuple(map(int,m.groups())) for line in sys.stdin for m in [re.fullmatch(r"v(\d+)\.(\d+)\.(\d+)", line.strip())] if m]
@@ -359,6 +375,7 @@ jobs:
           printf 'Verified OCI image digest: %s\n' "$digest_ref" >> engine-update-release.md
           gh release create "$tag" --target "$merged_sha" --title "$tag" --notes-file engine-update-release.md
 
+          } 2>&1 | tee engine-update-release-gate.log
       - name: Open or refresh blocked-update issue on any red gate
         if: failure() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
         shell: bash
@@ -368,22 +385,17 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           import json, os
+          from scripts.engine_update_diagnostics import blocked_issue_body
           python_changes = json.loads(Path("engine-update-report.json").read_text())["updates"]
           debian_changes = json.loads(Path("debian-engine-update-report.json").read_text())["updates"]
           changes = python_changes + debian_changes
           summary = ", ".join(f"{x['engine']} {x['from']} -> {x['to']}" for x in changes)
           heading = f"engine-update-blocked: {summary}"[:240]
           log = Path("engine-update-diagnostics.txt")
-          excerpt = log.read_text(encoding="utf-8", errors="replace")[-12000:] if log.is_file() else "Diagnostics not available"
+          diagnostics = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
           url = f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}"
           Path("blocked-issue-title.txt").write_text(heading)
-          Path("blocked-issue-body.md").write_text(
-              f"## Candidate\n{summary}\n\n## Failed acceptance run\n{url}\n\n"
-              "Previous pinned versions remain deployed. The candidate PR is left unmerged.\n\n"
-              "## Diagnostic excerpt (full artifact attached to workflow)\n"
-              f"\u0060\u0060\u0060text\n{excerpt}\n\u0060\u0060\u0060\n"
-              "\n## First-pass interpretation\nInspect the first failed gate and compare the relevant upstream release notes; the automated gate has not assumed a root cause.\n"
-          )
+          Path("blocked-issue-body.md").write_text(blocked_issue_body(summary, url, diagnostics))
           PY
           title=$(cat blocked-issue-title.txt)
           existing=$(gh issue list --state open --label engine-update-blocked --json number,title | TITLE="$title" python -c '
