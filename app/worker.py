@@ -78,6 +78,12 @@ class JobWorker:
         self._paused_remaining: dict[str, float] = {}
         self._stopping = False
 
+    def get_aria2(self) -> Aria2Rpc:
+        """Use one daemon for manifests and downloads, not competing RPC ports."""
+        if self.aria2 is None:
+            self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
+        return self.aria2
+
     async def pause_job(self, job_id: str) -> None:
         if self.aria2 is None or not self.aria2.can_control(job_id):
             raise RuntimeError("This job has no active aria2 transfer to pause")
@@ -341,9 +347,7 @@ class JobWorker:
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
                 elif engine == "aria2c":
-                    if self.aria2 is None:
-                        self.aria2 = Aria2Rpc(self.settings.data_dir, self.settings.aria2_rpc_port)
-                    files = await self.aria2.download(
+                    files = await self.get_aria2().download(
                         url=url, job_id=job_id, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,

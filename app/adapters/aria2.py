@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import secrets
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
@@ -35,6 +36,8 @@ def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]
             if len(text) > 1024 or "\x00" in text:
                 raise ValueError(f"Invalid value for aria2 option {key}")
             values[key] = text
+    # Core policy: a job override cannot silently re-enable seeding.
+    values["seed-time"] = "0"
     return values
 
 
@@ -51,8 +54,13 @@ class Aria2Rpc:
         self.endpoint = f"http://127.0.0.1:{port}/jsonrpc"
         self._counter = 0
         self._job_gids: dict[str, str] = {}
+        self._start_lock = asyncio.Lock()
 
     async def start(self) -> None:
+        async with self._start_lock:
+            await self._start_unlocked()
+
+    async def _start_unlocked(self) -> None:
         if self.process and self.process.poll() is None:
             # Process existence is not proof of a live authenticated RPC
             # channel; fail closed instead of silently accepting a hung daemon.
@@ -73,6 +81,8 @@ class Aria2Rpc:
             "--auto-file-renaming=false",
             "--allow-overwrite=false",
             "--check-integrity=true",
+            "--seed-time=0",
+            "--rpc-save-upload-metadata=false",
             "--max-concurrent-downloads=8",
             "--console-log-level=warn",
             "--summary-interval=0",
@@ -104,6 +114,67 @@ class Aria2Rpc:
             error = payload["error"]
             raise RuntimeError(f"aria2 RPC {method} failed ({error.get('code')}): {error.get('message', 'unknown error')}")
         return payload.get("result")
+
+    async def inspect_torrent(
+        self, *, url: str | None = None, torrent_base64: str | None = None,
+        timeout_seconds: float = 45,
+    ) -> dict[str, Any]:
+        """Read an aria2 torrent manifest with no payload transfer or persisted job.
+
+        Magnets fetch only peer metadata; uploaded .torrent bytes are added paused.
+        pause-metadata prevents subsequent payload transfers, even if aria2
+        creates a follow-on GID from a metadata download.
+        """
+        if (url is None) == (torrent_base64 is None):
+            raise ValueError("Exactly one torrent source is required")
+        await self.start()
+        tracked: set[str] = set()
+        with tempfile.TemporaryDirectory(prefix="torrent-preview-", dir=self.data_dir) as temporary:
+            root = Path(temporary).resolve()
+            options = {
+                "dir": str(root),
+                "seed-time": "0",
+                "pause-metadata": "true",
+                "bt-save-metadata": "false",
+            }
+            try:
+                if torrent_base64 is not None:
+                    # A decoded .torrent already contains its complete manifest.
+                    # It must never enter the active payload queue.
+                    options["pause"] = "true"
+                    gid = await self.call("aria2.addTorrent", [torrent_base64, [], options])
+                else:
+                    if not url or not url.startswith("magnet:?"):
+                        raise ValueError("Manifest URL must be a magnet link")
+                    options["bt-metadata-only"] = "true"
+                    gid = await self.call("aria2.addUri", [[url], options])
+                tracked.add(str(gid))
+                deadline = asyncio.get_running_loop().time() + timeout_seconds
+                while asyncio.get_running_loop().time() < deadline:
+                    for current_gid in tuple(tracked):
+                        status = await self.call("aria2.tellStatus", [current_gid, [
+                            "status", "files", "bittorrent", "followedBy", "errorCode", "errorMessage",
+                        ]])
+                        tracked.update(str(child) for child in status.get("followedBy") or [])
+                        if status.get("status") == "error":
+                            raise RuntimeError("aria2 could not retrieve torrent metadata")
+                        files = status.get("files") or []
+                        if status.get("bittorrent") and files:
+                            return {"files": _manifest_entries(files, root), "file_count": len(files)}
+                    await asyncio.sleep(0.25)
+                raise TimeoutError("Torrent metadata was not available before the deadline")
+            finally:
+                # Include all spawned metadata/follow-on GIDs. Force removal is
+                # safe even when a GID has already completed or been removed.
+                for current_gid in tuple(tracked):
+                    try:
+                        await self.call("aria2.forceRemove", [current_gid])
+                    except (RuntimeError, httpx.HTTPError):
+                        pass
+                    try:
+                        await self.call("aria2.removeDownloadResult", [current_gid])
+                    except (RuntimeError, httpx.HTTPError):
+                        pass
 
     def can_control(self, job_id: str) -> bool:
         return job_id in self._job_gids
@@ -220,3 +291,29 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _manifest_entries(files: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
+    if len(files) > 10_000:
+        raise ValueError("Torrent contains too many files for manifest preview")
+    result = []
+    for item in files:
+        raw_path = item.get("path")
+        if not isinstance(raw_path, str) or not raw_path:
+            raise ValueError("Torrent metadata contains an invalid path")
+        path = Path(raw_path)
+        try:
+            relative = path.relative_to(root)
+        except ValueError as exc:
+            raise ValueError("Torrent metadata contains a path outside its preview directory") from exc
+        if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
+            raise ValueError("Torrent metadata contains an invalid relative path")
+        size = _int_or_none(item.get("length"))
+        index = _int_or_none(item.get("index"))
+        if size is None or size < 0 or index is None or index < 1:
+            raise ValueError("Torrent metadata contains invalid file size or index")
+        result.append({
+            "index": index, "path": relative.as_posix(),
+            "name": relative.name, "size_bytes": size,
+        })
+    return result

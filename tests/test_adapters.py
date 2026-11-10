@@ -121,3 +121,129 @@ def test_gallery_dl_rejects_service_managed_output_options():
         assert "managed by the service" in str(exc)
     else:
         raise AssertionError("gallery-dl output directory must remain service-managed")
+
+
+
+def test_aria2_daemon_and_overrides_force_zero_seed_time(tmp_path: Path, monkeypatch):
+    import subprocess
+    from app.adapters import aria2 as module
+
+    launched = []
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    def fake_popen(args, **kwargs):
+        launched.append((args, kwargs))
+        return FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    async def run():
+        rpc = Aria2Rpc(tmp_path, 16894)
+
+        async def call(method, params):
+            assert method == "aria2.getGlobalOption"
+            return {"seed-time": "0"}
+
+        rpc.call = call
+        await rpc.start()
+        await rpc.client.aclose()
+
+    asyncio.run(run())
+    assert len(launched) == 1
+    assert "--seed-time=0" in launched[0][0]
+    assert "--rpc-save-upload-metadata=false" in launched[0][0]
+    assert launched[0][1]["env"] is not None
+    assert _effective_options({"options": {"seed-time": "120"}}, {"options": {"seed-time": "999"}})["seed-time"] == "0"
+
+
+def test_torrent_magnet_manifest_only_reads_metadata_and_cleans_up(tmp_path: Path):
+    calls = []
+    workdirs = []
+
+    async def run():
+        rpc = Aria2Rpc(tmp_path, 16895)
+
+        async def start():
+            return None
+
+        async def call(method, params):
+            calls.append((method, params))
+            if method == "aria2.addUri":
+                options = params[1]
+                workdirs.append(Path(options["dir"]))
+                assert options["seed-time"] == "0"
+                assert options["bt-metadata-only"] == "true"
+                assert options["pause-metadata"] == "true"
+                assert options["bt-save-metadata"] == "false"
+                return "magnet-gid"
+            if method == "aria2.tellStatus":
+                assert params[0] == "magnet-gid"
+                return {
+                    "status": "complete", "bittorrent": {"info": {"name": "bundle"}},
+                    "files": [
+                        {"index": "1", "length": "7", "path": str(workdirs[0] / "bundle" / "x.txt")},
+                        {"index": "2", "length": "0", "path": str(workdirs[0] / "bundle" / "sub" / "empty.txt")},
+                    ],
+                }
+            return "ok"
+
+        rpc.start = start
+        rpc.call = call
+        result = await rpc.inspect_torrent(url="magnet:?xt=urn:btih:0123456789abcdef")
+        await rpc.client.aclose()
+        return result
+
+    result = asyncio.run(run())
+    assert result["file_count"] == 2
+    assert result["files"][0] == {
+        "index": 1, "path": "bundle/x.txt", "name": "x.txt", "size_bytes": 7,
+    }
+    assert not workdirs[0].exists()
+    assert [method for method, _ in calls] == [
+        "aria2.addUri", "aria2.tellStatus", "aria2.forceRemove", "aria2.removeDownloadResult",
+    ]
+
+
+def test_uploaded_torrent_manifest_is_paused_and_removed_on_failure(tmp_path: Path):
+    import pytest
+
+    calls = []
+
+    async def run():
+        rpc = Aria2Rpc(tmp_path, 16896)
+
+        async def start():
+            return None
+
+        async def call(method, params):
+            calls.append((method, params))
+            if method == "aria2.addTorrent":
+                assert params[0] == "ZHVtbXk="
+                assert params[2]["pause"] == "true"
+                assert params[2]["pause-metadata"] == "true"
+                return "torrent-gid"
+            if method == "aria2.tellStatus":
+                return {"status": "error", "errorCode": "1", "files": []}
+            return "ok"
+
+        rpc.start = start
+        rpc.call = call
+        with pytest.raises(RuntimeError, match="could not retrieve"):
+            await rpc.inspect_torrent(torrent_base64="ZHVtbXk=")
+        await rpc.client.aclose()
+
+    asyncio.run(run())
+    assert [method for method, _ in calls] == [
+        "aria2.addTorrent", "aria2.tellStatus", "aria2.forceRemove", "aria2.removeDownloadResult",
+    ]
+
+
+def test_torrent_manifest_rejects_paths_outside_ephemeral_workspace(tmp_path: Path):
+    import pytest
+    from app.adapters.aria2 import _manifest_entries
+
+    with pytest.raises(ValueError, match="outside"):
+        _manifest_entries([{"index": "1", "length": "1", "path": "/etc/passwd"}], tmp_path)

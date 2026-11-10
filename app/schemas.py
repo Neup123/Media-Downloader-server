@@ -15,6 +15,21 @@ EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "
 class MediaPreviewIn(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     max_entries: int = Field(default=50, ge=1, le=100)
+    offset: int = Field(default=0, ge=0, le=100_000)
+
+
+class TorrentManifestIn(BaseModel):
+    """Exactly one source: magnet link or base64-encoded .torrent file."""
+    url: str | None = Field(default=None, min_length=8, max_length=4096)
+    torrent_base64: str | None = Field(default=None, min_length=4, max_length=2_800_000)
+
+    @model_validator(mode="after")
+    def exactly_one_source(self):
+        if (self.url is None) == (self.torrent_base64 is None):
+            raise ValueError("Provide exactly one of url (magnet) or torrent_base64")
+        return self
+
+
 
 
 class JobCreate(BaseModel):

@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import httpx
 import os
 import re
 import shutil
@@ -19,6 +20,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlalchemy import select, cast, or_, Text, delete
 from sqlalchemy.orm import Session
 
+from app.adapters.aria2 import Aria2Rpc
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
@@ -28,7 +30,7 @@ from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -92,8 +94,39 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             url = validate_target_url(payload.url, "yt-dlp", config.allow_private_targets)
             if not config.allow_private_targets:
                 await asyncio.to_thread(preflight_source_dns, url)
-            return await inspect_ytdlp(url, max_entries=payload.max_entries)
+            return await inspect_ytdlp(url, max_entries=payload.max_entries, offset=payload.offset)
         except (UnsafeUrlError, ValueError, PreviewError) as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+    @app.post("/api/v1/torrent/manifest", tags=["jobs"])
+    async def torrent_manifest(payload: TorrentManifestIn, _: bool = Depends(authenticate)):
+        """Inspect magnet metadata or uploaded .torrent bytes without a download job."""
+        try:
+            url = None
+            torrent_base64 = None
+            if payload.url is not None:
+                url = validate_target_url(payload.url, "aria2c", config.allow_private_targets)
+                if not url.startswith("magnet:?"):
+                    raise ValueError("Provide a magnet link or upload .torrent bytes as torrent_base64")
+            else:
+                try:
+                    raw = base64.b64decode(payload.torrent_base64 or "", validate=True)
+                except (ValueError, binascii.Error) as exc:
+                    raise ValueError("torrent_base64 must be valid base64-encoded .torrent data") from exc
+                if not 20 <= len(raw) <= 2_000_000:
+                    raise ValueError(".torrent metadata must be between 20 bytes and 2 MB")
+                torrent_base64 = base64.b64encode(raw).decode("ascii")
+
+            # A real worker shares its RPC daemon with downloads; test/standalone
+            # apps without a worker use a lifecycle-scoped temporary daemon.
+            rpc = worker.get_aria2() if worker is not None else Aria2Rpc(config.data_dir, config.aria2_rpc_port)
+            try:
+                return await rpc.inspect_torrent(url=url, torrent_base64=torrent_base64)
+            finally:
+                if worker is None:
+                    await rpc.close()
+        except (UnsafeUrlError, ValueError, RuntimeError, TimeoutError, httpx.HTTPError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/engines", response_model=list[EngineStatusOut], tags=["engines"])
