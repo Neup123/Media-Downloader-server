@@ -176,6 +176,16 @@ def test_aria2_metadata_filter_keeps_real_path_security_guards(tmp_path):
             ], root)
     with pytest.raises(ValueError, match="too many files"):
         _manifest_entries([{"path": _METADATA_PATH}] * 10_001, root)
+    for invalid_fields in (
+        {"index": "0", "length": "1"},
+        {"index": "2", "length": "-1"},
+        {"index": "invalid", "length": "1"},
+    ):
+        with pytest.raises(ValueError, match="invalid file size or index"):
+            _manifest_entries([
+                {"path": _METADATA_PATH},
+                {"path": str(root / "real.bin"), **invalid_fields},
+            ], root)
 
 
 def test_aria2_bytes_manifest_still_uses_paused_torrent_path(tmp_path, monkeypatch):
