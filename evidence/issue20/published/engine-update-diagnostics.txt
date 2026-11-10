@@ -1,0 +1,738 @@
+===== engine-update-policy.log =====
+Accepted candidate source validation for: gallery-dl, you-get, yt-dlp
+Full live acceptance and explicit release approval still required.
+
+===== engine-update-tests.log =====
+........................................................................ [ 14%]
+........................................................................ [ 29%]
+........................................................................ [ 43%]
+........................................................................ [ 58%]
+........................................................................ [ 72%]
+........................................................................ [ 87%]
+................................................................         [100%]
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.13.18/x64/lib/python3.13/site-packages/starlette/testclient.py:45
+  /opt/hostedtoolcache/Python/3.13.18/x64/lib/python3.13/site-packages/starlette/testclient.py:45: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+496 passed, 1 warning in 12.51s
+
+===== engine-update-docker.log =====
+et==0.4.1743 (from -r requirements.txt (line 9))
+#22 5.213   Downloading you_get-0.4.1743-py3-none-any.whl.metadata (3.9 kB)
+#22 5.222 Collecting svtplay-dl==4.211 (from -r requirements.txt (line 10))
+#22 5.227   Downloading svtplay_dl-4.211.tar.gz (102 kB)
+#22 5.272   Installing build dependencies: started
+#22 6.614   Installing build dependencies: finished with status 'done'
+#22 6.615   Getting requirements to build wheel: started
+#22 7.584   Getting requirements to build wheel: finished with status 'done'
+#22 7.585   Preparing metadata (pyproject.toml): started
+#22 8.494   Preparing metadata (pyproject.toml): finished with status 'done'
+#22 8.515 Collecting starlette<0.51.0,>=0.40.0 (from fastapi==0.128.2->-r requirements.txt (line 1))
+#22 8.518   Downloading starlette-0.50.0-py3-none-any.whl.metadata (6.3 kB)
+#22 8.619 Collecting pydantic>=2.7.0 (from fastapi==0.128.2->-r requirements.txt (line 1))
+#22 8.623   Downloading pydantic-2.14.3-py3-none-any.whl.metadata (141 kB)
+#22 8.641 Collecting typing-extensions>=4.8.0 (from fastapi==0.128.2->-r requirements.txt (line 1))
+#22 8.645   Downloading typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+#22 8.653 Collecting typing-inspection>=0.4.2 (from fastapi==0.128.2->-r requirements.txt (line 1))
+#22 8.656   Downloading typing_inspection-0.4.5-py3-none-any.whl.metadata (2.6 kB)
+#22 8.663 Collecting annotated-doc>=0.0.2 (from fastapi==0.128.2->-r requirements.txt (line 1))
+#22 8.666   Downloading annotated_doc-0.0.5-py3-none-any.whl.metadata (6.5 kB)
+#22 8.683 Collecting click>=7.0 (from uvicorn==0.48.0->uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 8.686   Downloading click-8.5.1-py3-none-any.whl.metadata (2.6 kB)
+#22 8.696 Collecting h11>=0.8 (from uvicorn==0.48.0->uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 8.700   Downloading h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+#22 8.861 Collecting greenlet>=1 (from SQLAlchemy==2.0.50->-r requirements.txt (line 3))
+#22 8.865   Downloading greenlet-3.5.6-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl.metadata (3.8 kB)
+#22 8.884 Collecting anyio (from httpx==0.28.1->-r requirements.txt (line 4))
+#22 8.887   Downloading anyio-4.16.0-py3-none-any.whl.metadata (4.7 kB)
+#22 8.903 Collecting certifi (from httpx==0.28.1->-r requirements.txt (line 4))
+#22 8.908   Downloading certifi-2026.10.23-py3-none-any.whl.metadata (2.5 kB)
+#22 8.919 Collecting httpcore==1.* (from httpx==0.28.1->-r requirements.txt (line 4))
+#22 8.922   Downloading httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+#22 8.934 Collecting idna (from httpx==0.28.1->-r requirements.txt (line 4))
+#22 8.937   Downloading idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+#22 9.059 Collecting cffi>=2.0.0 (from cryptography==46.0.4->-r requirements.txt (line 5))
+#22 9.062   Downloading cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (2.5 kB)
+#22 9.089 Collecting requests>=2.11.0 (from gallery-dl==1.32.19->-r requirements.txt (line 8))
+#22 9.093   Downloading requests-2.34.2-py3-none-any.whl.metadata (4.8 kB)
+#22 9.136 Collecting dukpy (from you-get==0.4.1743->-r requirements.txt (line 9))
+#22 9.143   Downloading dukpy-0.6.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (10 kB)
+#22 9.162 Collecting PySocks (from svtplay-dl==4.211->-r requirements.txt (line 10))
+#22 9.165   Downloading PySocks-1.7.1-py3-none-any.whl.metadata (13 kB)
+#22 9.212 Collecting httptools>=0.6.3 (from uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 9.217   Downloading httptools-0.9.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (3.5 kB)
+#22 9.231 Collecting python-dotenv>=0.13 (from uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 9.235   Downloading python_dotenv-1.2.4-py3-none-any.whl.metadata (29 kB)
+#22 9.273 Collecting uvloop>=0.15.1 (from uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 9.277   Downloading uvloop-0.23.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (5.1 kB)
+#22 9.353 Collecting watchfiles>=0.20 (from uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 9.356   Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (4.9 kB)
+#22 9.553 Collecting websockets>=10.4 (from uvicorn[standard]==0.48.0->-r requirements.txt (line 2))
+#22 9.557   Downloading websockets-17.4-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl.metadata (6.3 kB)
+#22 9.575 Collecting pycparser (from cffi>=2.0.0->cryptography==46.0.4->-r requirements.txt (line 5))
+#22 9.578   Downloading pycparser-3.12-py3-none-any.whl.metadata (9.7 kB)
+#22 9.589 Collecting annotated-types>=0.6.0 (from pydantic>=2.7.0->fastapi==0.128.2->-r requirements.txt (line 1))
+#22 9.592   Downloading annotated_types-0.8.0-py3-none-any.whl.metadata (15 kB)
+#22 10.33 Collecting pydantic-core==2.50.4 (from pydantic>=2.7.0->fastapi==0.128.2->-r requirements.txt (line 1))
+#22 10.33   Downloading pydantic_core-2.50.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl.metadata (6.6 kB)
+#22 10.46 Collecting charset_normalizer<4,>=2 (from requests>=2.11.0->gallery-dl==1.32.19->-r requirements.txt (line 8))
+#22 10.47   Downloading charset_normalizer-3.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl.metadata (46 kB)
+#22 10.49 Collecting urllib3<3,>=1.26 (from requests>=2.11.0->gallery-dl==1.32.19->-r requirements.txt (line 8))
+#22 10.49   Downloading urllib3-2.8.0-py3-none-any.whl.metadata (7.4 kB)
+#22 10.51 Downloading fastapi-0.128.2-py3-none-any.whl (104 kB)
+#22 10.51 Downloading uvicorn-0.48.0-py3-none-any.whl (71 kB)
+#22 10.52 Downloading sqlalchemy-2.0.50-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (3.3 MB)
+#22 10.53    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.3/3.3 MB 370.0 MB/s  0:00:00
+#22 10.53 Downloading httpx-0.28.1-py3-none-any.whl (73 kB)
+#22 10.54 Downloading cryptography-46.0.4-cp311-abi3-manylinux_2_34_x86_64.whl (4.5 MB)
+#22 10.55    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 573.8 MB/s  0:00:00
+#22 10.55 Downloading pyyaml-6.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (801 kB)
+#22 10.55    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 801.6/801.6 kB 670.2 MB/s  0:00:00
+#22 10.56 Downloading yt_dlp-2026.10.26-py3-none-any.whl (3.2 MB)
+#22 10.56    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 3.2/3.2 MB 635.8 MB/s  0:00:00
+#22 10.57 Downloading gallery_dl-1.32.19-py3-none-any.whl (946 kB)
+#22 10.57    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 946.6/946.6 kB 438.7 MB/s  0:00:00
+#22 10.58 Downloading you_get-0.4.1743-py3-none-any.whl (189 kB)
+#22 10.58 Downloading httpcore-1.0.9-py3-none-any.whl (78 kB)
+#22 10.58 Downloading starlette-0.50.0-py3-none-any.whl (74 kB)
+#22 10.59 Downloading anyio-4.16.0-py3-none-any.whl (134 kB)
+#22 10.59 Downloading annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+#22 10.60 Downloading cffi-2.1.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (221 kB)
+#22 10.60 Downloading click-8.5.1-py3-none-any.whl (126 kB)
+#22 10.60 Downloading greenlet-3.5.6-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl (623 kB)
+#22 10.61    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 623.8/623.8 kB 415.0 MB/s  0:00:00
+#22 10.61 Downloading h11-0.16.0-py3-none-any.whl (37 kB)
+#22 10.61 Downloading httptools-0.9.0-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (520 kB)
+#22 10.62 Downloading idna-3.20-py3-none-any.whl (69 kB)
+#22 10.62 Downloading pydantic-2.14.3-py3-none-any.whl (494 kB)
+#22 10.63 Downloading pydantic_core-2.50.4-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl (2.3 MB)
+#22 10.63    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 2.3/2.3 MB 434.8 MB/s  0:00:00
+#22 10.64 Downloading annotated_types-0.8.0-py3-none-any.whl (13 kB)
+#22 10.64 Downloading python_dotenv-1.2.4-py3-none-any.whl (23 kB)
+#22 10.64 Downloading requests-2.34.2-py3-none-any.whl (73 kB)
+#22 10.65 Downloading charset_normalizer-3.5.2-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (254 kB)
+#22 10.66 Downloading urllib3-2.8.0-py3-none-any.whl (135 kB)
+#22 10.66 Downloading certifi-2026.10.23-py3-none-any.whl (135 kB)
+#22 10.66 Downloading typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+#22 10.67 Downloading typing_inspection-0.4.5-py3-none-any.whl (14 kB)
+#22 10.68 Downloading uvloop-0.23.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.5 MB)
+#22 10.69    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.5/4.5 MB 410.0 MB/s  0:00:00
+#22 10.70 Downloading watchfiles-1.3.0-cp310-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (458 kB)
+#22 10.70 Downloading websockets-17.4-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl (226 kB)
+#22 10.71 Downloading dukpy-0.6.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl (4.3 MB)
+#22 10.72    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 4.3/4.3 MB 421.3 MB/s  0:00:00
+#22 10.72 Downloading pycparser-3.12-py3-none-any.whl (62 kB)
+#22 10.73 Downloading PySocks-1.7.1-py3-none-any.whl (16 kB)
+#22 10.87 Building wheels for collected packages: svtplay-dl
+#22 10.87   Building wheel for svtplay-dl (pyproject.toml): started
+#22 11.73   Building wheel for svtplay-dl (pyproject.toml): finished with status 'done'
+#22 11.73   Created wheel for svtplay-dl: filename=svtplay_dl-4.211-py3-none-any.whl size=115300 sha256=f9f817b610d6a360084cb0ab1075c15ce2aaa694af0d3d803b84d004899e51e9
+#22 11.73   Stored in directory: /tmp/pip-ephem-wheel-cache-e9bwtz40/wheels/f7/31/b8/da1e889b1b47ae7481473a4d06357f4963ca473fa8d166672f
+#22 11.73 Successfully built svtplay-dl
+#22 11.84 Installing collected packages: yt-dlp, websockets, uvloop, urllib3, typing-extensions, PyYAML, python-dotenv, PySocks, pycparser, idna, httptools, h11, greenlet, dukpy, click, charset_normalizer, certifi, annotated-types, annotated-doc, you-get, uvicorn, typing-inspection, SQLAlchemy, requests, pydantic-core, httpcore, cffi, anyio, watchfiles, starlette, pydantic, httpx, gallery-dl, cryptography, svtplay-dl, fastapi
+#22 ...
+
+#19 [web-build 6/6] RUN npm test && npm run build
+#19 25.13 node_modules/zod/v4/core/regexes.js (74:0): A comment
+#19 25.13 
+#19 25.13 "/** Anchors a pattern source. The interpolation lives here rather than at the call site because
+#19 25.13  * esbuild will not drop a `@__PURE__` call whose own argument interpolates a variable, but it
+#19 25.13  * will drop `anchor(dateSource)`. Keeping it inline pinned `date` into every bundle. */"
+#19 25.13 
+#19 25.13 in "node_modules/zod/v4/core/regexes.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#19 25.14 node_modules/zod/v4/core/util.js (400:0): A comment
+#19 25.14 
+#19 25.14 "// Wrapped in a `@__PURE__` IIFE: esbuild never tree-shakes a top-level initializer that contains a member access on `Number`, so the bare object literal survived into every bundle."
+#19 25.14 
+#19 25.14 in "node_modules/zod/v4/core/util.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+#19 33.05 ✓ 5442 modules transformed.
+#19 33.97 rendering chunks...
+#19 35.47 computing gzip size...
+#19 35.60 dist/index.html                                                                    0.55 kB │ gzip:   0.32 kB
+#19 35.60 dist/api-reference.html                                                            2.26 kB │ gzip:   1.10 kB
+#19 35.60 dist/assets/index-CvB_P43l.css                                                    16.13 kB │ gzip:   4.42 kB
+#19 35.60 dist/assets/api-reference-CurLfCqW.css                                           245.39 kB │ gzip:  38.87 kB
+#19 35.60 dist/assets/basic-shape-primary-circle-ellipse-round.svg-BPi1K24t.js               0.43 kB │ gzip:   0.33 kB
+#19 35.60 dist/assets/money-currency-dollar-pay.svg-DgsQsA4b.js                              0.45 kB │ gzip:   0.34 kB
+#19 35.60 dist/assets/interface-search.svg-fpbhLcVN.js                                       0.47 kB │ gzip:   0.35 kB
+#19 35.60 dist/assets/interface-bookmark-tag.svg-BnbdnA27.js                                 0.50 kB │ gzip:   0.38 kB
+#19 35.60 dist/assets/interface-bookmark.svg-CrXd9ob9.js                                     0.50 kB │ gzip:   0.38 kB
+#19 35.60 dist/assets/programming-cloud.svg-JdhcO_Gn.js                                      0.50 kB │ gzip:   0.38 kB
+#19 35.60 dist/assets/interface-time-clock-circle.svg-7Z-Uzkhu.js                            0.50 kB │ gzip:   0.36 kB
+#19 35.60 dist/assets/interface-content-file.svg-D9IL2K_F.js                                 0.51 kB │ gzip:   0.38 kB
+#19 35.60 dist/assets/computer-device-mobile-tablet.svg-4FTPf0WE.js                          0.53 kB │ gzip:   0.37 kB
+#19 35.60 dist/assets/interface-lock-closed.svg-l43jkZc2.js                                  0.54 kB │ gzip:   0.39 kB
+#19 35.60 dist/assets/mail-chat-bubble-square.svg-ac2t_QDk.js                                0.54 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/tag-new-circle.svg-Cio_qCZP.js                                         0.55 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/mail-send-envelope.svg-D-17f-R_.js                                     0.56 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/interface-alert-information-circle.svg-KVN1_eDE.js                     0.56 kB │ gzip:   0.38 kB
+#19 35.60 dist/assets/interface-signal-square.svg-DUJVK7nm.js                                0.56 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/basic-shape-hexagon.svg-DYdlR1ln.js                                    0.58 kB │ gzip:   0.39 kB
+#19 35.60 dist/assets/interface-home-house.svg-aBLfrVIE.js                                   0.58 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/programming-script-code.svg-_H_bhuzd.js                                0.59 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/computer-device-mobile-phone-android-samsung.svg-CRhr2Hyb.js           0.60 kB │ gzip:   0.36 kB
+#19 35.60 dist/assets/image-flash-lightning.svg-DRjkTYXS.js                                  0.60 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/interface-edit-tool-paint-roller.svg-7BAzK2js.js                       0.60 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/computer-device-mobile-tablet-touch.svg-K2_ptY_c.js                    0.60 kB │ gzip:   0.44 kB
+#19 35.60 dist/assets/interface-copy-clipboard.svg-dAyyo0x6.js                               0.60 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/interface-lock-open-unlock.svg-Y_InHJdU.js                             0.61 kB │ gzip:   0.43 kB
+#19 35.60 dist/assets/computer-device-laptop.svg-CQhWEV_S.js                                 0.61 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/interface-content-book-open-pages.svg-9Jo2_jwh.js                      0.61 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/interface-edit-attachment.svg-DDUyY9uI.js                              0.62 kB │ gzip:   0.44 kB
+#19 35.60 dist/assets/computer-device-mobile-phone-iphone-x.svg-BWGJu0Fb.js                  0.62 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/money-graph-arrow-increase.svg-DXYJ_tCn.js                             0.62 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/interface-alert-exclamation-diamond.svg-ChKCSHjH.js                    0.62 kB │ gzip:   0.41 kB
+#19 35.60 dist/assets/programming-module.svg-B6CYrFNV.js                                     0.62 kB │ gzip:   0.43 kB
+#19 35.60 dist/assets/interface-share.svg-xnEXthro.js                                        0.62 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/basic-shape-diamond.svg-BUhRIivV.js                                    0.63 kB │ gzip:   0.45 kB
+#19 35.60 dist/assets/programming-computer-database-server.svg-D7N0IhWW.js                   0.63 kB │ gzip:   0.37 kB
+#19 35.60 dist/assets/mail-send-email-paper-airplane.svg-DUT8iCeh.js                         0.63 kB │ gzip:   0.45 kB
+#19 35.60 dist/assets/computer-device-desktop-monitor.svg-CZR7Bq2d.js                        0.64 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/interface-content-book-page.svg-kmoX_uAP.js                            0.64 kB │ gzip:   0.43 kB
+#19 35.60 dist/assets/programming-module-three.svg-BTPc04Tb.js                               0.64 kB │ gzip:   0.37 kB
+#19 35.60 dist/assets/interface-time-hour-glass.svg-CN8soufd.js                              0.65 kB │ gzip:   0.45 kB
+#19 35.60 dist/assets/shopping-cart.svg-DZpi2ex8.js                                          0.65 kB │ gzip:   0.44 kB
+#19 35.60 dist/assets/computer-device-mobile-phone-iphone-x-back.svg-_ZdGL__L.js             0.66 kB │ gzip:   0.44 kB
+#19 35.60 dist/assets/money-graph-bar-chart-increase.svg-DgQxPAjl.js                         0.68 kB │ gzip:   0.43 kB
+#19 35.60 dist/assets/interface-weather-moon.svg-Cc8Ct-KS.js                                 0.68 kB │ gzip:   0.45 kB
+#19 35.60 dist/assets/computer-device-network-wifi-connection.svg-BVIt10M6.js                0.69 kB │ gzip:   0.45 kB
+#19 35.60 dist/assets/interface-favorite-award.svg-4RNf8SAz.js                               0.69 kB │ gzip:   0.47 kB
+#19 35.60 dist/assets/shopping-shipping-box-parcel-package.svg-BFx8sbpA.js                   0.70 kB │ gzip:   0.47 kB
+#19 35.60 dist/assets/interface-favorite-heart.svg-BtxeGN_o.js                               0.71 kB │ gzip:   0.48 kB
+#19 35.60 dist/assets/modulepreload-polyfill-B5Qt9EMX.js                                     0.71 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/interface-favorite-flag.svg-F-1-O91D.js                                0.72 kB │ gzip:   0.49 kB
+#19 35.60 dist/assets/interface-users-multiple.svg-BI9DRrti.js                               0.72 kB │ gzip:   0.46 kB
+#19 35.60 dist/assets/ecology-science-erlenmeyer-flask.svg-aD2DlSth.js                       0.73 kB │ gzip:   0.50 kB
+#19 35.60 dist/assets/interface-share-megaphone-bullhorn.svg-BbJ9sx4O.js                     0.73 kB │ gzip:   0.49 kB
+#19 35.60 dist/assets/computer-device-desktop.svg-CejQ0U3D.js                                0.74 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/computer-device-mobile-phone-android-samsung-back.svg-BhLOkZBS.js      0.74 kB │ gzip:   0.49 kB
+#19 35.60 dist/assets/interface-hierarchy-flowchart.svg-BZ4ByUHh.js                          0.74 kB │ gzip:   0.42 kB
+#19 35.60 dist/assets/index-Cmup5f75.js                                                      0.75 kB │ gzip:   0.40 kB
+#19 35.60 dist/assets/interface-alert-exclamation-triangle-warning.svg-C0Jz4x6M.js           0.75 kB │ gzip:   0.48 kB
+#19 35.60 dist/assets/programming-module-four-layout.svg-DAgJUQoM.js                         0.76 kB │ gzip:   0.37 kB
+#19 35.60 dist/assets/basic-shape-shield.svg-DVZSrbOv.js                                     0.77 kB │ gzip:   0.53 kB
+#19 35.60 dist/assets/nature-ecology-leaf.svg-IIbNQXCy.js                                    0.79 kB │ gzip:   0.54 kB
+#19 35.60 dist/assets/interface-calendar-date-one.svg-DXZFz7kU.js                            0.80 kB │ gzip:   0.50 kB
+#19 35.60 dist/assets/interface-edit-binocular.svg-7bp5C9Jg.js                               0.82 kB │ gzip:   0.50 kB
+#19 35.60 dist/assets/interface-edit-magic-wand.svg-C0-wJKR7.js                              0.82 kB │ gzip:   0.49 kB
+#19 35.60 dist/assets/basic-shape-primary-square-rectangle.svg-BthpewMa.js                   0.83 kB │ gzip:   0.44 kB
+#19 35.60 dist/assets/interface-login-key.svg-B5iSwd_-.js                                    0.86 kB │ gzip:   0.54 kB
+#19 35.60 dist/assets/interface-award-crown.svg-B6NHNegY.js                                  0.86 kB │ gzip:   0.52 kB
+#19 35.60 dist/assets/programming-bug.svg-c2ISOB0y.js                                        0.87 kB │ gzip:   0.50 kB
+#19 35.60 dist/assets/interface-favorite-stars-sparkles.svg-DDf_h0yv.js                      0.88 kB │ gzip:   0.51 kB
+#19 35.60 dist/assets/interface-lighting-brightness.svg-BajCsX6O.js                          0.89 kB │ gzip:   0.49 kB
+#19 35.60 dist/assets/phone-telephone.svg-CAxKE8g7.js                                        0.90 kB │ gzip:   0.57 kB
+#19 35.60 dist/assets/interface-hyperlink.svg-DKedUIge.js                                    0.90 kB │ gzip:   0.53 kB
+#19 35.60 dist/assets/computer-device-network-wifi-router.svg-BPad9XOi.js                    0.92 kB │ gzip:   0.52 kB
+#19 35.60 dist/assets/money-cashier-receipt.svg-h-v7jXnt.js                                  0.94 kB │ gzip:   0.56 kB
+#19 35.60 dist/assets/interface-edit-tool-pencil.svg-D9hmhoMm.js                             0.97 kB │ gzip:   0.64 kB
+#19 35.60 dist/assets/interface-favorite-star.svg-BCLCin8D.js                                1.02 kB │ gzip:   0.62 kB
+#19 35.60 dist/assets/programming-computer-database.svg-CcCVbOUe.js                          1.02 kB │ gzip:   0.58 kB
+#19 35.60 dist/assets/computer-device-network-lan-www.svg-QzFnaBQX.js                        1.03 kB │ gzip:   0.54 kB
+#19 35.60 dist/assets/interface-share-rocket.svg-BDg5rdrx.js                                 1.03 kB │ gzip:   0.64 kB
+#19 35.60 dist/assets/shopping-gift-present.svg-C_9K-L4R.js                                  1.11 kB │ gzip:   0.62 kB
+#19 35.60 dist/assets/interface-share-satellite.svg-CfXYbLAU.js                              1.12 kB │ gzip:   0.70 kB
+#19 35.60 dist/assets/computer-device-network-ethernet-cat6.svg-S1rn8jti.js                  1.15 kB │ gzip:   0.60 kB
+#19 35.60 dist/assets/travel-map-earth-globe.svg-Bqu34xMB.js                                 1.17 kB │ gzip:   0.70 kB
+#19 35.60 dist/assets/interface-share-space-ship.svg-BSL6OtAs.js                             1.24 kB │ gzip:   0.72 kB
+#19 35.60 dist/assets/image-picture-flower.svg-DfYEbr-8.js                                   1.63 kB │ gzip:   0.82 kB
+#19 35.60 dist/assets/interface-setting-cog.svg-rvklzpVK.js                                  2.09 kB │ gzip:   0.90 kB
+#19 35.60 dist/assets/AgentScalarChatInterface.vue-uMknfM-0.js                             143.83 kB │ gzip:  43.10 kB
+#19 35.60 dist/assets/index-DlIsfwkg.js                                                    273.00 kB │ gzip:  82.05 kB
+#19 35.60 dist/assets/index-CyFnsZnE.js                                                    375.23 kB │ gzip: 109.21 kB
+#19 35.60 dist/assets/api-reference-BWrIqHzN.js                                          2,897.27 kB │ gzip: 893.12 kB
+#19 35.60 
+#19 35.60 (!) Some chunks are larger than 500 kB after minification. Consider:
+#19 35.60 - Using dynamic import() to code-split the application
+#19 35.60 - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+#19 35.60 - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+#19 35.60 ✓ built in 18.51s
+#19 35.84 API reference HTML, Scalar JavaScript and stylesheet are locally bundled
+#19 DONE 36.0s
+
+#22 [runtime  5/12] RUN pip install --no-cache-dir --upgrade pip     && pip install --no-cache-dir -r requirements.txt
+#22 18.24 
+#22 18.24 Successfully installed PySocks-1.7.1 PyYAML-6.0.3 SQLAlchemy-2.0.50 annotated-doc-0.0.5 annotated-types-0.8.0 anyio-4.16.0 certifi-2026.10.23 cffi-2.1.1 charset_normalizer-3.5.2 click-8.5.1 cryptography-46.0.4 dukpy-0.6.0 fastapi-0.128.2 gallery-dl-1.32.19 greenlet-3.5.6 h11-0.16.0 httpcore-1.0.9 httptools-0.9.0 httpx-0.28.1 idna-3.20 pycparser-3.12 pydantic-2.14.3 pydantic-core-2.50.4 python-dotenv-1.2.4 requests-2.34.2 starlette-0.50.0 svtplay-dl-4.211 typing-extensions-4.16.0 typing-inspection-0.4.5 urllib3-2.8.0 uvicorn-0.48.0 uvloop-0.23.0 watchfiles-1.3.0 websockets-17.4 you-get-0.4.1743 yt-dlp-2026.10.26
+#22 18.24 WARNING: Running pip as the 'root' user can result in broken permissions and conflicting behaviour with the system package manager, possibly rendering your system unusable. It is recommended to use a virtual environment instead: https://pip.pypa.io/warnings/venv. Use the --root-user-action option if you know what you are doing and want to suppress this warning.
+#22 DONE 18.5s
+
+#24 [runtime  6/12] COPY app/ ./app/
+#24 DONE 0.0s
+
+#25 [runtime  7/12] COPY VERSION ./VERSION
+#25 DONE 0.0s
+
+#26 [runtime  8/12] COPY openapi.yaml ./openapi.yaml
+#26 DONE 0.0s
+
+#27 [runtime  9/12] COPY --from=web-build /web/dist ./web/dist
+#27 DONE 0.0s
+
+#28 [runtime 10/12] COPY --from=get-sauce-build /go/bin/get-sauce /usr/local/bin/get-sauce
+#28 DONE 0.0s
+
+#29 [runtime 11/12] COPY --from=get-sauce-build /go/get-sauce.version /app/get-sauce.version
+#29 DONE 0.0s
+
+#30 [runtime 12/12] RUN chown -R downloader:downloader /app
+#30 DONE 0.2s
+
+#31 exporting to image
+#31 exporting layers
+#31 exporting layers 2.8s done
+#31 writing image sha256:9d4dc024552c0b319831b55d989b349de66a0f55a8a9c6104aa586f37234ac37 done
+#31 naming to docker.io/library/downloader-server:engine-candidate done
+#31 DONE 2.8s
+
+===== engine-update-compose.log =====
+r 
+ 16e21cd5a0d7 Pulling fs layer 
+ 8f2131b95a45 Pulling fs layer 
+ 16e21cd5a0d7 Waiting 
+ b8483d994bf7 Pulling fs layer 
+ 0c62cbaa6d4c Pulling fs layer 
+ dc3e0450a753 Pulling fs layer 
+ 7ee36668eb99 Pulling fs layer 
+ bf0c10efe273 Pulling fs layer 
+ 8f2131b95a45 Waiting 
+ b5483f93036a Pulling fs layer 
+ c6f1d2d868e6 Pulling fs layer 
+ 4f4fb700ef54 Pulling fs layer 
+ 0c62cbaa6d4c Waiting 
+ 252fb8da49a3 Pulling fs layer 
+ dc3e0450a753 Waiting 
+ f59e46f25e5b Pulling fs layer 
+ eebd73fb268f Pulling fs layer 
+ b8483d994bf7 Waiting 
+ 4523143cf303 Pulling fs layer 
+ 14957a716e20 Pulling fs layer 
+ 7ee36668eb99 Waiting 
+ e3ffd4460d2f Pulling fs layer 
+ 5a14e2a19b39 Pulling fs layer 
+ bf0c10efe273 Waiting 
+ 9abaa7aee570 Pulling fs layer 
+ b5483f93036a Waiting 
+ 4523143cf303 Waiting 
+ c6f1d2d868e6 Waiting 
+ 14957a716e20 Waiting 
+ e3ffd4460d2f Waiting 
+ 5a14e2a19b39 Waiting 
+ 4f4fb700ef54 Waiting 
+ 9abaa7aee570 Waiting 
+ 252fb8da49a3 Waiting 
+ f59e46f25e5b Waiting 
+ eebd73fb268f Waiting 
+ c2df53f4c168 Downloading [==================================================>]     224B/224B
+ c2df53f4c168 Verifying Checksum 
+ c2df53f4c168 Download complete 
+ e1af7931d349 Downloading [==================================================>]     226B/226B
+ e1af7931d349 Verifying Checksum 
+ e1af7931d349 Download complete 
+ e1af7931d349 Extracting [==================================================>]     226B/226B
+ e1af7931d349 Extracting [==================================================>]     226B/226B
+ 069aa4a0e623 Downloading [>                                                  ]  527.1kB/117.8MB
+ media-source Pulled 
+ e1af7931d349 Pull complete 
+ 8f2131b95a45 Download complete 
+ 16e21cd5a0d7 Downloading [>                                                  ]  48.55kB/4.244MB
+ 16e21cd5a0d7 Verifying Checksum 
+ 16e21cd5a0d7 Download complete 
+ b8483d994bf7 Downloading [==================================================>]     485B/485B
+ b8483d994bf7 Verifying Checksum 
+ b8483d994bf7 Download complete 
+ 0c62cbaa6d4c Downloading [>                                                  ]  163.2kB/14.72MB
+ dc3e0450a753 Downloading [==================================================>]     489B/489B
+ dc3e0450a753 Verifying Checksum 
+ dc3e0450a753 Download complete 
+ 069aa4a0e623 Downloading [============>                                      ]   29.7MB/117.8MB
+ 7ee36668eb99 Downloading [>                                                  ]  163.2kB/15.25MB
+ 0c62cbaa6d4c Verifying Checksum 
+ 0c62cbaa6d4c Download complete 
+ bf0c10efe273 Downloading [==================================================>]   2.46kB/2.46kB
+ bf0c10efe273 Verifying Checksum 
+ bf0c10efe273 Download complete 
+ 7ee36668eb99 Verifying Checksum 
+ 7ee36668eb99 Download complete 
+ b5483f93036a Downloading [==================================================>]     245B/245B
+ b5483f93036a Verifying Checksum 
+ b5483f93036a Download complete 
+ c6f1d2d868e6 Downloading [==================================================>]     890B/890B
+ c6f1d2d868e6 Download complete 
+ 4f4fb700ef54 Downloading [==================================================>]      32B/32B
+ 4f4fb700ef54 Verifying Checksum 
+ 4f4fb700ef54 Download complete 
+ 069aa4a0e623 Downloading [==========================>                        ]  62.11MB/117.8MB
+ 252fb8da49a3 Downloading [>                                                  ]  228.8kB/21.5MB
+ f59e46f25e5b Downloading [>                                                  ]  376.2kB/36.95MB
+ 252fb8da49a3 Verifying Checksum 
+ 252fb8da49a3 Download complete 
+ 069aa4a0e623 Downloading [=======================================>           ]  92.37MB/117.8MB
+ eebd73fb268f Downloading [==================================================>]     803B/803B
+ eebd73fb268f Verifying Checksum 
+ eebd73fb268f Download complete 
+ f59e46f25e5b Downloading [======================================>            ]  28.64MB/36.95MB
+ 4523143cf303 Downloading [==================================================>]     571B/571B
+ 4523143cf303 Download complete 
+ f59e46f25e5b Download complete 
+ 069aa4a0e623 Verifying Checksum 
+ 069aa4a0e623 Download complete 
+ 14957a716e20 Downloading [==================================================>]     399B/399B
+ 14957a716e20 Verifying Checksum 
+ 14957a716e20 Download complete 
+ e3ffd4460d2f Downloading [>                                                  ]  536.5kB/276.2MB
+ 5a14e2a19b39 Downloading [==========================================>        ]  3.502kB/4.148kB
+ 9abaa7aee570 Downloading [==================================================>]   2.59kB/2.59kB
+ 5a14e2a19b39 Downloading [==================================================>]  4.148kB/4.148kB
+ 5a14e2a19b39 Verifying Checksum 
+ 5a14e2a19b39 Download complete 
+ 9abaa7aee570 Verifying Checksum 
+ 9abaa7aee570 Download complete 
+ 069aa4a0e623 Extracting [>                                                  ]  557.1kB/117.8MB
+ e3ffd4460d2f Downloading [=====>                                             ]  28.24MB/276.2MB
+ 069aa4a0e623 Extracting [==>                                                ]  5.571MB/117.8MB
+ e3ffd4460d2f Downloading [==========>                                        ]  58.11MB/276.2MB
+ 069aa4a0e623 Extracting [====>                                              ]   11.7MB/117.8MB
+ e3ffd4460d2f Downloading [===============>                                   ]  86.43MB/276.2MB
+ 069aa4a0e623 Extracting [========>                                          ]   19.5MB/117.8MB
+ e3ffd4460d2f Downloading [=====================>                             ]  117.4MB/276.2MB
+ 069aa4a0e623 Extracting [=========>                                         ]   23.4MB/117.8MB
+ e3ffd4460d2f Downloading [==========================>                        ]  147.8MB/276.2MB
+ e3ffd4460d2f Downloading [================================>                  ]  178.2MB/276.2MB
+ 069aa4a0e623 Extracting [==========>                                        ]  24.51MB/117.8MB
+ e3ffd4460d2f Downloading [=====================================>             ]  208.6MB/276.2MB
+ 069aa4a0e623 Extracting [==========>                                        ]  25.07MB/117.8MB
+ e3ffd4460d2f Downloading [===========================================>       ]    239MB/276.2MB
+ e3ffd4460d2f Downloading [================================================>  ]  270.5MB/276.2MB
+ 069aa4a0e623 Extracting [===========>                                       ]  26.18MB/117.8MB
+ e3ffd4460d2f Verifying Checksum 
+ e3ffd4460d2f Download complete 
+ 069aa4a0e623 Extracting [===========>                                       ]   27.3MB/117.8MB
+ 069aa4a0e623 Extracting [===========>                                       ]  27.85MB/117.8MB
+ 069aa4a0e623 Extracting [=============>                                     ]  32.31MB/117.8MB
+ 069aa4a0e623 Extracting [===============>                                   ]  36.21MB/117.8MB
+ 069aa4a0e623 Extracting [=================>                                 ]  41.22MB/117.8MB
+ 069aa4a0e623 Extracting [=====================>                             ]  49.58MB/117.8MB
+ 069aa4a0e623 Extracting [========================>                          ]  57.93MB/117.8MB
+ 069aa4a0e623 Extracting [==========================>                        ]  62.95MB/117.8MB
+ 069aa4a0e623 Extracting [============================>                      ]  66.85MB/117.8MB
+ 069aa4a0e623 Extracting [================================>                  ]  76.87MB/117.8MB
+ 069aa4a0e623 Extracting [====================================>              ]  85.79MB/117.8MB
+ 069aa4a0e623 Extracting [========================================>          ]  95.26MB/117.8MB
+ 069aa4a0e623 Extracting [============================================>      ]  104.7MB/117.8MB
+ 069aa4a0e623 Extracting [===============================================>   ]    112MB/117.8MB
+ 069aa4a0e623 Extracting [===============================================>   ]  113.1MB/117.8MB
+ 069aa4a0e623 Extracting [================================================>  ]  114.8MB/117.8MB
+ 069aa4a0e623 Extracting [=================================================> ]    117MB/117.8MB
+ 069aa4a0e623 Extracting [==================================================>]  117.8MB/117.8MB
+ 069aa4a0e623 Pull complete 
+ c2df53f4c168 Extracting [==================================================>]     224B/224B
+ c2df53f4c168 Extracting [==================================================>]     224B/224B
+ c2df53f4c168 Pull complete 
+ 16e21cd5a0d7 Extracting [>                                                  ]  65.54kB/4.244MB
+ 16e21cd5a0d7 Extracting [=====================>                             ]  1.835MB/4.244MB
+ 16e21cd5a0d7 Extracting [==================================================>]  4.244MB/4.244MB
+ 16e21cd5a0d7 Extracting [==================================================>]  4.244MB/4.244MB
+ 16e21cd5a0d7 Pull complete 
+ 8f2131b95a45 Extracting [==================================================>]     433B/433B
+ 8f2131b95a45 Extracting [==================================================>]     433B/433B
+ 8f2131b95a45 Pull complete 
+ b8483d994bf7 Extracting [==================================================>]     485B/485B
+ b8483d994bf7 Extracting [==================================================>]     485B/485B
+ b8483d994bf7 Pull complete 
+ 0c62cbaa6d4c Extracting [>                                                  ]  163.8kB/14.72MB
+ 0c62cbaa6d4c Extracting [==================================================>]  14.72MB/14.72MB
+ 0c62cbaa6d4c Pull complete 
+ dc3e0450a753 Extracting [==================================================>]     489B/489B
+ dc3e0450a753 Extracting [==================================================>]     489B/489B
+ dc3e0450a753 Pull complete 
+ 7ee36668eb99 Extracting [>                                                  ]  163.8kB/15.25MB
+ 7ee36668eb99 Extracting [==================>                                ]  5.734MB/15.25MB
+ 7ee36668eb99 Extracting [=====================================>             ]   11.3MB/15.25MB
+ 7ee36668eb99 Extracting [=============================================>     ]  13.93MB/15.25MB
+ 7ee36668eb99 Extracting [================================================>  ]  14.91MB/15.25MB
+ 7ee36668eb99 Extracting [==================================================>]  15.25MB/15.25MB
+ 7ee36668eb99 Pull complete 
+ bf0c10efe273 Extracting [==================================================>]   2.46kB/2.46kB
+ bf0c10efe273 Extracting [==================================================>]   2.46kB/2.46kB
+ bf0c10efe273 Pull complete 
+ b5483f93036a Extracting [==================================================>]     245B/245B
+ b5483f93036a Extracting [==================================================>]     245B/245B
+ b5483f93036a Pull complete 
+ c6f1d2d868e6 Extracting [==================================================>]     890B/890B
+ c6f1d2d868e6 Extracting [==================================================>]     890B/890B
+ c6f1d2d868e6 Pull complete 
+ 4f4fb700ef54 Extracting [==================================================>]      32B/32B
+ 4f4fb700ef54 Extracting [==================================================>]      32B/32B
+ 4f4fb700ef54 Pull complete 
+ 252fb8da49a3 Extracting [>                                                  ]  229.4kB/21.5MB
+ 252fb8da49a3 Extracting [======>                                            ]  2.982MB/21.5MB
+ 252fb8da49a3 Extracting [=========================>                         ]  11.01MB/21.5MB
+ 252fb8da49a3 Extracting [===========================================>       ]  18.58MB/21.5MB
+ 252fb8da49a3 Extracting [==================================================>]   21.5MB/21.5MB
+ 252fb8da49a3 Pull complete 
+ f59e46f25e5b Extracting [>                                                  ]  393.2kB/36.95MB
+ f59e46f25e5b Extracting [====>                                              ]  3.539MB/36.95MB
+ f59e46f25e5b Extracting [=======>                                           ]  5.898MB/36.95MB
+ f59e46f25e5b Extracting [==========>                                        ]  7.471MB/36.95MB
+ f59e46f25e5b Extracting [=============>                                     ]  10.22MB/36.95MB
+ f59e46f25e5b Extracting [================>                                  ]  12.19MB/36.95MB
+ f59e46f25e5b Extracting [============================>                      ]  20.84MB/36.95MB
+ f59e46f25e5b Extracting [========================================>          ]  30.28MB/36.95MB
+ f59e46f25e5b Extracting [================================================>  ]  35.78MB/36.95MB
+ f59e46f25e5b Extracting [=================================================> ]  36.57MB/36.95MB
+ f59e46f25e5b Extracting [==================================================>]  36.95MB/36.95MB
+ f59e46f25e5b Extracting [==================================================>]  36.95MB/36.95MB
+ f59e46f25e5b Pull complete 
+ eebd73fb268f Extracting [==================================================>]     803B/803B
+ eebd73fb268f Extracting [==================================================>]     803B/803B
+ eebd73fb268f Pull complete 
+ 4523143cf303 Extracting [==================================================>]     571B/571B
+ 4523143cf303 Extracting [==================================================>]     571B/571B
+ 4523143cf303 Pull complete 
+ 14957a716e20 Extracting [==================================================>]     399B/399B
+ 14957a716e20 Extracting [==================================================>]     399B/399B
+ 14957a716e20 Pull complete 
+ e3ffd4460d2f Extracting [>                                                  ]  557.1kB/276.2MB
+ e3ffd4460d2f Extracting [>                                                  ]  1.114MB/276.2MB
+ e3ffd4460d2f Extracting [>                                                  ]  1.671MB/276.2MB
+ e3ffd4460d2f Extracting [>                                                  ]  2.228MB/276.2MB
+ e3ffd4460d2f Extracting [>                                                  ]  2.785MB/276.2MB
+ e3ffd4460d2f Extracting [>                                                  ]  5.014MB/276.2MB
+ e3ffd4460d2f Extracting [=>                                                 ]  6.685MB/276.2MB
+ e3ffd4460d2f Extracting [=>                                                 ]  7.242MB/276.2MB
+ e3ffd4460d2f Extracting [=>                                                 ]  7.799MB/276.2MB
+ e3ffd4460d2f Extracting [=>                                                 ]  8.356MB/276.2MB
+ e3ffd4460d2f Extracting [=>                                                 ]  10.58MB/276.2MB
+ e3ffd4460d2f Extracting [==>                                                ]  13.93MB/276.2MB
+ e3ffd4460d2f Extracting [==>                                                ]   15.6MB/276.2MB
+ e3ffd4460d2f Extracting [===>                                               ]  18.38MB/276.2MB
+ e3ffd4460d2f Extracting [===>                                               ]  21.17MB/276.2MB
+ e3ffd4460d2f Extracting [===>                                               ]  21.73MB/276.2MB
+ e3ffd4460d2f Extracting [====>                                              ]  22.84MB/276.2MB
+ e3ffd4460d2f Extracting [====>                                              ]  23.95MB/276.2MB
+ e3ffd4460d2f Extracting [====>                                              ]  25.07MB/276.2MB
+ e3ffd4460d2f Extracting [====>                                              ]  26.74MB/276.2MB
+ e3ffd4460d2f Extracting [=====>                                             ]  32.87MB/276.2MB
+ e3ffd4460d2f Extracting [======>                                            ]  35.65MB/276.2MB
+ e3ffd4460d2f Extracting [======>                                            ]  37.88MB/276.2MB
+ e3ffd4460d2f Extracting [=======>                                           ]  38.99MB/276.2MB
+ e3ffd4460d2f Extracting [=======>                                           ]  43.45MB/276.2MB
+ e3ffd4460d2f Extracting [========>                                          ]  45.68MB/276.2MB
+ e3ffd4460d2f Extracting [========>                                          ]  47.91MB/276.2MB
+ e3ffd4460d2f Extracting [========>                                          ]  48.46MB/276.2MB
+ e3ffd4460d2f Extracting [=========>                                         ]  51.25MB/276.2MB
+ e3ffd4460d2f Extracting [==========>                                        ]  59.05MB/276.2MB
+ e3ffd4460d2f Extracting [===========>                                       ]  65.18MB/276.2MB
+ e3ffd4460d2f Extracting [=============>                                     ]  71.86MB/276.2MB
+ e3ffd4460d2f Extracting [=============>                                     ]  76.87MB/276.2MB
+ e3ffd4460d2f Extracting [==============>                                    ]  81.33MB/276.2MB
+ e3ffd4460d2f Extracting [==============>                                    ]  82.44MB/276.2MB
+ e3ffd4460d2f Extracting [===============>                                   ]  84.67MB/276.2MB
+ e3ffd4460d2f Extracting [===============>                                   ]  86.34MB/276.2MB
+ e3ffd4460d2f Extracting [===============>                                   ]  88.01MB/276.2MB
+ e3ffd4460d2f Extracting [================>                                  ]  92.47MB/276.2MB
+ e3ffd4460d2f Extracting [================>                                  ]  93.03MB/276.2MB
+ e3ffd4460d2f Extracting [=================>                                 ]  94.14MB/276.2MB
+ e3ffd4460d2f Extracting [=================>                                 ]  96.93MB/276.2MB
+ e3ffd4460d2f Extracting [==================>                                ]  103.1MB/276.2MB
+ e3ffd4460d2f Extracting [==================>                                ]  104.2MB/276.2MB
+ e3ffd4460d2f Extracting [===================>                               ]    107MB/276.2MB
+ e3ffd4460d2f Extracting [===================>                               ]  109.2MB/276.2MB
+ e3ffd4460d2f Extracting [===================>                               ]  110.3MB/276.2MB
+ e3ffd4460d2f Extracting [=======================>                           ]  128.1MB/276.2MB
+ e3ffd4460d2f Extracting [=======================>                           ]  129.8MB/276.2MB
+ e3ffd4460d2f Extracting [=======================>                           ]  130.9MB/276.2MB
+ e3ffd4460d2f Extracting [=======================>                           ]    132MB/276.2MB
+ e3ffd4460d2f Extracting [========================>                          ]    137MB/276.2MB
+ e3ffd4460d2f Extracting [========================>                          ]  137.6MB/276.2MB
+ e3ffd4460d2f Extracting [===========================>                       ]  152.1MB/276.2MB
+ e3ffd4460d2f Extracting [=============================>                     ]  160.4MB/276.2MB
+ e3ffd4460d2f Extracting [==============================>                    ]    166MB/276.2MB
+ e3ffd4460d2f Extracting [================================>                  ]  177.1MB/276.2MB
+ e3ffd4460d2f Extracting [==================================>                ]  188.3MB/276.2MB
+ e3ffd4460d2f Extracting [==================================>                ]    190MB/276.2MB
+ e3ffd4460d2f Extracting [=====================================>             ]  207.2MB/276.2MB
+ e3ffd4460d2f Extracting [=========================================>         ]    229MB/276.2MB
+ e3ffd4460d2f Extracting [=============================================>     ]  253.5MB/276.2MB
+ e3ffd4460d2f Extracting [==============================================>    ]  257.4MB/276.2MB
+ e3ffd4460d2f Extracting [===============================================>   ]  261.3MB/276.2MB
+ e3ffd4460d2f Extracting [================================================>  ]  266.8MB/276.2MB
+ e3ffd4460d2f Extracting [=================================================> ]  270.7MB/276.2MB
+ e3ffd4460d2f Extracting [=================================================> ]  273.5MB/276.2MB
+ e3ffd4460d2f Extracting [=================================================> ]  274.6MB/276.2MB
+ e3ffd4460d2f Extracting [=================================================> ]  275.2MB/276.2MB
+ e3ffd4460d2f Extracting [=================================================> ]  275.7MB/276.2MB
+ e3ffd4460d2f Extracting [==================================================>]  276.2MB/276.2MB
+ e3ffd4460d2f Pull complete 
+ 5a14e2a19b39 Extracting [==================================================>]  4.148kB/4.148kB
+ 5a14e2a19b39 Extracting [==================================================>]  4.148kB/4.148kB
+ 5a14e2a19b39 Pull complete 
+ 9abaa7aee570 Extracting [==================================================>]   2.59kB/2.59kB
+ 9abaa7aee570 Extracting [==================================================>]   2.59kB/2.59kB
+ 9abaa7aee570 Pull complete 
+ nextcloud Pulled 
+#1 [internal] load local bake definitions
+#1 reading from stdin 464B done
+#1 DONE 0.0s
+
+#2 [internal] load build definition from Dockerfile
+#2 transferring dockerfile: 2.12kB done
+#2 DONE 0.0s
+
+#3 [internal] load metadata for docker.io/library/python:3.13-slim-trixie
+#3 DONE 0.1s
+
+#4 [internal] load metadata for docker.io/library/node:22-alpine
+#4 DONE 0.1s
+
+#5 [internal] load metadata for docker.io/library/golang:1.27-alpine
+#5 DONE 0.1s
+
+#6 [internal] load .dockerignore
+#6 transferring context: 131B done
+#6 DONE 0.0s
+
+#7 [runtime  1/12] FROM docker.io/library/python:3.13-slim-trixie@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90
+#7 DONE 0.0s
+
+#8 [get-sauce-build 1/3] FROM docker.io/library/golang:1.27-alpine@sha256:fa3d596898d9f126af7c01d14ee7597bab3f39cccf392ef36b69fe77cd681f18
+#8 DONE 0.0s
+
+#9 [web-build 1/6] FROM docker.io/library/node:22-alpine@sha256:0e1754758c2df4cfa3e68d59e2e1b7374bb7fd9ea6328eaaacf15cc934af8202
+#9 DONE 0.0s
+
+#10 [internal] load build context
+#10 transferring context: 3.78kB done
+#10 DONE 0.0s
+
+#11 [get-sauce-build 3/3] RUN go version -m /go/bin/get-sauce | awk '$1 == "mod" && $2 == "github.com/gan-of-culture/get-sauce" {print $3}' > /go/get-sauce.version && grep -Eq '^v[0-9]+[.][0-9]+[.][0-9]+$' /go/get-sauce.version
+#11 CACHED
+
+#12 [web-build 4/6] RUN npm ci --no-audit --no-fund
+#12 CACHED
+
+#13 [web-build 5/6] COPY web/ ./
+#13 CACHED
+
+#14 [runtime  9/12] COPY --from=web-build /web/dist ./web/dist
+#14 CACHED
+
+#15 [get-sauce-build 2/3] RUN go install github.com/gan-of-culture/get-sauce@v1.10.0
+#15 CACHED
+
+#16 [runtime  4/12] COPY requirements.txt ./requirements.txt
+#16 CACHED
+
+#17 [runtime  2/12] RUN apt-get update     && apt-get install -y --no-install-recommends aria2=1.37.0+debian-3 curl ffmpeg ca-certificates     && rm -rf /var/lib/apt/lists/*     && groupadd --system --gid 10001 downloader     && useradd --system --uid 10001 --gid downloader --home-dir /data --shell /usr/sbin/nologin downloader     && mkdir -p /app /data     && chown -R downloader:downloader /app /data
+#17 CACHED
+
+#18 [runtime  6/12] COPY app/ ./app/
+#18 CACHED
+
+#19 [web-build 3/6] COPY web/package.json web/package-lock.json ./
+#19 CACHED
+
+#20 [runtime  7/12] COPY VERSION ./VERSION
+#20 CACHED
+
+#21 [web-build 6/6] RUN npm test && npm run build
+#21 CACHED
+
+#22 [runtime  3/12] WORKDIR /app
+#22 CACHED
+
+#23 [web-build 2/6] WORKDIR /web
+#23 CACHED
+
+#24 [runtime  5/12] RUN pip install --no-cache-dir --upgrade pip     && pip install --no-cache-dir -r requirements.txt
+#24 CACHED
+
+#25 [runtime 10/12] COPY --from=get-sauce-build /go/bin/get-sauce /usr/local/bin/get-sauce
+#25 CACHED
+
+#26 [runtime  8/12] COPY openapi.yaml ./openapi.yaml
+#26 CACHED
+
+#27 [runtime 11/12] COPY --from=get-sauce-build /go/get-sauce.version /app/get-sauce.version
+#27 CACHED
+
+#28 [runtime 12/12] RUN chown -R downloader:downloader /app
+#28 CACHED
+
+#29 exporting to image
+#29 exporting layers done
+#29 writing image sha256:9d4dc024552c0b319831b55d989b349de66a0f55a8a9c6104aa586f37234ac37 done
+#29 naming to docker.io/library/downloader-server:local done
+#29 DONE 0.0s
+
+#30 resolving provenance for metadata file
+#30 DONE 0.0s
+ downloader-server  Built
+ Network media-downloader-server_default  Creating
+ Network media-downloader-server_default  Created
+ Volume "downloader-server-data"  Creating
+ Volume "downloader-server-data"  Created
+ Volume "media-downloader-server_nextcloud-e2e-data"  Creating
+ Volume "media-downloader-server_nextcloud-e2e-data"  Created
+ Container media-downloader-server-nextcloud-1  Creating
+ Container media-downloader-server-media-source-1  Creating
+ Container downloader-server  Creating
+ Container media-downloader-server-nextcloud-1  Created
+ Container media-downloader-server-media-source-1  Created
+ Container downloader-server  Created
+ Container downloader-server  Starting
+ Container media-downloader-server-nextcloud-1  Starting
+ Container media-downloader-server-media-source-1  Starting
+ Container media-downloader-server-media-source-1  Started
+ Container downloader-server  Started
+ Container media-downloader-server-nextcloud-1  Started
+
+===== engine-update-webdav.log =====
+Submitted yt-dlp job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73
+yt-dlp download job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73: queued unknown%
+yt-dlp download job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73: delivering unknown%
+yt-dlp download job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73: completed 100%
+Verified sample-sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+yt-dlp -> Nextcloud WebDAV: PASS
+Submitted aria2c job c9ae8d89-37ed-4139-998a-99d59596b82c
+aria2c download job c9ae8d89-37ed-4139-998a-99d59596b82c: queued unknown%
+aria2c download job c9ae8d89-37ed-4139-998a-99d59596b82c: delivering 100.0%
+aria2c download job c9ae8d89-37ed-4139-998a-99d59596b82c: completed 100%
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+aria2c -> Nextcloud WebDAV: PASS
+Submitted gallery-dl job 3d211b82-d114-4072-bc9b-d2f4ef577ab6
+gallery-dl download job 3d211b82-d114-4072-bc9b-d2f4ef577ab6: queued unknown%
+gallery-dl download job 3d211b82-d114-4072-bc9b-d2f4ef577ab6: delivering unknown%
+gallery-dl download job 3d211b82-d114-4072-bc9b-d2f4ef577ab6: completed 100%
+Verified media-source:9000__sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+gallery-dl -> Nextcloud WebDAV: PASS
+Submitted generic job 2d144ddf-cbcd-497e-95fa-5358f0ed09e5
+generic download job 2d144ddf-cbcd-497e-95fa-5358f0ed09e5: queued unknown%
+generic download job 2d144ddf-cbcd-497e-95fa-5358f0ed09e5: completed 100%
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+generic -> Nextcloud WebDAV: PASS
+Submitted you-get job cd7b9d23-1db9-4524-a3ad-9f057d0b48bc
+you-get download job cd7b9d23-1db9-4524-a3ad-9f057d0b48bc: queued unknown%
+you-get download job cd7b9d23-1db9-4524-a3ad-9f057d0b48bc: delivering None%
+you-get download job cd7b9d23-1db9-4524-a3ad-9f057d0b48bc: completed 100%
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+you-get -> Nextcloud WebDAV: PASS
+ Container downloader-server  Restarting
+ Container downloader-server  Started
+Verified sample-sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+yt-dlp persistence after Compose restart: PASS
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+aria2c persistence after Compose restart: PASS
+Verified media-source:9000__sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+gallery-dl persistence after Compose restart: PASS
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+generic persistence after Compose restart: PASS
+Verified sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+you-get persistence after Compose restart: PASS
+yt-dlp re-delivery job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73: queued unknown%
+yt-dlp re-delivery job 4c4aae2d-a540-4c6e-b1f1-3f1c27daca73: completed 100%
+Verified sample-sample.mp4 in Nextcloud: 22148 bytes, SHA-256 aa00c9e5653de40d56f7e11fcdb18a2ac78a05fb25dd00c775dc185bd6d715cb
+REAL NEXTCLOUD WEBDAV + RESTART + RE-DELIVERY E2E: PASS
+

@@ -32,7 +32,7 @@ def _changes(report: dict[str, Any], label: str) -> list[dict[str, Any]]:
 
 
 def review_candidate(
-    python_report: dict[str, Any], debian_report: dict[str, Any],
+    python_report: dict[str, Any], debian_report: dict[str, Any], *, revalidate_current: bool = False,
 ) -> dict[str, Any]:
     """Reject invalid/mixed/untested engine changes before expensive gates."""
     approved: dict[str, dict[str, str]] = {}
@@ -57,7 +57,7 @@ def review_candidate(
         if (
             not isinstance(old, str) or not isinstance(new, str)
             or (not VERSION.fullmatch(old) and not (source == "debian" and old == "(unpinned)"))
-            or not VERSION.fullmatch(new) or new == old
+            or not VERSION.fullmatch(new) or (new == old and not revalidate_current)
         ):
             raise ValueError("Invalid or unchanged version in engine candidate")
         if engine in approved:
@@ -86,6 +86,7 @@ def review_candidate(
         "status": "candidate-smoke-eligible; NOT release-approved",
         "candidate_engines": sorted(approved),
         "change_count": len(approved),
+        "current_pin_revalidation": revalidate_current,
         "changes": {name: approved[name] for name in sorted(approved)},
         "required_gates": [
             "full Python and parser fixtures",
@@ -104,10 +105,13 @@ def main() -> None:
     parser.add_argument("--python-report", type=Path, required=True)
     parser.add_argument("--debian-report", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--revalidate-current", action="store_true",
+                        help="Explicit non-promoting revalidation of newest-published current pins")
     args = parser.parse_args()
     plan = review_candidate(
         json.loads(args.python_report.read_text(encoding="utf-8")),
         json.loads(args.debian_report.read_text(encoding="utf-8")),
+        revalidate_current=args.revalidate_current,
     )
     args.output.write_text(json.dumps(plan, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("Accepted candidate source validation for: " + ", ".join(plan["candidate_engines"]))

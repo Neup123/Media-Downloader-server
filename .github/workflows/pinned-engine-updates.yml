@@ -5,6 +5,12 @@ on:
     - cron: "41 6 * * 2"
   workflow_dispatch:
     inputs:
+      demonstration:
+        description: "Branch-only real published candidate or deliberately broken candidate; never promote"
+        required: false
+        type: choice
+        options: [none, published, broken]
+        default: none
       rehearsal_only:
         description: "Rehearse red/green candidate acceptance on current pins; never create PR/issue/release"
         required: false
@@ -44,6 +50,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ "${{ inputs.demonstration }}" != "" && "${{ inputs.demonstration }}" != "none" ]]; then
+            test "$GITHUB_REF" != "refs/heads/main"
+            test "${{ inputs.rehearsal_only }}" != "true"
+            python -m scripts.engine_update_demonstration --mode "${{ inputs.demonstration }}"
+            git diff -- requirements.txt Dockerfile > engine-candidate.patch
+            git rev-parse HEAD > engine-candidate-source.txt
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [[ "${{ inputs.rehearsal_only }}" == "true" ]]; then
             python -m scripts.engine_update_rehearsal \
               --python-report engine-update-report.json \
@@ -71,7 +86,7 @@ jobs:
           fi
 
       - name: Open a dedicated candidate PR (the remaining steps test that exact candidate)
-        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
+        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none')
         id: open_pr
         shell: bash
         run: |
@@ -112,9 +127,12 @@ jobs:
           python -m scripts.engine_candidate_gate \
             --python-report engine-update-report.json \
             --debian-report debian-engine-update-report.json \
-            --output engine-promotion-report.json
+            --output engine-promotion-report.json \
+            ${{ inputs.demonstration == 'published' && '--revalidate-current' || '' }} 2>&1 | tee engine-update-policy.log
 
       - name: Install pinned dependencies and test requirements
+        env:
+          DATA_DIR: ${{ runner.temp }}/downloader-candidate-tests
         if: steps.detect.outputs.changed == 'true'
         shell: bash
         run: |
@@ -202,7 +220,7 @@ jobs:
           from pathlib import Path
           import re
           files = [
-              "engine-update-detection.log", "debian-engine-detection.log",
+              "engine-update-policy.log", "engine-update-detection.log", "debian-engine-detection.log",
               "debian-engine-policy.log", "engine-update-tests.log",
               "engine-update-docker.log", "engine-update-compose.log",
               "engine-update-webdav.log",
@@ -226,6 +244,9 @@ jobs:
             debian-engine-update-report.json
             engine-promotion-report.json
             engine-update-rehearsal.json
+            engine-update-demonstration.json
+            engine-candidate.patch
+            engine-candidate-source.txt
             engine-update-diagnostics.txt
           retention-days: 30
 
@@ -241,7 +262,7 @@ jobs:
       # An absent repository variable fails CLOSED.
       - name: Merge green candidate (normal branch protection still applies)
         id: promote
-        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none') && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -266,7 +287,7 @@ jobs:
           echo "merged_sha=$merged_sha" >> "$GITHUB_OUTPUT"
 
       - name: Cut a patch release from the tested merged main
-        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
+        if: success() && steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none') && vars.DOWNLOADER_AUTOMATED_RELEASES_APPROVED == 'true'
         shell: bash
         run: |
           set -euo pipefail

@@ -1,0 +1,23 @@
+{
+  "mode": "broken",
+  "checked": {
+    "gallery-dl": {
+      "pinned": "1.32.19",
+      "published": "1.32.19",
+      "artifact_sha256": "f6b1eb5e9a7409a988b754335d99dbb1873e130d133ed5d164d32e5e645d1c50"
+    },
+    "you-get": {
+      "pinned": "0.4.1743",
+      "published": "0.4.1743",
+      "artifact_sha256": "9f8968769772d3b50e0b38f33f119a4c0d5708ecfe0eeacee950661523b2ccf7"
+    },
+    "yt-dlp": {
+      "pinned": "2026.10.26",
+      "published": "2026.10.26",
+      "artifact_sha256": "a05c5b5d8562f7e8a62f5334348b406af4930d56d3a65f8021d14af0e22339ae"
+    }
+  },
+  "no_newer_upstream_release": true,
+  "is_version_bump": false,
+  "production_promotion_permitted": false
+}

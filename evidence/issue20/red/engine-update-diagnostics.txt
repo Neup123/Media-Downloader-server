@@ -1,0 +1,17 @@
+===== engine-update-policy.log =====
+Traceback (most recent call last):
+  File "<frozen runpy>", line 203, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/home/runner/work/Media-Downloader-server/Media-Downloader-server/scripts/engine_candidate_gate.py", line 122, in <module>
+    main()
+    ~~~~^^
+  File "/home/runner/work/Media-Downloader-server/Media-Downloader-server/scripts/engine_candidate_gate.py", line 111, in main
+    plan = review_candidate(
+        json.loads(args.python_report.read_text(encoding="utf-8")),
+        json.loads(args.debian_report.read_text(encoding="utf-8")),
+        revalidate_current=args.revalidate_current,
+    )
+  File "/home/runner/work/Media-Downloader-server/Media-Downloader-server/scripts/engine_candidate_gate.py", line 68, in review_candidate
+    raise ValueError("PyPI candidate is missing its exact artifact SHA-256")
+ValueError: PyPI candidate is missing its exact artifact SHA-256
+
