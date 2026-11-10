@@ -164,7 +164,7 @@ class Aria2Rpc:
                             entries = _manifest_entries(files, root)
                             # A magnet metadata GID exposes only a synthetic
                             # [METADATA]<infohash> file. Wait for the follow-on
-                            # GID with the torrent\'s actual file list.
+                            # GID with the torrent's actual file list.
                             if entries:
                                 return {"files": entries, "file_count": len(entries)}
                     await asyncio.sleep(0.25)
