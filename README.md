@@ -60,7 +60,9 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - REST base path: `/api/v1`
 - Authentication: `X-API-Key`
 - API reference: `/api-reference` (Scalar, bundled in the local Vite build; no external CDN or Nextcloud required)
-- Media metadata preview: `POST /api/v1/preview` inspects yt-dlp formats or the first 50 playlist entries without downloading; only allowlisted metadata is returned.
+- Media metadata preview: POST /api/v1/preview returns bounded, source-ordered yt-dlp media entries with optional real thumbnail, duration, Unix timestamps, and live status. Request max_entries (1–100) and offset (0–100000); has_more and next_offset allow another page past the former 100-entry cap. Missing extractor metadata is null, and source ordering is not guaranteed to be chronological for every provider. Flat extraction can omit fields a detail request might otherwise find.
+- Torrent manifest preview: POST /api/v1/torrent/manifest accepts a magnet URI as url or base64-encoded .torrent contents as torrent_base64 (max 2 MB). It returns each actual file index, relative path, name and size without queuing a full download. Magnet metadata retrieval can time out; the aria2 metadata task and any follow-on transfer GIDs are cleaned up. Remote HTTP .torrent URLs are not supported, to avoid accidentally fetching arbitrary payloads under a mislabeled link.
+- Core aria2 starts with --seed-time=0; Core also forces seed-time=0 on every aria2 job even if saved or per-job options request another value. This includes direct administrator/API submissions, not just Nextcloud-gateway submissions.
 - Presets: `/api/v1/presets`
 - Automatic URL routing rules: `/api/v1/engine-rules`
 - Batch queue: `POST /api/v1/jobs/batch` (up to 50 items)
