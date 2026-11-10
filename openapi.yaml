@@ -109,15 +109,11 @@ paths:
         content:
           application/json:
             schema:
-              oneOf:
-                - type: object
-                  required: [url]
-                  properties:
-                    url: { type: string, minLength: 8, maxLength: 4096, description: Magnet URI }
-                - type: object
-                  required: [torrent_base64]
-                  properties:
-                    torrent_base64: { type: string, minLength: 4, maxLength: 2800000, description: Base64 .torrent file }
+              type: object
+              description: Exactly one of the two nullable fields must be non-null.
+              properties:
+                url: { type: [string, 'null'], minLength: 8, maxLength: 4096, description: Magnet URI }
+                torrent_base64: { type: [string, 'null'], minLength: 4, maxLength: 2800000, description: Base64 .torrent file }
             example: {url: 'magnet:?xt=urn:btih:0123456789012345678901234567890123456789'}
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
