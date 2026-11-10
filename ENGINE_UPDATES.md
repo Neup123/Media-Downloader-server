@@ -49,6 +49,20 @@ artifact SHA-256 digest. Python dependency versions are updated as exact
 **pip is not yet configured with a complete hash-locked dependency graph**.
 Do not describe this as checksum-enforced installation.
 
+## Required repository Actions setting
+
+The update workflows use the built-in `GITHUB_TOKEN` to open candidate pull
+requests. In **Settings > Actions > General > Workflow permissions**, a repository
+owner must enable **Allow GitHub Actions to create and approve pull requests**.
+Without this repository-level switch (`can_approve_pull_request_reviews=false`),
+`gh pr create` fails with the GraphQL `createPullRequest` permission error
+**after** the candidate branch may already have been pushed; the smoke/provenance,
+Python, Docker and WebDAV acceptance gates are then **not run**. Top-level
+`permissions: pull-requests: write` is already declared but cannot override
+that setting. No PAT, app token, secret or workflow-file workaround is used.
+Enabling the setting permits candidate PR creation only; the separate
+acceptance, branch-protection and automated-release approval gates remain intact.
+
 ## Promotion to the default branch
 
 The workflows can run from `main` for candidate discovery and acceptance, but **green
