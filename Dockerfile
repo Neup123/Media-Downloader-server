@@ -33,6 +33,16 @@ COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
 COPY app/ ./app/
+# Probe shims use importlib.metadata and fail when the installed package is
+# missing, rather than reporting a misleading Python interpreter version.
+COPY app/engine_probe_cli.py /usr/local/bin/telegram-engine
+RUN chmod 755 /usr/local/bin/telegram-engine \
+    && ln -s telegram-engine /usr/local/bin/musicdl-engine \
+    && ln -s telegram-engine /usr/local/bin/ddddocr-engine \
+    && telegram-engine --version \
+    && musicdl-engine --version \
+    && ddddocr-engine --version \
+    && pyload --version
 COPY VERSION ./VERSION
 COPY openapi.yaml ./openapi.yaml
 COPY --from=web-build /web/dist ./web/dist
