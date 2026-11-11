@@ -79,17 +79,30 @@ def test_musicdl_source_is_derived_from_supported_host():
         music_client("https://open.spotify.com/playlist/123", "JamendoMusicClient")
 
 
-def test_musicdl_runs_cli_as_argv_without_shell(tmp_path):
-    cli = tmp_path / "musicdl"
+def test_musicdl_runs_cli_as_argv_without_shell(tmp_path, monkeypatch):
+    # Use the same Python interpreter on Linux and Windows. A shebang-only
+    # executable is not runnable with CreateProcess on Windows.
+    from app.adapters import common_cli, musicdl
+    cli = tmp_path / "fake_musicdl.py"
     cli.write_text(
-        "#!/usr/bin/env python3\n"
-        "import pathlib,sys\n"
-        "assert sys.argv[1:] == ['-p', 'https://open.spotify.com/playlist/123', '-m', 'SpotifyMusicClient']\n"
-        "pathlib.Path('song.mp3').write_bytes(b'song')\n"
+        "import pathlib,sys\\n"
+        "assert sys.argv[1:] == ['-p', 'https://open.spotify.com/playlist/123', '-m', 'SpotifyMusicClient']\\n"
+        "pathlib.Path('song.mp3').write_bytes(b'song')\\n"
     )
-    cli.chmod(0o755)
+
+    async def run_platform_neutral_cli(*, name, argv, **kwargs):
+        assert name == "musicdl"
+        assert argv == [
+            "musicdl", "-p", "https://open.spotify.com/playlist/123",
+            "-m", "SpotifyMusicClient",
+        ]
+        return await common_cli.run_cli(
+            name=name, argv=[sys.executable, str(cli), *argv[1:]], **kwargs,
+        )
+
+    monkeypatch.setattr(musicdl, "run_cli", run_platform_neutral_cli)
     files = asyncio.run(run_musicdl(
-        executable=str(cli), url="https://open.spotify.com/playlist/123",
+        executable="musicdl", url="https://open.spotify.com/playlist/123",
         workdir=tmp_path / "songs", global_settings={}, overrides={},
         on_progress=progress, on_log=log, is_cancelled=not_cancelled,
     ))
