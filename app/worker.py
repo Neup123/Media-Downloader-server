@@ -233,6 +233,10 @@ class JobWorker:
                 return
             if not engine_policy(session, job.engine, self.settings)["permitted"]:
                 return
+            existing_pyload_package_id = (
+                (job.progress or {}).get("pyload_package_id")
+                if job.engine == "pyload" else None
+            )
             transition_job(job, JobStatus.STARTING)
             # Preserve previously verified delivery records on crash recovery.
             # The explicit retry API clears these records itself; if the
@@ -395,6 +399,7 @@ class JobWorker:
                         api_key=self.settings.pyload_api_key or "",
                         shared_root=self.settings.pyload_shared_root or self.settings.data_dir,
                         run_ddddocr_opt_in=ddddocr_allowed,
+                        existing_package_id=existing_pyload_package_id,
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
@@ -434,6 +439,8 @@ class JobWorker:
                     transition_job(current, JobStatus.CAPTCHA_WAITING, progress={
                         "state": "captcha-waiting", "requires_action": True,
                         "alert_type": "captcha",
+                        "captcha_task_id": exc.task_id,
+                        "pyload_package_id": exc.package_id,
                     })
                     current.error = None
                     append_log(current, str(exc))
