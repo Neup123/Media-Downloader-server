@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 
 def test_health_is_public(client):
     response = client.get("/healthz")
@@ -46,6 +48,47 @@ def test_aria2_accepts_magnet_and_rejects_invalid_engine_option(client, auth_hea
         "overrides": {"options": {"rpc-listen-all": "true"}},
     })
     assert invalid.status_code == 422
+
+
+
+@pytest.mark.parametrize("selection", ["3", "4,6", "1,2,3,4,5,6", "003"])
+@pytest.mark.parametrize("engine", ["aria2c", "auto"])
+def test_aria2_job_accepts_select_file_selection(client, auth_headers, selection, engine):
+    response = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+        "engine": engine,
+        "overrides": {"options": {"select-file": selection}},
+    })
+    assert response.status_code == 202, response.text
+    assert response.json()["engine"] == "aria2c"
+    assert response.json()["overrides"]["options"]["select-file"] == selection
+
+
+@pytest.mark.parametrize("selection", [
+    "", "0", "00", "1,0", "-1", "1,-2", "1,,2", "1,", ",2",
+    "one", "1,a", "1-3", " 1", "1 ", "1, 2", "1,\\t2", "1\\n2",
+    3, 1.5, True, None, ["1", "2"],
+])
+def test_aria2_job_rejects_invalid_select_file(client, auth_headers, selection):
+    response = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567",
+        "engine": "aria2c",
+        "overrides": {"options": {"select-file": selection}},
+    })
+    assert response.status_code == 422, (selection, response.text)
+    assert response.json()["detail"] == (
+        "aria2c select-file must be comma-separated positive integer file indexes"
+    )
+
+
+def test_select_file_is_not_a_yt_dlp_option(client, auth_headers):
+    response = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.com/video",
+        "engine": "yt-dlp",
+        "overrides": {"options": {"select-file": "3"}},
+    })
+    assert response.status_code == 422
+    assert "Unknown yt-dlp setting(s): options" in response.json()["detail"]
 
 
 def test_cancel_queued_job_and_retry(client, auth_headers):

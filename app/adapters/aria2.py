@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 import subprocess
 import tempfile
@@ -20,7 +21,20 @@ ARIA2_OPTION_ALLOWLIST = {
     "connect-timeout", "timeout", "lowest-speed-limit", "max-download-limit",
     "user-agent", "referer", "header", "allow-overwrite", "auto-file-renaming",
     "check-integrity", "seed-time", "seed-ratio", "bt-max-peers", "bt-stop-timeout",
+    "select-file",
 }
+
+
+
+def validate_select_file(value: Any) -> str:
+    """Validate aria2's comma-separated, one-based torrent file indexes."""
+    if (
+        not isinstance(value, str)
+        or re.fullmatch(r"[0-9]+(?:,[0-9]+)*", value) is None
+        or any(not index.strip("0") for index in value.split(","))
+    ):
+        raise ValueError("aria2c select-file must be comma-separated positive integer file indexes")
+    return value
 
 
 def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]) -> dict[str, str]:
@@ -32,6 +46,8 @@ def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]
         for key, value in options.items():
             if key not in ARIA2_OPTION_ALLOWLIST:
                 raise ValueError(f"aria2 option is not allowed through the settings API: {key}")
+            if key == "select-file":
+                validate_select_file(value)
             text = str(value)
             if len(text) > 1024 or "\x00" in text:
                 raise ValueError(f"Invalid value for aria2 option {key}")
@@ -146,7 +162,6 @@ class Aria2Rpc:
                 else:
                     if not url or not url.startswith("magnet:?"):
                         raise ValueError("Manifest URL must be a magnet link")
-                    options["bt-metadata-only"] = "true"
                     gid = await self.call("aria2.addUri", [[url], options])
                 tracked.add(str(gid))
                 deadline = asyncio.get_running_loop().time() + timeout_seconds
@@ -160,7 +175,12 @@ class Aria2Rpc:
                             raise RuntimeError("aria2 could not retrieve torrent metadata")
                         files = status.get("files") or []
                         if status.get("bittorrent") and files:
-                            return {"files": _manifest_entries(files, root), "file_count": len(files)}
+                            entries = _manifest_entries(files, root)
+                            # A magnet metadata GID exposes only a synthetic
+                            # [METADATA]<infohash> file. Wait for the follow-on
+                            # GID with the torrent's actual file list.
+                            if entries:
+                                return {"files": entries, "file_count": len(entries)}
                     await asyncio.sleep(0.25)
                 raise TimeoutError("Torrent metadata was not available before the deadline")
             finally:
@@ -293,12 +313,21 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
+def _is_aria2_metadata_path(path: Any) -> bool:
+    # aria2 represents a magnet metadata transfer as a bare synthetic file,
+    # not an actual path in the preview root. Match only a BTIH hex hash;
+    # other out-of-root paths must still fail validation.
+    return isinstance(path, str) and re.fullmatch(r"\[METADATA\][0-9a-fA-F]{40}", path) is not None
+
+
 def _manifest_entries(files: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
     if len(files) > 10_000:
         raise ValueError("Torrent contains too many files for manifest preview")
     result = []
     for item in files:
         raw_path = item.get("path")
+        if _is_aria2_metadata_path(raw_path):
+            continue
         if not isinstance(raw_path, str) or not raw_path:
             raise ValueError("Torrent metadata contains an invalid path")
         path = Path(raw_path)
