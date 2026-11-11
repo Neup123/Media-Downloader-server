@@ -162,6 +162,85 @@ paths:
                   installed: true
                   version: '2026.01.01'
                   defaults: {}
+  /engines/{engine_name}/policy:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, telegram, pyload, musicdl, ddddocr] }
+    get:
+      operationId: getEnginePolicy
+      summary: Read per-engine enablement, requirement readiness and RAM opt-in
+      tags: [engines]
+      responses:
+        '200':
+          description: Persisted engine policy with unmet requirements
+          content:
+            application/json:
+              example:
+                engine: ddddocr
+                enabled: true
+                run_carefully: false
+                requires_run_carefully: true
+                ram_note: Uses 150–350 MB RAM while solving
+                requirements_met: false
+                permitted: false
+                inactive_reason: Explicit run carefully opt-in is required
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Unknown engine }
+    put:
+      operationId: updateEnginePolicy
+      summary: Persist enablement and explicit background engine opt-in
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnginePolicyIn' }
+            example: {enabled: true, run_carefully: true}
+      responses:
+        '200':
+          description: Saved effective policy
+          content:
+            application/json:
+              example: {engine: ddddocr, enabled: true, run_carefully: true, requires_run_carefully: true, requirements_met: true, permitted: true}
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Unknown engine }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /engines/telegram/credentials:
+    get:
+      operationId: getTelegramCredentialStatus
+      summary: Check Telegram credential readiness without revealing secrets
+      tags: [engines]
+      responses:
+        '200':
+          description: Redacted Telegram credential readiness
+          content:
+            application/json:
+              example: {configured: false, secrets_returned: false}
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    put:
+      operationId: updateTelegramCredentials
+      summary: Store owner-provided Telegram API credentials and an authorized MTProto session encrypted
+      description: Requires APP_ENCRYPTION_KEY. Never returns plaintext API hash or session data.
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TelegramCredentialsIn' }
+            example:
+              api_id: 123456
+              api_hash: '0123456789abcdef0123456789abcdef'
+              session_string: 'PASTE_YOUR_OWN_AUTHORIZED_TELEGRAM_SESSION_STRING'
+      responses:
+        '200':
+          description: Redacted credential readiness
+          content:
+            application/json:
+              example: {configured: true, secrets_returned: false}
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
   /engines/{engine_name}/options:
     parameters:
       - name: engine_name
@@ -676,6 +755,35 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/captcha:
+    post:
+      operationId: answerManualCaptcha
+      summary: Submit a manual pyLoad captcha answer and resume the original package
+      description: Only captcha-waiting pyLoad jobs may accept an answer, which is never stored in the job log.
+      tags: [jobs]
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaptchaAnswerIn' }
+            example: {answer: ABCD}
+      responses:
+        '200':
+          description: The existing pyLoad package is queued to resume
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Job not found }
+        '409': { description: Job has no resumable pyLoad captcha challenge }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '502': { description: pyLoad rejected captcha submission }
+        '503': { description: pyLoad service not configured }
   /jobs/{job_id}/pause:
     parameters:
       - name: job_id
