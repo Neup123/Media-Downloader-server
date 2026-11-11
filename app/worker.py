@@ -7,7 +7,7 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.adapters.aria2 import Aria2Rpc
+from app.adapters.aria2 import Aria2Rpc, Aria2MetadataPending
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
 from app.adapters.you_get import run_you_get
@@ -378,6 +378,25 @@ class JobWorker:
                     current.progress = {**(current.progress or {}), "state": "completed", "percent": 100}
                     current.finished_at = utcnow()
                     append_log(current, f"Delivery verified for {len(delivered)} file(s)")
+                    session.commit()
+        except Aria2MetadataPending as exc:
+            # Metadata-only is retryable. Preserve the job rather than
+            # recording a false hard failure when peer discovery is absent.
+            await on_log(str(exc))
+            await asyncio.sleep(30)
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    if current.cancel_requested:
+                        transition_job(current, JobStatus.CANCELLED)
+                        append_log(current, "Cancelled while waiting for torrent payload retry")
+                    else:
+                        transition_job(current, JobStatus.QUEUED, progress={
+                            "state": "queued", "retryable": True,
+                            "reason": "torrent-metadata-only",
+                        })
+                        current.error = None
+                        append_log(current, "Torrent payload not started; queued for another attempt")
                     session.commit()
         except asyncio.CancelledError:
             with self.session_factory() as session:
