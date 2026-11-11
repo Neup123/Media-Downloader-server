@@ -16,6 +16,7 @@ from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
+from app.captcha import CaptchaWaiting
 from app.engine_gate import engine_policy
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
@@ -385,6 +386,19 @@ class JobWorker:
                     current.progress = {**(current.progress or {}), "state": "completed", "percent": 100}
                     current.finished_at = utcnow()
                     append_log(current, f"Delivery verified for {len(delivered)} file(s)")
+                    session.commit()
+        except CaptchaWaiting as exc:
+            # Nonterminal; SSE job events notify connected clients that owner
+            # action is necessary. No secret/image material is persisted here.
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    transition_job(current, JobStatus.CAPTCHA_WAITING, progress={
+                        "state": "captcha-waiting", "requires_action": True,
+                        "alert_type": "captcha",
+                    })
+                    current.error = None
+                    append_log(current, str(exc))
                     session.commit()
         except Aria2MetadataPending as exc:
             # Metadata-only is retryable. Preserve the job rather than
