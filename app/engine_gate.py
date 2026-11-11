@@ -63,6 +63,10 @@ def engine_policy(session: Session, name: str, config: Settings) -> dict[str, An
     unmet = None
     if name == "telegram" and telegram_credentials(session, config) is None:
         unmet = "Telegram API ID, API hash and authorized session are required"
+    elif name == "pyload" and (
+        not config.pyload_api_url or not config.pyload_api_key or not config.pyload_shared_root
+    ):
+        unmet = "Authenticated pyLoad service URL, API key and shared download root are required"
     elif name in RAM_NOTES and not opt_in:
         unmet = "Explicit run carefully opt-in is required"
     reason = "Engine disabled by owner" if not enabled else unmet
