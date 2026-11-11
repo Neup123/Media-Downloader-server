@@ -2,7 +2,7 @@ fastapi==0.128.2
 uvicorn[standard]==0.48.0
 SQLAlchemy==2.0.50
 httpx==0.28.1
-cryptography==46.0.4
+cryptography==46.0.5
 PyYAML==6.0.3
 yt-dlp==2026.10.26
 gallery-dl==1.32.19
