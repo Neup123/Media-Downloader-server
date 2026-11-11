@@ -155,6 +155,10 @@ class EnginePolicyIn(BaseModel):
     run_carefully: bool = Field(strict=True)
 
 
+class CaptchaAnswerIn(BaseModel):
+    answer: str = Field(min_length=1, max_length=1024)
+
+
 class TelegramCredentialsIn(BaseModel):
     # MTProto authorization requires more than API ID/hash alone.
     api_id: int = Field(gt=0)
