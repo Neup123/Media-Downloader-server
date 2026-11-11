@@ -134,7 +134,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def list_engines(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
         result = []
         for item in ENGINE_DESCRIPTIONS:
-            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce"}[item["name"]]
+            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce",
+                      "telegram": "telegram-engine", "pyload": "pyload",
+                      "musicdl": "musicdl-engine", "ddddocr": "ddddocr-engine"}[item["name"]]
             executable = shutil.which(binary)
             version = None
             if executable:
@@ -784,6 +786,18 @@ def _require_engine(engine_name: str) -> None:
 def validate_engine_settings(engine: str, values: dict, partial: bool = False) -> dict:
     if not isinstance(values, dict):
         raise ValueError("Engine settings must be an object")
+    if engine in {"telegram", "pyload", "ddddocr"}:
+        if values:
+            raise ValueError(f"{engine} does not accept job-level options")
+        return {}
+    if engine == "musicdl":
+        if set(values) - {"source"}:
+            raise ValueError("Unknown musicdl setting")
+        if "source" in values and (
+            not isinstance(values["source"], str) or len(values["source"]) > 80
+        ):
+            raise ValueError("Invalid musicdl source client")
+        return dict(values)
     if engine == "yt-dlp":
         allowed = {"format", "subtitles_lang", "write_subtitles", "embed_subtitles", "extra_args", "cookies_file", "allow_playlist", "playlist_items"}
         unknown = set(values) - allowed
@@ -968,6 +982,16 @@ def _resolve_job_engine(url: str, requested: str, session: Session, preset: Pres
         return "aria2c"
     host = (parsed.hostname or "").lower().rstrip(".")
     path = parsed.path or "/"
+    if host in {"t.me", "www.t.me", "telegram.me", "www.telegram.me"}:
+        return "telegram"
+    if path.lower().endswith((".dlc", ".ccf", ".rsdf")):
+        return "pyload"
+    if host in {
+        "open.spotify.com", "soundcloud.com", "www.soundcloud.com",
+        "audius.co", "ccmixter.org", "www.jamendo.com",
+        "www.kuwo.cn", "music.163.com", "y.qq.com", "www.deezer.com",
+    }:
+        return "musicdl"
     matches = []
     if host:
         for rule in session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all():
@@ -995,6 +1019,8 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
             raise HTTPException(status_code=404, detail="Selected preset was not found")
 
     engine = _resolve_job_engine(payload.url, payload.engine, session, preset)
+    if engine == "ddddocr":
+        raise HTTPException(status_code=422, detail="ddddocr solves captcha images; it does not accept download URLs")
     policy = engine_policy(session, engine, config)
     if not policy["permitted"]:
         raise HTTPException(status_code=422, detail=policy["inactive_reason"] or "Engine unavailable")
