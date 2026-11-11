@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlsplit
 from typing import Any, Awaitable, Callable
 
 from app.adapters.common_cli import run_cli
+from app.adapters.yt_dlp import run_ytdlp
 
 
 def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -43,7 +45,29 @@ async def run_you_get(
             raise ValueError("Selected you-get cookie file was not found")
         argv.extend(["--cookies", str(path)])
     argv.append(url)
-    return await run_cli(
-        name="you-get", argv=argv, workdir=workdir,
-        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-    )
+    try:
+        return await run_cli(
+            name="you-get", argv=argv, workdir=workdir,
+            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+        )
+    except RuntimeError as exc:
+        # Upstream you-get 0.4.1743's YouTube dethrottle extractor fails on
+        # current streams. Preserve its working direct-file path unchanged.
+        host = (urlsplit(url).hostname or "").lower().rstrip(".")
+        youtube_hosts = {
+            "youtube.com", "www.youtube.com", "m.youtube.com",
+            "music.youtube.com", "youtu.be", "www.youtu.be",
+        }
+        if host not in youtube_hosts or "you-get exited with status" not in str(exc):
+            raise
+        await on_log("you-get YouTube extractor failed; falling back to bundled yt-dlp")
+        fallback_overrides = (
+            {"cookies_file": options["cookies_file"]}
+            if options["cookies_file"] else {}
+        )
+        return await run_ytdlp(
+            executable="yt-dlp", url=url, workdir=workdir,
+            global_settings={}, overrides=fallback_overrides,
+            cookie_dir=cookie_dir, on_progress=on_progress,
+            on_log=on_log, is_cancelled=is_cancelled,
+        )
