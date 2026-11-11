@@ -85,9 +85,9 @@ def test_musicdl_runs_cli_as_argv_without_shell(tmp_path, monkeypatch):
     from app.adapters import common_cli, musicdl
     cli = tmp_path / "fake_musicdl.py"
     cli.write_text(
-        "import pathlib,sys\\n"
-        "assert sys.argv[1:] == ['-p', 'https://open.spotify.com/playlist/123', '-m', 'SpotifyMusicClient']\\n"
-        "pathlib.Path('song.mp3').write_bytes(b'song')\\n"
+        "import pathlib,sys\n"
+        "assert sys.argv[1:] == ['-p', 'https://open.spotify.com/playlist/123', '-m', 'SpotifyMusicClient']\n"
+        "pathlib.Path('song.mp3').write_bytes(b'song')\n"
     )
 
     async def run_platform_neutral_cli(*, name, argv, **kwargs):
