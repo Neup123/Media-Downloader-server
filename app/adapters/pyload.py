@@ -161,6 +161,9 @@ async def submit_pyload_captcha(*, api_url: str, api_key: str, task_id: int,
             data={"tid": str(task_id), "result": answer},
         )
         response.raise_for_status()
-        body = response.json()
-        if isinstance(body, dict) and "error" in body:
-            raise RuntimeError("pyLoad refused the manual captcha answer")
+        # pyLoad returns no payload on a successful manual captcha POST in
+        # some supported versions. An empty 2xx body is a valid success.
+        if response.content:
+            body = response.json()
+            if isinstance(body, dict) and "error" in body:
+                raise RuntimeError("pyLoad refused the manual captcha answer")
