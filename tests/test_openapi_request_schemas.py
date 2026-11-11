@@ -13,7 +13,8 @@ import yaml
 
 from app.schemas import (
     CookieUploadIn, DeliverySettingsIn, EngineRuleInput, EngineRuleOrderInput,
-    EngineSettingsIn, JobBatchCreate, JobCreate, MediaPreviewIn, TorrentManifestIn, PresetInput,
+    EngineSettingsIn, EnginePolicyIn, TelegramCredentialsIn, CaptchaAnswerIn,
+    JobBatchCreate, JobCreate, MediaPreviewIn, TorrentManifestIn, PresetInput,
 )
 
 
@@ -21,6 +22,9 @@ OPERATIONS = {
     ("post", "/preview"): MediaPreviewIn,
     ("post", "/torrent/manifest"): TorrentManifestIn,
     ("put", "/engines/{engine_name}/settings"): EngineSettingsIn,
+    ("put", "/engines/{engine_name}/policy"): EnginePolicyIn,
+    ("put", "/engines/telegram/credentials"): TelegramCredentialsIn,
+    ("post", "/jobs/{job_id}/captcha"): CaptchaAnswerIn,
     ("put", "/cookies/{filename}"): CookieUploadIn,
     ("post", "/presets"): PresetInput,
     ("put", "/presets/{preset_id}"): PresetInput,
