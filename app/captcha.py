@@ -12,7 +12,13 @@ PaidSolver = Callable[[bytes], Awaitable[str | None]]
 
 
 class CaptchaWaiting(RuntimeError):
-    """No solver completed; the job must remain nonterminal awaiting input."""
+    """No solver completed; preserve the pyLoad challenge ID for manual handoff."""
+
+    def __init__(self, message: str, *, task_id: int | None = None,
+                 package_id: int | None = None):
+        super().__init__(message)
+        self.task_id = task_id
+        self.package_id = package_id
 
 
 def _ocr(image: bytes) -> str | None:
