@@ -8,3 +8,8 @@ yt-dlp==2026.10.26
 gallery-dl==1.32.19
 you-get==0.4.1743
 svtplay-dl==4.211
+# Optional download engines; must be version probed in the built image.
+Telethon==1.45.0
+pyload-ng==0.5.0b3.dev102
+musicdl==2.14.2
+ddddocr==1.6.1
