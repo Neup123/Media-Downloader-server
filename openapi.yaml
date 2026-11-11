@@ -729,6 +729,36 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/captcha:
+    post:
+      operationId: answerManualCaptcha
+      summary: Submit a manual pyLoad captcha answer and resume the same package
+      tags: [jobs]
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [answer]
+              properties:
+                answer: { type: string, minLength: 1, maxLength: 1024 }
+      responses:
+        '200':
+          description: Nonterminal captcha-waiting job returned to the queue
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/JobOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Job not found }
+        '409': { description: Job is not awaiting a resumable captcha }
+        '502': { description: Remote pyLoad captcha submission failed }
+        '503': { description: pyLoad endpoint not configured }
   /jobs/{job_id}/pause:
     parameters:
       - name: job_id
