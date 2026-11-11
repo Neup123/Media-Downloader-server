@@ -24,13 +24,14 @@ from app.adapters.aria2 import Aria2Rpc
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
+from app.engine_gate import engine_policy, save_telegram_credentials, telegram_credentials
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
-from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
+from app.db import DeliverySetting, EngineSetting, EnginePolicy, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EnginePolicyIn, TelegramCredentialsIn, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -130,7 +131,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/engines", response_model=list[EngineStatusOut], tags=["engines"])
-    def list_engines(_: bool = Depends(authenticate)):
+    def list_engines(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
         result = []
         for item in ENGINE_DESCRIPTIONS:
             binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce"}[item["name"]]
@@ -162,13 +163,50 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                             pass
                 except (OSError, subprocess.TimeoutExpired, IndexError):
                     version = "unknown"
+            policy = engine_policy(session, item["name"], config)
             result.append({
                 **item, "installed": executable is not None,
                 "available": executable is not None and version not in (None, "unknown"),
                 "version": version,
                 "defaults": ENGINE_DEFAULTS[item["name"]],
+                **{key: value for key, value in policy.items() if key != "permitted"},
             })
+            result[-1]["available"] = bool(result[-1]["available"] and policy["permitted"])
         return result
+
+    @app.get("/api/v1/engines/{engine_name}/policy", tags=["engines"])
+    def get_engine_policy(engine_name: str, _: bool = Depends(authenticate),
+                          session: Session = Depends(db_session)):
+        _require_engine(engine_name)
+        return {"engine": engine_name, **engine_policy(session, engine_name, config)}
+
+    @app.put("/api/v1/engines/{engine_name}/policy", tags=["engines"])
+    def update_engine_policy(engine_name: str, payload: EnginePolicyIn,
+                             _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        _require_engine(engine_name)
+        row = session.get(EnginePolicy, engine_name)
+        if row is None:
+            row = EnginePolicy(engine=engine_name)
+            session.add(row)
+        row.enabled = payload.enabled
+        row.run_carefully = payload.run_carefully
+        session.commit()
+        return {"engine": engine_name, **engine_policy(session, engine_name, config)}
+
+    @app.get("/api/v1/engines/telegram/credentials", tags=["engines"])
+    def telegram_credential_status(_: bool = Depends(authenticate),
+                                   session: Session = Depends(db_session)):
+        return {"configured": telegram_credentials(session, config) is not None,
+                "secrets_returned": False}
+
+    @app.put("/api/v1/engines/telegram/credentials", tags=["engines"])
+    def update_telegram_credentials(payload: TelegramCredentialsIn,
+                                    _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        try:
+            save_telegram_credentials(session, config, payload.model_dump())
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        return {"configured": True, "secrets_returned": False}
 
     @app.get("/api/v1/engines/{engine_name}/options", response_model=EngineOptionsOut, response_model_exclude_unset=True, tags=["engines"])
     def engine_option_catalog(engine_name: str, _: bool = Depends(authenticate)):
@@ -957,6 +995,9 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
             raise HTTPException(status_code=404, detail="Selected preset was not found")
 
     engine = _resolve_job_engine(payload.url, payload.engine, session, preset)
+    policy = engine_policy(session, engine, config)
+    if not policy["permitted"]:
+        raise HTTPException(status_code=422, detail=policy["inactive_reason"] or "Engine unavailable")
     if preset is not None and preset.engine != engine:
         raise HTTPException(
             status_code=422,
