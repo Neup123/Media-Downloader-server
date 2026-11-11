@@ -14,6 +14,10 @@ from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
+from app.adapters.telegram import run_telegram
+from app.adapters.musicdl import run_musicdl
+from app.adapters.pyload import run_pyload
+from app.engine_gate import telegram_credentials
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
 from app.captcha import CaptchaWaiting
@@ -52,6 +56,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "retry-wait": "5",
         },
     },
+    "telegram": {},
+    "pyload": {},
+    "musicdl": {"source": ""},
+    "ddddocr": {},
 }
 
 ENGINE_DESCRIPTIONS = [
@@ -62,6 +70,10 @@ ENGINE_DESCRIPTIONS = [
     {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
     {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
     {"name": "get-sauce", "label": "get-sauce", "role": "Specialized media and gallery extractor", "priority": "P2", "available": True},
+    {"name": "telegram", "label": "Telegram", "role": "Authorized channel/post media download (requires MTProto credentials)", "priority": "P2", "available": False},
+    {"name": "pyload", "label": "pyLoad", "role": "Authenticated link container/page resolver (requires running service)", "priority": "P2", "available": False},
+    {"name": "musicdl", "label": "musicdl", "role": "Source-specific music playlist link download", "priority": "P2", "available": False},
+    {"name": "ddddocr", "label": "ddddocr", "role": "On-demand captcha OCR, not a URL downloader", "priority": "P2", "available": False},
 ]
 
 
@@ -357,6 +369,32 @@ class JobWorker:
                 elif engine == "aria2c":
                     files = await self.get_aria2().download(
                         url=url, job_id=job_id, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "telegram":
+                    with self.session_factory() as session:
+                        credentials = telegram_credentials(session, self.settings)
+                    files = await run_telegram(
+                        url=url, workdir=workdir, credentials=credentials or {},
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "musicdl":
+                    files = await run_musicdl(
+                        executable="musicdl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "pyload":
+                    with self.session_factory() as session:
+                        ddddocr_allowed = engine_policy(session, "ddddocr", self.settings)["permitted"]
+                    files = await run_pyload(
+                        url=url, workdir=workdir,
+                        api_url=self.settings.pyload_api_url or "",
+                        api_key=self.settings.pyload_api_key or "",
+                        shared_root=self.settings.pyload_shared_root or self.settings.data_dir,
+                        run_ddddocr_opt_in=ddddocr_allowed,
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
