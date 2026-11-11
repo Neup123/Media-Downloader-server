@@ -15,7 +15,7 @@ from typing import Any
 
 from scripts.engine_smoke_coverage import PYPI_ENGINE_SMOKE_VERIFIED
 
-PYPI_ENGINES = frozenset({"yt-dlp", "gallery-dl", "you-get", "svtplay-dl"})
+PYPI_ENGINES = frozenset({"yt-dlp", "gallery-dl", "you-get", "svtplay-dl", "telethon", "musicdl", "ddddocr", "pyload-ng"})
 DEBIAN_PACKAGES = {"aria2": "aria2c", "curl": "generic"}
 VERSION = re.compile(r"[0-9][0-9A-Za-z.:+_~-]{0,120}\Z")
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
