@@ -76,22 +76,15 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
         field("bt-max-peers", "Maximum torrent peers", "BitTorrent", "integer", minimum=0, maximum=10000),
         field("bt-stop-timeout", "Stop torrent after idle (seconds)", "BitTorrent", "integer", minimum=0, maximum=86400),
     ],
-    "telegram": [
-        field("credentials", "Telegram API ID, API hash and signed-in session", "Authentication",
-              "text", "Set secrets through /api/v1/engines/telegram/credentials, never via the ordinary settings editor"),
-    ],
-    "pyload": [
-        field("service", "Owner-managed pyLoad daemon", "Service",
-              "text", "Configure PYLOAD_API_URL, PYLOAD_API_KEY and PYLOAD_SHARED_ROOT on the server"),
-    ],
+    # Credentials, policy and daemon settings are separate protected APIs,
+    # not ordinary per-job option fields.
+    "telegram": [],
+    "pyload": [],
     "musicdl": [
         field("source", "Music source client", "Music",
               "text", "Optional: leave blank to detect a supported client from the link"),
     ],
-    "ddddocr": [
-        field("run_carefully", "Allow OCR model RAM use", "Resources",
-              "boolean", "Explicit opt-in via the engine policy API. Model can use 150–350 MB RAM while solving"),
-    ],
+    "ddddocr": [],
     "gallery-dl": [
         field("extractor.sleep", "Delay before each download", "Rate limits", "text", "Seconds or duration range"),
         field("extractor.sleep-request", "Delay between extractor requests", "Rate limits", "text", "Seconds or duration range"),
