@@ -16,6 +16,7 @@ from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
+from app.engine_gate import engine_policy
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
@@ -192,7 +193,11 @@ class JobWorker:
                     # otherwise 100 queued items of a busy engine can hide a
                     # runnable job of another engine.
                     with self.session_factory() as session:
-                        queued = get_queued_jobs(session, max(100, slots), saturated_engines)
+                        blocked = {
+                            item["name"] for item in ENGINE_DESCRIPTIONS
+                            if not engine_policy(session, item["name"], self.settings)["permitted"]
+                        }
+                        queued = get_queued_jobs(session, max(100, slots), saturated_engines | blocked)
                     for job in self._select_queued_jobs(queued, slots):
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
@@ -212,6 +217,8 @@ class JobWorker:
         with self.session_factory() as session:
             job = session.get(Job, job_id)
             if not job or job.status != "queued":
+                return
+            if not engine_policy(session, job.engine, self.settings)["permitted"]:
                 return
             transition_job(job, JobStatus.STARTING)
             # Preserve previously verified delivery records on crash recovery.
