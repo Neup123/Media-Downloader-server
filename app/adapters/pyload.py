@@ -66,6 +66,7 @@ async def run_pyload(
     global_settings: dict[str, Any], overrides: dict[str, Any],
     on_progress: Callable, on_log: Callable, is_cancelled: Callable,
     transport: httpx.AsyncBaseTransport | None = None,
+    existing_package_id: int | None = None,
 ) -> list[Path]:
     if global_settings or overrides:
         raise ValueError("pyLoad job settings are not supported; configure the daemon separately")
@@ -86,9 +87,11 @@ async def run_pyload(
                 raise RuntimeError("pyLoad API reported an error")
             return body
 
-        package_id = await call("POST", "add_package", json={
-            "name": "Core job", "links": [url], "dest": 1,
-        })
+        package_id = existing_package_id
+        if package_id is None:
+            package_id = await call("POST", "add_package", json={
+                "name": "Core job", "links": [url], "dest": 1,
+            })
         if type(package_id) is not int or package_id <= 0:
             raise RuntimeError("pyLoad failed to enqueue a package")
         await on_log("pyLoad package accepted by authenticated API")
@@ -116,7 +119,9 @@ async def run_pyload(
                             await on_log("pyLoad captcha handled by local solver")
                             continue
                     # Manual review remains a nonterminal state signalled in SSE.
-                    raise CaptchaWaiting("pyLoad captcha awaiting owner action")
+                    raise CaptchaWaiting("pyLoad captcha awaiting owner action",
+                                         task_id=task_id if isinstance(task_id, int) else None,
+                                         package_id=package_id)
                 package = await call("GET", "get_package_data", params={
                     "package_id": package_id,
                 })
@@ -140,3 +145,22 @@ async def run_pyload(
             # Do not delete potentially unfinished packages on captcha wait;
             # operator action may be required in the pyLoad interface.
             pass
+
+
+async def submit_pyload_captcha(*, api_url: str, api_key: str, task_id: int,
+                                answer: str, transport: httpx.AsyncBaseTransport | None = None) -> None:
+    """Submit manual captcha privately as a POST form, never in a URL query."""
+    base = validate_pyload_endpoint(api_url)
+    if not api_key.startswith("pl_") or task_id <= 0 or not answer:
+        raise ValueError("Invalid manual pyLoad captcha submission")
+    async with httpx.AsyncClient(timeout=20, follow_redirects=False, trust_env=False,
+                                  transport=transport) as client:
+        response = await client.post(
+            base + "/api/set_captcha_result",
+            headers={"X-API-Key": api_key},
+            data={"tid": str(task_id), "result": answer},
+        )
+        response.raise_for_status()
+        body = response.json()
+        if isinstance(body, dict) and "error" in body:
+            raise RuntimeError("pyLoad refused the manual captcha answer")
