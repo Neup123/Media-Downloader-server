@@ -21,6 +21,7 @@ from sqlalchemy import select, cast, or_, Text, delete
 from sqlalchemy.orm import Session
 
 from app.adapters.aria2 import Aria2Rpc
+from app.adapters.pyload import submit_pyload_captcha
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
@@ -31,7 +32,7 @@ from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EnginePolicy, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EnginePolicyIn, TelegramCredentialsIn, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EnginePolicyIn, TelegramCredentialsIn, CaptchaAnswerIn, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -604,11 +605,41 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if job.status in TERMINAL_STATUSES:
             raise HTTPException(status_code=409, detail=f"Cannot cancel a {job.status} job")
         job.cancel_requested = True
-        if job.status == "queued":
+        if job.status in {"queued", "captcha-waiting"}:
             transition_job(job, JobStatus.CANCELLED)
-            append_log(job, "Queued job cancelled before execution")
+            append_log(job, "Job cancelled before an active transfer was running")
         else:
             append_log(job, "Cancellation requested")
+        session.commit()
+        session.refresh(job)
+        return job_to_dict(job)
+
+    @app.post("/api/v1/jobs/{job_id}/captcha", response_model=JobOut, tags=["jobs"])
+    async def answer_captcha(job_id: str, payload: CaptchaAnswerIn,
+                             _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        job = session.get(Job, job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found")
+        if job.engine != "pyload" or job.status != JobStatus.CAPTCHA_WAITING or job.cancel_requested:
+            raise HTTPException(status_code=409, detail="Job is not awaiting a pyLoad captcha answer")
+        challenge_id = (job.progress or {}).get("captcha_task_id")
+        package_id = (job.progress or {}).get("pyload_package_id")
+        if type(challenge_id) is not int or type(package_id) is not int:
+            raise HTTPException(status_code=409, detail="No resumable pyLoad challenge is available")
+        if not config.pyload_api_url or not config.pyload_api_key:
+            raise HTTPException(status_code=503, detail="pyLoad service is not configured")
+        try:
+            await submit_pyload_captcha(
+                api_url=config.pyload_api_url, api_key=config.pyload_api_key,
+                task_id=challenge_id, answer=payload.answer,
+            )
+        except (ValueError, RuntimeError, httpx.HTTPError) as exc:
+            # Never include the answer or raw remote response in an error.
+            raise HTTPException(status_code=502, detail="pyLoad rejected the captcha submission") from exc
+        transition_job(job, JobStatus.QUEUED, progress={
+            "state": "queued", "pyload_package_id": package_id,
+        })
+        append_log(job, "Manual captcha submitted; resuming existing pyLoad package")
         session.commit()
         session.refresh(job)
         return job_to_dict(job)
