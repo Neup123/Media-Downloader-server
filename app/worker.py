@@ -151,7 +151,7 @@ class JobWorker:
 
     def _recover_jobs(self) -> None:
         with self.session_factory() as session:
-            running = session.scalars(select(Job).where(Job.status.in_([s.value for s in ACTIVE_STATUSES if s != JobStatus.QUEUED]))).all()
+            running = session.scalars(select(Job).where(Job.status.in_([s.value for s in ACTIVE_STATUSES if s not in {JobStatus.QUEUED, JobStatus.CAPTCHA_WAITING}]))).all()
             for job in running:
                 transition_job(job, JobStatus.QUEUED)
                 job.cancel_requested = False
