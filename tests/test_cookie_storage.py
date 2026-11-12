@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import stat
 
+from app.cookies import read_cookie_file
 from app.main import create_app
 
 
@@ -28,7 +29,7 @@ def test_overwriting_symlink_does_not_touch_external_file(settings, client, auth
     response = _upload(client, auth_headers, "browser.txt", content)
     assert response.status_code == 200, response.text
     assert outside.read_bytes() == original
-    assert target.read_bytes() == content
+    assert read_cookie_file(target, settings.encryption_key) == content
     assert not target.is_symlink()
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
     assert not list(cookie_dir.glob(".downloader-cookie-*.part"))
