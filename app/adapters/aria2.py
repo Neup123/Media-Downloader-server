@@ -159,8 +159,19 @@ class Aria2Rpc:
                         if status.get("status") == "error":
                             raise RuntimeError("aria2 could not retrieve torrent metadata")
                         files = status.get("files") or []
+                        # The initial magnet GID can expose a synthetic metadata
+                        # file before its paused payload GID becomes available.
+                        if url is not None and current_gid == str(gid):
+                            if status.get("followedBy") or any(
+                                str(item.get("path", "")).startswith("[METADATA]") for item in files
+                            ):
+                                continue
                         if status.get("bittorrent") and files:
-                            return {"files": _manifest_entries(files, root), "file_count": len(files)}
+                            # Follow-on GIDs may use the daemon's global dir instead
+                            # of inheriting the initial magnet's preview directory.
+                            fallback_root = self.data_dir / "jobs" if current_gid != str(gid) else None
+                            entries = _manifest_entries(files, root, fallback_root=fallback_root)
+                            return {"files": entries, "file_count": len(entries)}
                     await asyncio.sleep(0.25)
                 raise TimeoutError("Torrent metadata was not available before the deadline")
             finally:
@@ -293,7 +304,9 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-def _manifest_entries(files: list[dict[str, Any]], root: Path) -> list[dict[str, Any]]:
+def _manifest_entries(
+    files: list[dict[str, Any]], root: Path, *, fallback_root: Path | None = None,
+) -> list[dict[str, Any]]:
     if len(files) > 10_000:
         raise ValueError("Torrent contains too many files for manifest preview")
     result = []
@@ -302,12 +315,21 @@ def _manifest_entries(files: list[dict[str, Any]], root: Path) -> list[dict[str,
         if not isinstance(raw_path, str) or not raw_path:
             raise ValueError("Torrent metadata contains an invalid path")
         path = Path(raw_path)
+        allowed_root = root.resolve()
         try:
-            relative = path.relative_to(root)
+            relative = path.relative_to(allowed_root)
         except ValueError as exc:
-            raise ValueError("Torrent metadata contains a path outside its preview directory") from exc
+            if fallback_root is None:
+                raise ValueError("Torrent metadata contains a path outside its preview directory") from exc
+            try:
+                allowed_root = fallback_root.resolve()
+                relative = path.relative_to(allowed_root)
+            except ValueError as fallback_exc:
+                raise ValueError("Torrent metadata contains a path outside its preview directory") from fallback_exc
         if not relative.parts or any(part in {"", ".", ".."} for part in relative.parts):
             raise ValueError("Torrent metadata contains an invalid relative path")
+        if not path.resolve().is_relative_to(allowed_root):
+            raise ValueError("Torrent metadata contains a path outside its preview directory")
         size = _int_or_none(item.get("length"))
         index = _int_or_none(item.get("index"))
         if size is None or size < 0 or index is None or index < 1:
