@@ -175,7 +175,7 @@ def test_torrent_magnet_manifest_only_reads_metadata_and_cleans_up(tmp_path: Pat
                 options = params[1]
                 workdirs.append(Path(options["dir"]))
                 assert options["seed-time"] == "0"
-                assert options["bt-metadata-only"] == "true"
+                assert options.get("bt-metadata-only", "false") == "false"
                 assert options["pause-metadata"] == "true"
                 assert options["bt-save-metadata"] == "false"
                 return "magnet-gid"

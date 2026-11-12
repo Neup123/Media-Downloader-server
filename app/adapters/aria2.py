@@ -146,7 +146,9 @@ class Aria2Rpc:
                 else:
                     if not url or not url.startswith("magnet:?"):
                         raise ValueError("Manifest URL must be a magnet link")
-                    options["bt-metadata-only"] = "true"
+                    # Metadata-only stops after fetching the metadata and never
+                    # creates the follow-on GID that exposes the file list.
+                    # pause-metadata keeps that follow-on paused instead.
                     gid = await self.call("aria2.addUri", [[url], options])
                 tracked.add(str(gid))
                 deadline = asyncio.get_running_loop().time() + timeout_seconds

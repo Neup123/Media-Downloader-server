@@ -95,7 +95,7 @@ def test_inspect_torrent_followon_layout_and_upload(tmp_path, layout):
                 if layout == "upload":
                     assert options["pause"] == "true"
                 else:
-                    assert options["bt-metadata-only"] == "true"
+                    assert options.get("bt-metadata-only", "false") == "false"
                 return "initial"
             if method == "aria2.tellStatus":
                 if params[0] == "initial" and layout != "upload":
