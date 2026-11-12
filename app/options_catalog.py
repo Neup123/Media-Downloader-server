@@ -76,6 +76,15 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
         field("bt-max-peers", "Maximum torrent peers", "BitTorrent", "integer", minimum=0, maximum=10000),
         field("bt-stop-timeout", "Stop torrent after idle (seconds)", "BitTorrent", "integer", minimum=0, maximum=86400),
     ],
+    # Credentials, policy and daemon settings are separate protected APIs,
+    # not ordinary per-job option fields.
+    "telegram": [],
+    "pyload": [],
+    "musicdl": [
+        field("source", "Music source client", "Music",
+              "text", "Optional: leave blank to detect a supported client from the link"),
+    ],
+    "ddddocr": [],
     "gallery-dl": [
         field("extractor.sleep", "Delay before each download", "Rate limits", "text", "Seconds or duration range"),
         field("extractor.sleep-request", "Delay between extractor requests", "Rate limits", "text", "Seconds or duration range"),

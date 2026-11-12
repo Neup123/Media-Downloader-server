@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 import subprocess
 import tempfile
@@ -14,6 +15,16 @@ from app.adapters.process_env import downloader_environment
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
 CancelCallback = Callable[[], Awaitable[bool]]
+
+
+class Aria2MetadataPending(RuntimeError):
+    """Magnet metadata completed but payload transfer has not started."""
+
+
+def _is_aria2_metadata_path(path: Any) -> bool:
+    """Only the synthetic BTIH metadata path is special."""
+    return isinstance(path, str) and re.fullmatch(r"\[METADATA\][0-9a-fA-F]{40}", path) is not None
+
 
 ARIA2_OPTION_ALLOWLIST = {
     "max-connection-per-server", "split", "min-split-size", "max-tries", "retry-wait",
@@ -223,6 +234,7 @@ class Aria2Rpc:
         options["check-integrity"] = "true"
         gid = await self.call("aria2.addUri", [[url], options])
         self._job_gids[job_id] = gid
+        metadata_polls = 0
         await on_log(f"Queued with aria2 JSON-RPC (GID {gid})")
         try:
             while True:
@@ -233,7 +245,7 @@ class Aria2Rpc:
                         await self.call("aria2.forceRemove", [gid])
                     raise asyncio.CancelledError
                 status = await self.call("aria2.tellStatus", [gid, [
-                    "status", "totalLength", "completedLength", "downloadSpeed", "errorCode", "errorMessage", "files",
+                    "status", "totalLength", "completedLength", "downloadSpeed", "errorCode", "errorMessage", "files", "followedBy",
                 ]])
                 total = _int_or_none(status.get("totalLength"))
                 completed = _int_or_none(status.get("completedLength"))
@@ -243,12 +255,18 @@ class Aria2Rpc:
                 files = status.get("files") or []
                 if files:
                     filename = Path(files[0].get("path", "")).name or None
+                metadata_only = bool(files) and all(
+                    _is_aria2_metadata_path(item.get("path") if isinstance(item, dict) else None)
+                    for item in files
+                )
                 await on_progress({
-                    "state": "paused" if status.get("status") == "paused" else "downloading",
+                    "state": "paused" if status.get("status") == "paused" else (
+                        "extracting" if metadata_only else "downloading"
+                    ),
                     "engine_status": status.get("status"),
                     "downloaded_bytes": completed,
                     "total_bytes": total,
-                    "percent": percent,
+                    "percent": None if metadata_only else percent,
                     "speed_bytes_per_second": speed,
                     "eta_seconds": int((total - completed) / speed) if total and completed is not None and speed and speed > 0 else None,
                     "filename": filename,
@@ -257,16 +275,42 @@ class Aria2Rpc:
                 if current == "complete":
                     result = []
                     for item in status.get("files") or []:
-                        path = Path(item.get("path", "")).resolve()
+                        raw = item.get("path", "") if isinstance(item, dict) else ""
+                        if _is_aria2_metadata_path(raw):
+                            continue
+                        path = Path(raw).resolve()
                         try:
                             path.relative_to(workdir.resolve())
                         except ValueError:
                             continue
                         if path.is_file():
                             result.append(path)
-                    if not result:
-                        raise RuntimeError("aria2 reported completion but no output file was found")
-                    return result
+                    if result:
+                        return result
+                    if metadata_only:
+                        # The first magnet GID is just the torrent metadata.
+                        # aria2 gives the actual data transfer a new GID.
+                        children = status.get("followedBy") or []
+                        if children:
+                            child = str(children[-1])
+                            if child == gid:
+                                raise Aria2MetadataPending(
+                                    "aria2 metadata GID followed itself; retryable pending payload GID"
+                                )
+                            gid = child
+                            self._job_gids[job_id] = gid
+                            metadata_polls = 0
+                            await on_log("Torrent metadata retrieved; following aria2 payload transfer GID")
+                            continue
+                        metadata_polls += 1
+                        if metadata_polls < 5:
+                            await asyncio.sleep(1.0)
+                            continue
+                        raise Aria2MetadataPending(
+                            "Torrent metadata retrieved, but aria2 produced no payload GID; "
+                            "retryable while peer discovery is unavailable"
+                        )
+                    raise RuntimeError("aria2 reported completion but no output file was found")
                 if current == "error":
                     raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
                 if current == "removed":

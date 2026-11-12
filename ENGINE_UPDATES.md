@@ -16,6 +16,10 @@ base-image family. It never runs in the downloader service at runtime.
 | aria2c | Debian trixie package | Exact apt pin + candidate PR, Docker/Nextcloud WebDAV gate |
 | generic / curl | Debian trixie package | Initialize an exact curl apt pin, then gated candidate updates |
 | get-sauce | Pinned Go source tag | Weekly release detection and smoke-blocked candidate PR; no unattended merge until live site-specific acceptance |
+| Telegram (Telethon) | `Telethon==1.45.0` / PyPI | Candidate detected, blocked until an authenticated/legal WebDAV live smoke fixture exists |
+| pyLoad | `pyload-ng==0.5.0b3.dev102` / PyPI | Prerelease-only upstream; tracked but all automatic version bumps blocked, manual review required |
+| musicdl | `musicdl==2.14.2` / PyPI | Candidate detected, blocked until live smoke and non-commercial licence review |
+| ddddocr | `ddddocr==1.6.1` / PyPI | Candidate detected, blocked pending OCR image fixture and RAM-gated runtime acceptance |
 
 `get-sauce` is compiled from the pinned Go module tag in the multi-stage Docker
 build. `.github/workflows/get-sauce-release-watch.yml` checks GitHub's
@@ -48,6 +52,30 @@ artifact SHA-256 digest. Python dependency versions are updated as exact
 `package==version` pins. The digest is recorded in the report for traceability;
 **pip is not yet configured with a complete hash-locked dependency graph**.
 Do not describe this as checksum-enforced installation.
+
+
+
+## New engines: current release policy (2026-11-11)
+
+The runtime pins Telethon, pyload-ng, musicdl and ddddocr exactly in
+`requirements.txt`. The runtime Docker build runs a real `--version` probe
+for each; their presence in the image is not proof a live URL completed.
+
+`scripts/engine_updates.py` now discovers stable Telethon, musicdl and
+ddddocr candidates from PyPI, while `scripts/engine_candidate_gate.py`
+recognizes them but blocks automatic promotion until each has a legal,
+repeatable real-download (or OCR) Nextcloud/WebDAV acceptance fixture.
+The existing verified allowlist remains unchanged. pyload-ng currently has
+**no stable release**; the watcher records the pinned prerelease as blocked
+instead of attempting to parse it as a numeric stable version or downgrading
+it. A human must verify pyLoad's API compatibility and AGPL obligations
+before a new pin is accepted.
+
+The musicdl package declares **PolyForm Noncommercial 1.0.0**; a licence
+review is required before shipping this dependency in commercial deployments.
+The pyLoad component declares AGPLv3. Neither licence review nor any new
+engine's site-specific live smoke was performed in this branch. No new
+unattended release authorization was granted.
 
 ## Required repository Actions setting
 

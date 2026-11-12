@@ -92,6 +92,53 @@ The full engine and settings parity target is documented in [BLUEPRINT.md](BLUEP
 
 The manually dispatched `Manual legal P2 site smoke into disposable Nextcloud` workflow accepts an explicitly authorized public `svtplay-dl` or `get-sauce` test URL. It verifies actual completed output files against files read back from temporary Nextcloud by streaming SHA-256, including basic media readability checks, real downloader-Compose restart persistence, and audited re-delivery without re-downloading the source. On complete success it retains a 30-day source-URL-free, filename-free exact-commit evidence artifact. No legal, stable P2 site fixtures are embedded; simply adding this workflow is **not** a passing P2 site test or permission to auto-merge P2 upgrades. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md).
 
+### Additional engines and explicit opt-ins
+
+The Core registry at `GET /api/v1/engines` includes Telegram (Telethon
+`1.45.0`), pyLoad (`0.5.0b3.dev102`), musicdl (`2.14.2`) and
+ddddocr (`1.6.1`). Each has a real installed-package version probe. The
+registry returns `available=false` when a binary is missing, its version
+probe fails, the owner disabled the engine, or a requirement is unmet.
+The original seven engine policies default to enabled. To change a policy:
+
+```http
+GET /api/v1/engines/{engine_name}/policy
+PUT /api/v1/engines/{engine_name}/policy
+Content-Type: application/json
+
+{"enabled": true, "run_carefully": false}
+```
+
+Telegram is inactive until an authorized Telethon MTProto session is
+configured at `PUT /api/v1/engines/telegram/credentials`, with
+`{"api_id": ..., "api_hash": "...", "session_string": "..."}`.
+Generate your own API ID/hash and authenticated StringSession; no credentials
+are bundled. Secrets are Fernet-encrypted with `APP_ENCRYPTION_KEY` and never
+returned from the credentials status endpoint or ordinary settings API.
+
+pyLoad must run as a separately managed **authenticated** service with a
+shared storage mount. Configure `PYLOAD_API_URL`, `PYLOAD_API_KEY`
+(an owner-created `pl_` key), and `PYLOAD_SHARED_ROOT` (the pyLoad
+storage mount visible to Core). Its background RAM use requires an explicit
+`run_carefully=true` opt-in; Core does not start pyLoad with its insecure
+initial web credentials. A captcha leads to a nonterminal
+`captcha-waiting` job and an event on `GET /api/v1/jobs/{id}/events`.
+The owner may inspect the pyLoad interface and submit the answer through
+`POST /api/v1/jobs/{id}/captcha` (`{"answer": "..."}`). That endpoint
+does not log or persist the answer and resumes the same pyLoad package.
+
+ddddocr is an on-demand image solver, not a URL downloader. It requires its
+own explicit `run_carefully=true` opt-in because the model may consume
+approximately **150–350 MB RAM while solving**. Captcha order is local
+ddddocr, the user's own paid solver hook, another configured paid hook, then
+manual waiting. Core never creates provider accounts or keys.
+
+musicdl accepts supported source-specific playlist links. Its upstream
+license is **PolyForm Noncommercial 1.0** and pyLoad is **AGPLv3**;
+evaluate obligations before shipping in a commercial deployment. Live
+Telegram/pyLoad/musicdl acceptance requires configured credentials or
+reachable services and is not implied by a successful package version probe.
+
 ## Automated Python engine updates
 
 The `Pinned engine updates` GitHub Actions workflow checks tracked PyPI engine releases weekly and prepares exact-version candidate PRs. A candidate may be merged and published automatically **only** after the Python, Docker and disposable-Nextcloud/WebDAV gate succeeds **and** the explicit repository variable `DOWNLOADER_AUTOMATED_RELEASES_APPROVED` equals `true`. The variable is unset by default, preventing unattended merges/releases until the remaining acceptance requirements are signed off. Failures retain the previous pin and produce an `engine-update-blocked` issue. The workflow is present on the default branch; scheduled candidate detection is available, but automatic merge and publication are disabled by default. A separate get-sauce Go-release watcher now prepares blocked candidate PRs and issues, but does not merge releases without a real site-specific get-sauce WebDAV smoke gate. Debian-packaged aria2c and generic/curl candidates now share the Python update workflow's full Docker and disposable-Nextcloud gate, with exact apt pins prepared from the trixie runtime-base package index. Live red/green release demonstrations and fully immutable dependency locking remain outstanding. See [ENGINE_UPDATES.md](ENGINE_UPDATES.md) for implementation and limitations.

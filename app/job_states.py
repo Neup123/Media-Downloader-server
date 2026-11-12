@@ -19,6 +19,7 @@ class JobStatus(StrEnum):
     EXTRACTING = "extracting"
     DOWNLOADING = "downloading"
     PAUSED = "paused"
+    CAPTCHA_WAITING = "captcha-waiting"
     POST_PROCESSING = "post-processing"
     DELIVERING = "delivering"
     COMPLETED = "completed"
@@ -32,24 +33,27 @@ TERMINAL_STATUSES = frozenset({
 ACTIVE_STATUSES = frozenset(JobStatus) - TERMINAL_STATUSES
 ENGINE_PROGRESS_STATUSES = frozenset({
     JobStatus.STARTING, JobStatus.EXTRACTING,
-    JobStatus.DOWNLOADING, JobStatus.PAUSED, JobStatus.POST_PROCESSING,
+    JobStatus.DOWNLOADING, JobStatus.PAUSED, JobStatus.CAPTCHA_WAITING, JobStatus.POST_PROCESSING,
 })
 TRANSITIONS: dict[JobStatus, frozenset[JobStatus]] = {
     JobStatus.QUEUED: frozenset({JobStatus.STARTING, JobStatus.CANCELLED}),
     JobStatus.STARTING: frozenset({
         JobStatus.EXTRACTING, JobStatus.DOWNLOADING, JobStatus.POST_PROCESSING,
-        JobStatus.DELIVERING, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
+        JobStatus.CAPTCHA_WAITING, JobStatus.DELIVERING, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
     }),
     JobStatus.EXTRACTING: frozenset({
         JobStatus.DOWNLOADING, JobStatus.POST_PROCESSING, JobStatus.DELIVERING,
-        JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
+        JobStatus.CAPTCHA_WAITING, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
     }),
     JobStatus.DOWNLOADING: frozenset({
-        JobStatus.EXTRACTING, JobStatus.PAUSED, JobStatus.POST_PROCESSING, JobStatus.DELIVERING,
+        JobStatus.EXTRACTING, JobStatus.PAUSED, JobStatus.CAPTCHA_WAITING, JobStatus.POST_PROCESSING, JobStatus.DELIVERING,
         JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
     }),
     JobStatus.PAUSED: frozenset({
         JobStatus.DOWNLOADING, JobStatus.FAILED, JobStatus.CANCELLED, JobStatus.QUEUED,
+    }),
+    JobStatus.CAPTCHA_WAITING: frozenset({
+        JobStatus.DOWNLOADING, JobStatus.QUEUED, JobStatus.FAILED, JobStatus.CANCELLED,
     }),
     JobStatus.POST_PROCESSING: frozenset({
         JobStatus.DOWNLOADING, JobStatus.DELIVERING,

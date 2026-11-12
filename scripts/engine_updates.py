@@ -13,7 +13,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
-PYPI_ENGINES = ("yt-dlp", "gallery-dl", "you-get", "svtplay-dl")
+PYPI_ENGINES = ("yt-dlp", "gallery-dl", "you-get", "svtplay-dl", "telethon", "musicdl", "ddddocr", "pyload-ng")
+PRERELEASE_ONLY = frozenset({"pyload-ng"})
 PIN = re.compile(r"^([A-Za-z0-9_.-]+)==([^\s#]+)$")
 STABLE = re.compile(r"^[0-9]+(?:\.[0-9]+)*$")
 
@@ -79,11 +80,23 @@ def select_stable_release(metadata: dict[str, Any]) -> tuple[str, str]:
 def plan_updates(requirements: str, release_reader=fetch_release_data) -> dict[str, Any]:
     pins = pins_from_requirements(requirements)
     updates = []
+    blocked = []
     for package, current in sorted(pins.items()):
+        if package in PRERELEASE_ONLY:
+            # pyLoad has no stable release; applying the generic numeric
+            # comparator to a dev prerelease would either crash or downgrade.
+            blocked.append({
+                "engine": package, "current": current,
+                "reason": "Only prerelease builds available; manual update and full smoke gate required",
+            })
+            continue
         latest, digest = select_stable_release(release_reader(package))
         if newer(latest, current):
             updates.append({"engine": package, "from": current, "to": latest, "artifact_sha256": digest})
-    return {"updates": updates, "checked": pins, "unmanaged_engine": "aria2c (Debian pin; separate update track)"}
+    return {
+        "updates": updates, "checked": pins, "blocked": blocked,
+        "unmanaged_engine": "aria2c (Debian pin; separate update track)",
+    }
 
 
 def apply_updates(requirements: str, plan: dict[str, Any]) -> str:

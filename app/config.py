@@ -20,8 +20,11 @@ class Settings:
     # Maximum time spent in a single downloader engine invocation. Long video
     # and playlist jobs can opt into a larger bounded deadline.
     job_timeout_seconds: int = 86400
+    pyload_api_url: str | None = None
+    pyload_api_key: str | None = None
+    pyload_shared_root: Path | None = None
     max_concurrent_per_engine: dict[str, int] = field(
-        default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1, "get-sauce": 1}
+        default_factory=lambda: {"yt-dlp": 1, "aria2c": 1, "gallery-dl": 1, "generic": 1, "you-get": 1, "svtplay-dl": 1, "get-sauce": 1, "telegram": 1, "pyload": 1, "musicdl": 1, "ddddocr": 1}
     )
 
     @classmethod
@@ -40,6 +43,9 @@ class Settings:
             allow_private_webdav_targets=os.getenv("ALLOW_PRIVATE_WEBDAV_TARGETS", "false").lower() == "true",
             allow_insecure_webdav=os.getenv("ALLOW_INSECURE_WEBDAV", "false").lower() == "true",
             job_timeout_seconds=max(60, min(604800, int(os.getenv("JOB_TIMEOUT_SECONDS", "86400")))),
+            pyload_api_url=os.getenv("PYLOAD_API_URL") or None,
+            pyload_api_key=os.getenv("PYLOAD_API_KEY") or None,
+            pyload_shared_root=Path(os.environ["PYLOAD_SHARED_ROOT"]).resolve() if os.getenv("PYLOAD_SHARED_ROOT") else None,
             max_concurrent_per_engine={
                 "yt-dlp": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YTDLP", "1")))),
                 "aria2c": max(1, min(8, int(os.getenv("MAX_CONCURRENT_ARIA2", "1")))),
@@ -48,6 +54,10 @@ class Settings:
                 "you-get": max(1, min(8, int(os.getenv("MAX_CONCURRENT_YOU_GET", "1")))),
                 "svtplay-dl": max(1, min(8, int(os.getenv("MAX_CONCURRENT_SVTPLAY_DL", "1")))),
                 "get-sauce": max(1, min(8, int(os.getenv("MAX_CONCURRENT_GET_SAUCE", "1")))),
+                "telegram": max(1, min(8, int(os.getenv("MAX_CONCURRENT_TELEGRAM", "1")))),
+                "pyload": max(1, min(8, int(os.getenv("MAX_CONCURRENT_PYLOAD", "1")))),
+                "musicdl": max(1, min(8, int(os.getenv("MAX_CONCURRENT_MUSICDL", "1")))),
+                "ddddocr": 1,
             },
         )
 

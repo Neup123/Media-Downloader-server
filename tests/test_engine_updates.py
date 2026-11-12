@@ -166,3 +166,33 @@ def test_e2e_fixtures_use_exact_production_or_candidate_docker_ffmpeg():
         assert "ffmpeg -hide_banner" not in fixture
         assert "sudo apt-get" not in fixture, workflow_path
 
+
+
+
+def test_new_engine_pins_are_tracked_but_prerelease_pyload_is_blocked():
+    from scripts.engine_updates import pins_from_requirements, plan_updates
+    requirements = (
+        "Telethon==1.45.0\n"
+        "musicdl==2.14.2\n"
+        "ddddocr==1.6.1\n"
+        "pyload-ng==0.5.0b3.dev102\n"
+    )
+    pins = pins_from_requirements(requirements)
+    assert pins == {
+        "telethon": "1.45.0", "musicdl": "2.14.2",
+        "ddddocr": "1.6.1", "pyload-ng": "0.5.0b3.dev102",
+    }
+    def release_reader(name):
+        return {"releases": {"9.0.0": artifacts("9.0.0")}}
+    planned = plan_updates(requirements, release_reader)
+    assert {item["engine"] for item in planned["updates"]} == {
+        "telethon", "musicdl", "ddddocr",
+    }
+    assert planned["blocked"][0]["engine"] == "pyload-ng"
+
+    from scripts.engine_candidate_gate import CandidateBlocked, review_candidate
+    with pytest.raises(CandidateBlocked, match="telethon"):
+        review_candidate({
+            "updates": [{"engine": "telethon", "from": "1.45.0",
+                         "to": "9.0.0", "artifact_sha256": "a" * 64}],
+        }, {"updates": []})

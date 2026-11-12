@@ -7,15 +7,21 @@ from typing import Any
 
 from sqlalchemy import select
 
-from app.adapters.aria2 import Aria2Rpc
+from app.adapters.aria2 import Aria2Rpc, Aria2MetadataPending
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
 from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
 from app.adapters.yt_dlp import run_ytdlp
+from app.adapters.telegram import run_telegram
+from app.adapters.musicdl import run_musicdl
+from app.adapters.pyload import run_pyload
+from app.engine_gate import telegram_credentials
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
+from app.captcha import CaptchaWaiting
+from app.engine_gate import engine_policy
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
@@ -50,6 +56,10 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
             "retry-wait": "5",
         },
     },
+    "telegram": {},
+    "pyload": {},
+    "musicdl": {"source": ""},
+    "ddddocr": {},
 }
 
 ENGINE_DESCRIPTIONS = [
@@ -60,6 +70,10 @@ ENGINE_DESCRIPTIONS = [
     {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
     {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
     {"name": "get-sauce", "label": "get-sauce", "role": "Specialized media and gallery extractor", "priority": "P2", "available": True},
+    {"name": "telegram", "label": "Telegram", "role": "Authorized channel/post media download (requires MTProto credentials)", "priority": "P2", "available": False},
+    {"name": "pyload", "label": "pyLoad", "role": "Authenticated link container/page resolver (requires running service)", "priority": "P2", "available": False},
+    {"name": "musicdl", "label": "musicdl", "role": "Source-specific music playlist link download", "priority": "P2", "available": False},
+    {"name": "ddddocr", "label": "ddddocr", "role": "On-demand captcha OCR, not a URL downloader", "priority": "P2", "available": False},
 ]
 
 
@@ -137,7 +151,7 @@ class JobWorker:
 
     def _recover_jobs(self) -> None:
         with self.session_factory() as session:
-            running = session.scalars(select(Job).where(Job.status.in_([s.value for s in ACTIVE_STATUSES if s != JobStatus.QUEUED]))).all()
+            running = session.scalars(select(Job).where(Job.status.in_([s.value for s in ACTIVE_STATUSES if s not in {JobStatus.QUEUED, JobStatus.CAPTCHA_WAITING}]))).all()
             for job in running:
                 transition_job(job, JobStatus.QUEUED)
                 job.cancel_requested = False
@@ -192,7 +206,11 @@ class JobWorker:
                     # otherwise 100 queued items of a busy engine can hide a
                     # runnable job of another engine.
                     with self.session_factory() as session:
-                        queued = get_queued_jobs(session, max(100, slots), saturated_engines)
+                        blocked = {
+                            item["name"] for item in ENGINE_DESCRIPTIONS
+                            if not engine_policy(session, item["name"], self.settings)["permitted"]
+                        }
+                        queued = get_queued_jobs(session, max(100, slots), saturated_engines | blocked)
                     for job in self._select_queued_jobs(queued, slots):
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
@@ -213,6 +231,12 @@ class JobWorker:
             job = session.get(Job, job_id)
             if not job or job.status != "queued":
                 return
+            if not engine_policy(session, job.engine, self.settings)["permitted"]:
+                return
+            existing_pyload_package_id = (
+                (job.progress or {}).get("pyload_package_id")
+                if job.engine == "pyload" else None
+            )
             transition_job(job, JobStatus.STARTING)
             # Preserve previously verified delivery records on crash recovery.
             # The explicit retry API clears these records itself; if the
@@ -352,6 +376,33 @@ class JobWorker:
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
+                elif engine == "telegram":
+                    with self.session_factory() as session:
+                        credentials = telegram_credentials(session, self.settings)
+                    files = await run_telegram(
+                        url=url, workdir=workdir, credentials=credentials or {},
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "musicdl":
+                    files = await run_musicdl(
+                        executable="musicdl", url=url, workdir=workdir,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "pyload":
+                    with self.session_factory() as session:
+                        ddddocr_allowed = engine_policy(session, "ddddocr", self.settings)["permitted"]
+                    files = await run_pyload(
+                        url=url, workdir=workdir,
+                        api_url=self.settings.pyload_api_url or "",
+                        api_key=self.settings.pyload_api_key or "",
+                        shared_root=self.settings.pyload_shared_root or self.settings.data_dir,
+                        run_ddddocr_opt_in=ddddocr_allowed,
+                        existing_package_id=existing_pyload_package_id,
+                        global_settings=global_settings, overrides=overrides,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
                 else:
                     raise ValueError(f"Unsupported engine: {engine}")
             if await is_cancelled():
@@ -378,6 +429,40 @@ class JobWorker:
                     current.progress = {**(current.progress or {}), "state": "completed", "percent": 100}
                     current.finished_at = utcnow()
                     append_log(current, f"Delivery verified for {len(delivered)} file(s)")
+                    session.commit()
+        except CaptchaWaiting as exc:
+            # Nonterminal; SSE job events notify connected clients that owner
+            # action is necessary. No secret/image material is persisted here.
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    transition_job(current, JobStatus.CAPTCHA_WAITING, progress={
+                        "state": "captcha-waiting", "requires_action": True,
+                        "alert_type": "captcha",
+                        "captcha_task_id": exc.task_id,
+                        "pyload_package_id": exc.package_id,
+                    })
+                    current.error = None
+                    append_log(current, str(exc))
+                    session.commit()
+        except Aria2MetadataPending as exc:
+            # Metadata-only is retryable. Preserve the job rather than
+            # recording a false hard failure when peer discovery is absent.
+            await on_log(str(exc))
+            await asyncio.sleep(30)
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    if current.cancel_requested:
+                        transition_job(current, JobStatus.CANCELLED)
+                        append_log(current, "Cancelled while waiting for torrent payload retry")
+                    else:
+                        transition_job(current, JobStatus.QUEUED, progress={
+                            "state": "queued", "retryable": True,
+                            "reason": "torrent-metadata-only",
+                        })
+                        current.error = None
+                        append_log(current, "Torrent payload not started; queued for another attempt")
                     session.commit()
         except asyncio.CancelledError:
             with self.session_factory() as session:

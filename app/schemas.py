@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
+EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "musicdl", "ddddocr"]
+EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "musicdl"]
 
 
 class MediaPreviewIn(BaseModel):
@@ -150,6 +150,22 @@ class JobBatchOut(BaseModel):
     jobs: list[JobOut]
 
 
+class EnginePolicyIn(BaseModel):
+    enabled: bool = Field(strict=True)
+    run_carefully: bool = Field(strict=True)
+
+
+class CaptchaAnswerIn(BaseModel):
+    answer: str = Field(min_length=1, max_length=1024)
+
+
+class TelegramCredentialsIn(BaseModel):
+    # MTProto authorization requires more than API ID/hash alone.
+    api_id: int = Field(gt=0)
+    api_hash: str = Field(min_length=32, max_length=32, pattern=r"^[a-fA-F0-9]{32}$")
+    session_string: str = Field(min_length=64, max_length=4096)
+
+
 class EngineStatusOut(BaseModel):
     name: EngineName
     label: str
@@ -159,6 +175,12 @@ class EngineStatusOut(BaseModel):
     installed: bool
     version: str | None
     defaults: dict[str, Any]
+    enabled: bool = True
+    run_carefully: bool = False
+    requires_run_carefully: bool = False
+    ram_note: str | None = None
+    requirements_met: bool = True
+    inactive_reason: str | None = None
 
 
 class EngineOptionFieldOut(BaseModel):

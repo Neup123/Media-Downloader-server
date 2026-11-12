@@ -48,6 +48,24 @@ class EngineSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class EnginePolicy(Base):
+    """Persistent per-engine enable/disable and background resource opt-in."""
+    __tablename__ = "engine_policies"
+
+    engine: Mapped[str] = mapped_column(String(40), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    run_carefully: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+
+
+class EngineCredential(Base):
+    """Encrypted secret payloads only, never plaintext engine settings."""
+    __tablename__ = "engine_credentials"
+
+    engine: Mapped[str] = mapped_column(String(40), primary_key=True)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+
 class Preset(Base):
     __tablename__ = "presets"
 
