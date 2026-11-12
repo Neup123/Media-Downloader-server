@@ -1,5 +1,8 @@
 # Downloader Server
 
+Background pyLoad/cobalt services use three modes, default Off. See
+[the Core/B-side settings contract and lifecycle documentation](BACKGROUND_SERVICES.md).
+
 Downloader Server is a server-side media downloader with one web interface for established CLI engines. It manages jobs, engine settings, progress, logs, and file delivery. The core product runs as a standalone Docker Compose service. Nextcloud support is an optional integration maintained in a separate repository.
 
 ## Repositories

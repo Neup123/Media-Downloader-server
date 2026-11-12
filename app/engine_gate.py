@@ -9,11 +9,11 @@ from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy.orm import Session
 
 from app.config import Settings
+from app.background_services import ENGINES, service_mode
 from app.db import EngineCredential, EnginePolicy
 
 RAM_NOTES = {
     "ddddocr": "Explicit opt-in required: ddddocr can consume 150–350 MB RAM while solving a captcha.",
-    "pyload": "Explicit opt-in required: pyLoad runs a background download service with additional RAM use.",
 }
 
 
@@ -57,16 +57,27 @@ def telegram_credentials(session: Session, config: Settings) -> dict[str, Any] |
 
 
 def engine_policy(session: Session, name: str, config: Settings) -> dict[str, Any]:
+    if name in ENGINES:
+        mode = service_mode(session, name)
+        unmet = None
+        if mode != "off" and name == "pyload" and (
+            not config.pyload_api_url or not config.pyload_api_key or not config.pyload_shared_root
+        ):
+            unmet = "Local pyLoad API URL, API key and download root are required"
+        return {
+            "mode": mode, "enabled": mode != "off", "run_carefully": False,
+            "requires_run_carefully": False,
+            "ram_note": "On-demand waits for startup; always-on holds idle RAM (pyLoad ~50-150 MB, cobalt ~100-150 MB).",
+            "requirements_met": unmet is None,
+            "inactive_reason": "Engine off by owner" if mode == "off" else unmet,
+            "permitted": mode != "off" and unmet is None,
+        }
     row = session.get(EnginePolicy, name)
     enabled = row.enabled if row is not None else True
     opt_in = row.run_carefully if row is not None else False
     unmet = None
     if name == "telegram" and telegram_credentials(session, config) is None:
         unmet = "Telegram API ID, API hash and authorized session are required"
-    elif name == "pyload" and (
-        not config.pyload_api_url or not config.pyload_api_key or not config.pyload_shared_root
-    ):
-        unmet = "Authenticated pyLoad service URL, API key and shared download root are required"
     elif name in RAM_NOTES and not opt_in:
         unmet = "Explicit run carefully opt-in is required"
     reason = "Engine disabled by owner" if not enabled else unmet

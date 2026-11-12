@@ -17,6 +17,8 @@ from app.adapters.yt_dlp import run_ytdlp
 from app.adapters.telegram import run_telegram
 from app.adapters.musicdl import run_musicdl
 from app.adapters.pyload import run_pyload
+from app.adapters.cobalt import run_cobalt
+from app.background_services import BackgroundServices, ENGINES
 from app.engine_gate import telegram_credentials
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
@@ -57,12 +59,14 @@ ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
         },
     },
     "telegram": {},
-    "pyload": {},
+    "pyload": {"mode": "off"},
+    "cobalt": {"mode": "off"},
     "musicdl": {"source": ""},
     "ddddocr": {},
 }
 
 ENGINE_DESCRIPTIONS = [
+    {"name": "cobalt", "label": "cobalt", "role": "Social-media fallback service", "priority": "P2", "available": False},
     {"name": "yt-dlp", "label": "yt-dlp", "role": "Site extraction and media downloads", "priority": "P0", "available": True},
     {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
     {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
@@ -81,6 +85,7 @@ class JobWorker:
     def __init__(self, session_factory, settings: Settings) -> None:
         self.session_factory = session_factory
         self.settings = settings
+        self.services = BackgroundServices(session_factory, settings)
         self.aria2: Aria2Rpc | None = None
         self._task: asyncio.Task | None = None
         self._active: set[asyncio.Task] = set()
@@ -119,6 +124,21 @@ class JobWorker:
     async def start(self) -> None:
         self.settings.prepare_directories()
         self._recover_jobs()
+        for name in ENGINES:
+            try:
+                await self.services.apply(name)
+            except RuntimeError:
+                pass  # Error is exposed in engine live state; other engines keep working.
+        with self.session_factory() as session:
+            waiting = [(job.engine, job.id) for job in session.scalars(
+                select(Job).where(Job.status == JobStatus.CAPTCHA_WAITING)
+            ).all() if job.engine in ENGINES and engine_policy(session, job.engine, self.settings)["permitted"]]
+        for name, job_id in waiting:
+            try:
+                await self.services.acquire(name, job_id)
+                self.services.phase(job_id, name, None)
+            except RuntimeError:
+                pass
         self._stopping = False
         self._task = asyncio.create_task(self._run_loop(), name="downloader-job-worker")
 
@@ -145,6 +165,7 @@ class JobWorker:
                 for task in list(self._active):
                     task.cancel()
                 await asyncio.gather(*list(self._active), return_exceptions=True)
+        await self.services.close()
         if self.aria2 is not None:
             await self.aria2.close()
             self.aria2 = None
@@ -192,6 +213,7 @@ class JobWorker:
     async def _run_loop(self) -> None:
         while not self._stopping:
             try:
+                await self.services.reconcile()
                 slots = max(0, self.settings.max_concurrent_downloads - len(self._active))
                 if slots:
                     active_counts: dict[str, int] = {}
@@ -269,6 +291,8 @@ class JobWorker:
                     # RPC polling may briefly report an old active state after pause.
                     if current.status == JobStatus.PAUSED and state == JobStatus.DOWNLOADING and job_id in self._paused_remaining:
                         return
+                    if engine in ENGINES or service_engine:
+                        data = {**data, "phase": "downloading"}
                     transition_job(current, state, progress={**data, "state": state})
                     current.updated_at = utcnow()
                     session.commit()
@@ -297,6 +321,8 @@ class JobWorker:
                     current.output_files = [*existing, item]
                     session.commit()
 
+        service_engine = None
+        waiting_service = False
         try:
             recovery = inspect_workspace_recovery(workdir)
             existing_files = list(recovery.files)
@@ -323,6 +349,10 @@ class JobWorker:
                 # defense in depth, not DNS pinning: an egress firewall is
                 # still required for redirects and engine-discovered URLs.
                 await asyncio.to_thread(preflight_source_dns, url)
+            if not existing_files and engine in ENGINES:
+                service_engine = engine
+                await self.services.acquire(engine, job_id)
+                global_settings = {}
             # Deadline covers the engine invocation, not verified delivery or
             # checksum readback; an expired engine fails with a distinct error.
             async with asyncio.timeout(self.settings.job_timeout_seconds) as deadline:
@@ -331,12 +361,26 @@ class JobWorker:
                     await on_log(f"Recovery verified {len(existing_files)} completed output file(s); skipping another download")
                     files = existing_files
                 elif engine == "yt-dlp":
-                    files = await run_ytdlp(
-                        executable="yt-dlp", url=url, workdir=workdir,
-                        global_settings=global_settings, overrides=overrides,
-                        cookie_dir=self.settings.data_dir / "cookies",
-                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                    )
+                    try:
+                        files = await run_ytdlp(
+                            executable="yt-dlp", url=url, workdir=workdir,
+                            global_settings=global_settings, overrides=overrides,
+                            cookie_dir=self.settings.data_dir / "cookies",
+                            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        )
+                    except Exception:
+                        with self.session_factory() as session:
+                            permitted = engine_policy(session, "cobalt", self.settings)["permitted"]
+                        if not permitted:
+                            raise
+                        service_engine = "cobalt"
+                        await on_log("yt-dlp failed; trying permitted cobalt fallback")
+                        await self.services.acquire("cobalt", job_id)
+                        files = await run_cobalt(
+                            url=url, workdir=workdir, api_url=self.settings.cobalt_api_url,
+                            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                            allow_private_targets=self.settings.allow_private_targets,
+                        )
                 elif engine == "gallery-dl":
                     files = await run_gallery_dl(
                         executable="gallery-dl", url=url, workdir=workdir,
@@ -390,6 +434,12 @@ class JobWorker:
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
+                elif engine == "cobalt":
+                    files = await run_cobalt(
+                        url=url, workdir=workdir, api_url=self.settings.cobalt_api_url,
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        allow_private_targets=self.settings.allow_private_targets,
+                    )
                 elif engine == "pyload":
                     with self.session_factory() as session:
                         ddddocr_allowed = engine_policy(session, "ddddocr", self.settings)["permitted"]
@@ -407,6 +457,8 @@ class JobWorker:
                     raise ValueError(f"Unsupported engine: {engine}")
             if await is_cancelled():
                 raise asyncio.CancelledError
+            if service_engine:
+                self.services.phase(job_id, service_engine, None)
             if not existing_files:
                 save_completed_files(workdir, files)
             with self.session_factory() as session:
@@ -431,6 +483,7 @@ class JobWorker:
                     append_log(current, f"Delivery verified for {len(delivered)} file(s)")
                     session.commit()
         except CaptchaWaiting as exc:
+            waiting_service = True
             # Nonterminal; SSE job events notify connected clients that owner
             # action is necessary. No secret/image material is persisted here.
             with self.session_factory() as session:
@@ -505,5 +558,8 @@ class JobWorker:
                     session.commit()
 
         finally:
+            if service_engine and not waiting_service:
+                self.services.phase(job_id, service_engine, None)
+                await self.services.release(service_engine, job_id)
             self._engine_deadlines.pop(job_id, None)
             self._paused_remaining.pop(job_id, None)

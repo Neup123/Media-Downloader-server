@@ -4,6 +4,17 @@ ENV GOTOOLCHAIN=local CGO_ENABLED=0
 RUN go install github.com/gan-of-culture/get-sauce@v1.10.0
 RUN go version -m /go/bin/get-sauce | awk '$1 == "mod" && $2 == "github.com/gan-of-culture/get-sauce" {print $3}' > /go/get-sauce.version && grep -Eq '^v[0-9]+[.][0-9]+[.][0-9]+$' /go/get-sauce.version
 
+# Cobalt runs as a Core-owned subprocess in the runtime container.
+FROM node:24-trixie-slim AS cobalt-build
+RUN apt-get update && apt-get install --yes --no-install-recommends git python3 make g++ ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+WORKDIR /opt/cobalt
+RUN git init && git remote add origin https://github.com/imputnet/cobalt.git \
+    && git fetch --depth=1 origin a636575b09de1fc55d9b8cd98cac88f5f2f16b42 \
+    && git checkout --detach FETCH_HEAD \
+    && corepack enable && pnpm install --prod --frozen-lockfile \
+    && pnpm deploy --filter=@imput/cobalt-api --prod /opt/cobalt-runtime
+
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
 WORKDIR /web
@@ -29,6 +40,9 @@ RUN apt-get update \
     && chown -R downloader:downloader /app /data
 
 WORKDIR /app
+COPY --from=cobalt-build /usr/local/bin/node /usr/local/bin/node
+COPY --from=cobalt-build /opt/cobalt-runtime /opt/cobalt/api
+COPY --from=cobalt-build /opt/cobalt/.git /opt/cobalt/.git
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
@@ -36,7 +50,9 @@ COPY app/ ./app/
 # Probe shims use importlib.metadata and fail when the installed package is
 # missing, rather than reporting a misleading Python interpreter version.
 COPY app/engine_probe_cli.py /usr/local/bin/telegram-engine
+COPY app/cobalt_probe_cli.py /usr/local/bin/cobalt-engine
 RUN chmod 755 /usr/local/bin/telegram-engine \
+    && chmod 755 /usr/local/bin/cobalt-engine && cobalt-engine --version \
     && ln -s telegram-engine /usr/local/bin/musicdl-engine \
     && ln -s telegram-engine /usr/local/bin/ddddocr-engine \
     && telegram-engine --version \

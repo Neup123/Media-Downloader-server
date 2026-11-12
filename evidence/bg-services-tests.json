@@ -1,0 +1,35 @@
+{
+  "date": "2026-11-12",
+  "platform": "Windows Python 3.12",
+  "base": "9e666bea826abed93643e93893330449f2c661f4",
+  "baseline": {
+    "passed": 526,
+    "failed": 17
+  },
+  "implementation_full_suite": {
+    "passed": 538,
+    "failed": 17
+  },
+  "failure_sets_identical": true,
+  "failures": [
+    "tests/test_adapters.py::test_gallery_dl_adapter_uses_managed_output_and_discovers_downloads",
+    "tests/test_adapters.py::test_yt_dlp_adapter_uses_argument_array_and_emits_progress",
+    "tests/test_api.py::test_cookie_files_are_uploadable_but_never_returned",
+    "tests/test_api_documentation_examples.py::test_scalar_reference_has_product_intro_and_local_pinned_config",
+    "tests/test_browser_option_mapping_contract.py::test_browser_suite_runs_against_disposable_production_services",
+    "tests/test_cookie_storage.py::test_cookie_write_failure_keeps_previous_file_and_removes_temp",
+    "tests/test_cookie_storage.py::test_overwriting_symlink_does_not_touch_external_file",
+    "tests/test_discovery.py::test_adapter_passes_explicit_playlist_indices",
+    "tests/test_discovery.py::test_preview_invokes_real_cli_shape_with_bounded_items",
+    "tests/test_discovery.py::test_preview_offset_lookahead_pages_past_100",
+    "tests/test_generic.py::test_generic_cli_uses_service_managed_output",
+    "tests/test_get_sauce.py::test_get_sauce_uses_managed_output_and_validated_cli_settings",
+    "tests/test_proxy_environment.py::test_media_preview_subprocess_cannot_inherit_proxy_configuration",
+    "tests/test_proxy_environment.py::test_ytdlp_subprocess_cannot_inherit_proxy_configuration",
+    "tests/test_svtplay.py::test_svtplay_cli_uses_managed_config_and_output_directory",
+    "tests/test_typed_engine_cookie_delivery_responses.py::test_cookie_response_is_typed_and_never_exposes_contents",
+    "tests/test_you_get.py::test_you_get_uses_service_managed_output_and_detects_files"
+  ],
+  "compileall": "passed",
+  "integration_rig": "not run; requires owner pyLoad profile/key and hoster interaction"
+}

@@ -85,6 +85,7 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
               "text", "Optional: leave blank to detect a supported client from the link"),
     ],
     "ddddocr": [],
+    "cobalt": [],
     "gallery-dl": [
         field("extractor.sleep", "Delay before each download", "Rate limits", "text", "Seconds or duration range"),
         field("extractor.sleep-request", "Delay between extractor requests", "Rate limits", "text", "Seconds or duration range"),
