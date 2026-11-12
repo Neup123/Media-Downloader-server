@@ -160,3 +160,13 @@ def test_manifest_entries_upload_does_not_accept_global_jobs_dir(tmp_path):
             [{"index": "1", "length": "1", "path": str(tmp_path / "jobs" / "x.txt")}],
             tmp_path / "preview",
         )
+
+
+def test_manifest_metadata_child_discovery_is_used_by_download(tmp_path, monkeypatch):
+    """The two paths must request the same follow-on discovery fields."""
+    import inspect
+
+    source = inspect.getsource(Aria2Rpc.download)
+    assert '"followedBy"' in source
+    assert '"bittorrent"' in source
+    assert '"[METADATA]"' in source
