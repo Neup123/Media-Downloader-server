@@ -25,6 +25,7 @@ from app.adapters.pyload import submit_pyload_captcha
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
+from app.background_services import ENGINES, MODES, service_mode
 from app.engine_gate import engine_policy, save_telegram_credentials, telegram_credentials
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
@@ -136,7 +137,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         result = []
         for item in ENGINE_DESCRIPTIONS:
             binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce",
-                      "telegram": "telegram-engine", "pyload": "pyload",
+                      "telegram": "telegram-engine", "pyload": "pyload", "cobalt": "cobalt-engine",
                       "musicdl": "musicdl-engine", "ddddocr": "ddddocr-engine"}[item["name"]]
             executable = shutil.which(binary)
             version = None
@@ -174,6 +175,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "defaults": ENGINE_DEFAULTS[item["name"]],
                 **{key: value for key, value in policy.items() if key != "permitted"},
             })
+            if item["name"] in ENGINES:
+                result[-1].update(worker.services.status(item["name"]) if worker else {"state": "stopped"})
             result[-1]["available"] = bool(result[-1]["available"] and policy["permitted"])
         return result
 
@@ -187,6 +190,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def update_engine_policy(engine_name: str, payload: EnginePolicyIn,
                              _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         _require_engine(engine_name)
+        if engine_name in ENGINES:
+            raise HTTPException(status_code=422, detail="Use engine settings.mode: off / always / on-demand")
         row = session.get(EnginePolicy, engine_name)
         if row is None:
             row = EnginePolicy(engine=engine_name)
@@ -220,13 +225,19 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def get_engine_settings(engine_name: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         _require_engine(engine_name)
         row = session.get(EngineSetting, engine_name)
-        return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **(row.settings if row else {})}}
+        return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **(row.settings if row else {})},
+                **(worker.services.status(engine_name) if worker and engine_name in ENGINES else {})}
 
     @app.put("/api/v1/engines/{engine_name}/settings", response_model=EngineSettingsOut, tags=["engines"])
-    def update_engine_settings(engine_name: str, payload: EngineSettingsIn, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+    async def update_engine_settings(engine_name: str, payload: EngineSettingsIn, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         _require_engine(engine_name)
         try:
-            normalized = validate_engine_settings(engine_name, payload.settings)
+            if engine_name in ENGINES:
+                if set(payload.settings) != {"mode"} or not isinstance(payload.settings["mode"], str) or payload.settings["mode"] not in MODES:
+                    raise ValueError("Service settings require mode: off / always / on-demand")
+                normalized = dict(payload.settings)
+            else:
+                normalized = validate_engine_settings(engine_name, payload.settings)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         row = session.get(EngineSetting, engine_name)
@@ -237,7 +248,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             row.settings = normalized
             row.updated_at = utcnow()
         session.commit()
-        return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **normalized}}
+        if worker and engine_name in ENGINES:
+            try:
+                await worker.services.apply(engine_name)
+            except RuntimeError:
+                pass  # Persist the chosen mode and expose startup error for retry.
+        return {"engine": engine_name, "settings": {**ENGINE_DEFAULTS[engine_name], **normalized},
+                **(worker.services.status(engine_name) if worker and engine_name in ENGINES else {})}
 
     @app.get("/api/v1/cookies", response_model=list[CookieFileOut], tags=["engines"])
     def list_cookie_files(_: bool = Depends(authenticate)):
@@ -817,7 +834,7 @@ def _require_engine(engine_name: str) -> None:
 def validate_engine_settings(engine: str, values: dict, partial: bool = False) -> dict:
     if not isinstance(values, dict):
         raise ValueError("Engine settings must be an object")
-    if engine in {"telegram", "pyload", "ddddocr"}:
+    if engine in {"telegram", "pyload", "cobalt", "ddddocr"}:
         if values:
             raise ValueError(f"{engine} does not accept job-level options")
         return {}
@@ -1015,7 +1032,7 @@ def _resolve_job_engine(url: str, requested: str, session: Session, preset: Pres
     path = parsed.path or "/"
     if host in {"t.me", "www.t.me", "telegram.me", "www.telegram.me"}:
         return "telegram"
-    if path.lower().endswith((".dlc", ".ccf", ".rsdf")):
+    if path.lower().endswith((".dlc", ".ccf", ".rsdf")) and service_mode(session, "pyload") != "off":
         return "pyload"
     if host in {
         "open.spotify.com", "soundcloud.com", "www.soundcloud.com",
@@ -1026,6 +1043,8 @@ def _resolve_job_engine(url: str, requested: str, session: Session, preset: Pres
     matches = []
     if host:
         for rule in session.scalars(select(EngineRule).where(EngineRule.enabled.is_(True))).all():
+            if rule.engine in ENGINES and service_mode(session, rule.engine) == "off":
+                continue
             suffix_match = host == rule.host_suffix or host.endswith("." + rule.host_suffix)
             prefix = rule.path_prefix.rstrip("/") or "/"
             path_match = prefix == "/" or path == prefix or path.startswith(prefix + "/")

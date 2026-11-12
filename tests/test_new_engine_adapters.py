@@ -197,7 +197,9 @@ def test_new_engine_available_only_if_requirements_met(client, auth_headers, mon
     result = client.get("/api/v1/engines", headers=auth_headers)
     assert result.status_code == 200
     found = {item["name"]: item for item in result.json()}
-    assert len(found) == 11
+    assert len(found) == 12
+    assert found["cobalt"]["available"] is False
+    assert found["cobalt"]["mode"] == "off"
     assert found["telegram"]["available"] is False
     assert found["pyload"]["available"] is False
     assert found["ddddocr"]["available"] is False

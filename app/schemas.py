@@ -8,8 +8,8 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "musicdl", "ddddocr"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "musicdl"]
+EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "cobalt", "musicdl", "ddddocr"]
+EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce", "telegram", "pyload", "cobalt", "musicdl"]
 
 
 class MediaPreviewIn(BaseModel):
@@ -172,6 +172,9 @@ class EngineStatusOut(BaseModel):
     role: str
     priority: str
     available: bool
+    mode: Literal["off", "always", "on-demand"] | None = None
+    state: Literal["stopped", "starting", "running", "stopping"] | None = None
+    service_error: str | None = None
     installed: bool
     version: str | None
     defaults: dict[str, Any]
@@ -199,6 +202,8 @@ class EngineOptionsOut(BaseModel):
 
 
 class EngineSettingsOut(BaseModel):
+    state: Literal["stopped", "starting", "running", "stopping"] | None = None
+    service_error: str | None = None
     engine: EngineName
     settings: dict[str, Any]
 

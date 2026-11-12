@@ -44,3 +44,12 @@ jobs:
           context: .
           push: false
           tags: downloader-server:test
+          load: true
+      - name: Verify actual background-service lifecycle inside the runtime image
+        run: |
+          docker run --rm --network none --entrypoint python \
+            -e DATA_DIR=/tmp/bg-smoke \
+            -e DATABASE_URL=sqlite:////tmp/bg-smoke/downloader.db \
+            -e OUTPUT_DIR=/tmp/bg-smoke/output -e APP_API_TOKEN=smoke-only \
+            -v "$PWD/scripts/background_services_smoke.py:/app/background_services_smoke.py:ro" \
+            downloader-server:test /app/background_services_smoke.py

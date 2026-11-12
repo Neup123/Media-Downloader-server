@@ -1,5 +1,8 @@
 # Downloader Server
 
+Background pyLoad/cobalt services use three modes, default Off. See
+[the Core/B-side settings contract and lifecycle documentation](BACKGROUND_SERVICES.md).
+
 Downloader Server is a server-side media downloader with one web interface for established CLI engines. It manages jobs, engine settings, progress, logs, and file delivery. The core product runs as a standalone Docker Compose service. Nextcloud support is an optional integration maintained in a separate repository.
 
 ## Repositories
@@ -94,12 +97,13 @@ The manually dispatched `Manual legal P2 site smoke into disposable Nextcloud` w
 
 ### Additional engines and explicit opt-ins
 
-The Core registry at `GET /api/v1/engines` includes Telegram (Telethon
+The Core registry at `GET /api/v1/engines` includes cobalt, Telegram (Telethon
 `1.45.0`), pyLoad (`0.5.0b3.dev102`), musicdl (`2.14.2`) and
 ddddocr (`1.6.1`). Each has a real installed-package version probe. The
 registry returns `available=false` when a binary is missing, its version
 probe fails, the owner disabled the engine, or a requirement is unmet.
-The original seven engine policies default to enabled. To change a policy:
+The original seven engine policies default to enabled. For engines other than
+pyLoad/cobalt, change a policy with:
 
 ```http
 GET /api/v1/engines/{engine_name}/policy
@@ -116,12 +120,12 @@ Generate your own API ID/hash and authenticated StringSession; no credentials
 are bundled. Secrets are Fernet-encrypted with `APP_ENCRYPTION_KEY` and never
 returned from the credentials status endpoint or ordinary settings API.
 
-pyLoad must run as a separately managed **authenticated** service with a
-shared storage mount. Configure `PYLOAD_API_URL`, `PYLOAD_API_KEY`
-(an owner-created `pl_` key), and `PYLOAD_SHARED_ROOT` (the pyLoad
-storage mount visible to Core). Its background RAM use requires an explicit
-`run_carefully=true` opt-in; Core does not start pyLoad with its insecure
-initial web credentials. A captcha leads to a nonterminal
+Core manages pyLoad and cobalt as foreground subprocesses inside its container.
+Both default to Off; their settings use `mode: off|always|on-demand` in place
+of the boolean policy. Provision an authenticated pyLoad profile and configure
+`PYLOAD_API_URL`, `PYLOAD_API_KEY` (an owner-created `pl_` key), and
+`PYLOAD_SHARED_ROOT`. See [setup and lifecycle details](BACKGROUND_SERVICES.md).
+A captcha leads to a nonterminal
 `captcha-waiting` job and an event on `GET /api/v1/jobs/{id}/events`.
 The owner may inspect the pyLoad interface and submit the answer through
 `POST /api/v1/jobs/{id}/captcha` (`{"answer": "..."}`). That endpoint
