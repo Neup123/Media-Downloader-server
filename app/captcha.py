@@ -8,6 +8,8 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 
+from app.redaction import _redact
+
 PaidSolver = Callable[[bytes], Awaitable[str | None]]
 
 
@@ -33,6 +35,7 @@ async def solve_captcha(
     ddddocr_enabled: bool,
     user_paid_solver: PaidSolver | None = None,
     configured_paid_solver: PaidSolver | None = None,
+    on_log: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
     if not image or len(image) > 5_000_000:
         raise ValueError("Captcha image must be between 1 and 5000000 bytes")
@@ -41,10 +44,12 @@ async def solve_captcha(
             answer = await asyncio.to_thread(_ocr, image)
             if answer:
                 return answer
-        except Exception:
+        except Exception as exc:
             # Local OCR can fail on unsupported inputs. Only continue with
             # configured providers; never mark the job failed for that alone.
-            pass
+            if on_log is not None:
+                await on_log(f"Local ddddocr OCR failed ({type(exc).__name__}): "
+                             f"{_redact(str(exc))[:200]}")
     for resolver in (user_paid_solver, configured_paid_solver):
         if resolver is None:
             continue

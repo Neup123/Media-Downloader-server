@@ -27,6 +27,7 @@ from app.engine_gate import engine_policy
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
+from app.failure_messages import CliFailed, blocked_engine_message, format_failure, timeout_message
 from app.redaction import _redact
 from app.security import preflight_source_dns
 
@@ -210,10 +211,37 @@ class JobWorker:
             self._active_jobs.pop(job_id, None)
             self._active_engines.pop(job_id, None)
 
+    @staticmethod
+    def _update_queued_engine_notes(session, blocked: dict[str, dict]) -> None:
+        # The job stays QUEUED so enabling the engine automatically resumes it.
+        # Only write changes: the scheduler polls every half second.
+        for job in session.scalars(select(Job).where(Job.status == JobStatus.QUEUED)).all():
+            progress = dict(job.progress or {})
+            policy = blocked.get(job.engine)
+            if policy is not None:
+                note = blocked_engine_message(job.engine, policy)
+                if progress.get("waiting_for_engine") != note:
+                    job.progress = {**progress, "state": "queued", "waiting_for_engine": note,
+                                    "reason": note}
+                    append_log(job, note)
+            elif "waiting_for_engine" in progress:
+                previous = progress.pop("waiting_for_engine")
+                if progress.get("reason") == previous:
+                    progress.pop("reason", None)
+                job.progress = progress
+        session.commit()
+
     async def _run_loop(self) -> None:
         while not self._stopping:
             try:
                 await self.services.reconcile()
+                with self.session_factory() as session:
+                    blocked = {
+                        item["name"]: policy
+                        for item in ENGINE_DESCRIPTIONS
+                        if not (policy := engine_policy(session, item["name"], self.settings))["permitted"]
+                    }
+                    self._update_queued_engine_notes(session, blocked)
                 slots = max(0, self.settings.max_concurrent_downloads - len(self._active))
                 if slots:
                     active_counts: dict[str, int] = {}
@@ -228,11 +256,7 @@ class JobWorker:
                     # otherwise 100 queued items of a busy engine can hide a
                     # runnable job of another engine.
                     with self.session_factory() as session:
-                        blocked = {
-                            item["name"] for item in ENGINE_DESCRIPTIONS
-                            if not engine_policy(session, item["name"], self.settings)["permitted"]
-                        }
-                        queued = get_queued_jobs(session, max(100, slots), saturated_engines | blocked)
+                        queued = get_queued_jobs(session, max(100, slots), saturated_engines | blocked.keys())
                     for job in self._select_queued_jobs(queued, slots):
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
@@ -253,13 +277,25 @@ class JobWorker:
             job = session.get(Job, job_id)
             if not job or job.status != "queued":
                 return
-            if not engine_policy(session, job.engine, self.settings)["permitted"]:
+            policy = engine_policy(session, job.engine, self.settings)
+            if not policy["permitted"]:
+                note = blocked_engine_message(job.engine, policy)
+                progress = dict(job.progress or {})
+                if progress.get("waiting_for_engine") != note:
+                    job.progress = {**progress, "state": "queued", "waiting_for_engine": note,
+                                    "reason": note}
+                    append_log(job, note)
+                    session.commit()
                 return
             existing_pyload_package_id = (
                 (job.progress or {}).get("pyload_package_id")
                 if job.engine == "pyload" else None
             )
-            transition_job(job, JobStatus.STARTING)
+            starting_progress = dict(job.progress or {})
+            old_note = starting_progress.pop("waiting_for_engine", None)
+            if starting_progress.get("reason") == old_note:
+                starting_progress.pop("reason", None)
+            transition_job(job, JobStatus.STARTING, progress={**starting_progress, "state": "starting"})
             # Preserve previously verified delivery records on crash recovery.
             # The explicit retry API clears these records itself; if the
             # completed-download manifest is missing we clear them below.
@@ -541,8 +577,27 @@ class JobWorker:
                         else:
                             append_log(current, "Job cancelled")
                     session.commit()
+        except TimeoutError:
+            message = timeout_message(self.settings.job_timeout_seconds, engine)
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                if current:
+                    transition_job(current, JobStatus.FAILED)
+                    current.error = message[:2000]
+                    current.finished_at = utcnow()
+                    append_log(current, f"Job failed: {message}")
+                    session.commit()
         except Exception as exc:
-            message = _redact(str(exc))
+            if isinstance(exc, CliFailed):
+                raw_message = f"{exc.engine} exited with status {exc.code}: {exc}"
+            else:
+                raw_message = str(exc.__cause__ or exc)
+            raw_message = _redact(raw_message)
+            message = _redact(format_failure(
+                engine, exc, cookies_selected=bool(
+                    overrides.get("cookies_file") or global_settings.get("cookies_file")
+                ),
+            ))
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
@@ -554,7 +609,7 @@ class JobWorker:
                                             "verified_file_count": len(current.output_files)}
                     current.error = message[:2000]
                     current.finished_at = utcnow()
-                    append_log(current, f"Job failed: {message}")
+                    append_log(current, f"Job failed: {raw_message}")
                     session.commit()
 
         finally:

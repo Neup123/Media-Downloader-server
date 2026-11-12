@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 from urllib.parse import unquote, urlsplit
 
+from app.failure_messages import UserFacingFailure
 from app.adapters.process_env import downloader_environment
 from app.security import UnsafeUrlError, resolve_http_target
 
@@ -106,11 +107,15 @@ async def run_generic(
     argv.append(url)
 
     await on_log("Starting curl direct download")
-    process = await asyncio.create_subprocess_exec(
-        *argv, cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise UserFacingFailure("curl is not installed on the server.",
+                                "Contact the administrator / reinstall the engine.") from exc
     previous_bytes = 0
     assert process.stdout is not None
     try:
@@ -145,10 +150,10 @@ async def run_generic(
                 await process.wait()
         raise
     output = (await process.stdout.read()).decode("utf-8", errors="replace").strip()
+    if output:
+        await on_log(output[:4000])
     if process.returncode != 0:
         raise RuntimeError(f"curl failed with status {process.returncode}: {output[:500]}")
     if not destination.is_file():
         raise RuntimeError("curl completed without producing a file")
-    if output:
-        await on_log(output[:500])
     return [destination]

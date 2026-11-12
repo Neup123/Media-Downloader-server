@@ -33,6 +33,7 @@ from app.options_catalog import get_catalog
 from app.db import DeliverySetting, EngineSetting, EnginePolicy, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
+from app.failure_messages import format_failure
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EnginePolicyIn, TelegramCredentialsIn, CaptchaAnswerIn, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
 from app.security import UnsafeUrlError, preflight_source_dns, validate_target_url
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
@@ -130,7 +131,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 if worker is None:
                     await rpc.close()
         except (UnsafeUrlError, ValueError, RuntimeError, TimeoutError, httpx.HTTPError) as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
+            raise HTTPException(status_code=422, detail=format_failure("aria2c", exc)) from exc
 
     @app.get("/api/v1/engines", response_model=list[EngineStatusOut], tags=["engines"])
     def list_engines(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
