@@ -24,6 +24,7 @@ from app.adapters.aria2 import Aria2Rpc
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
+from app.cookies import encrypt_cookie
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
@@ -219,6 +220,10 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=422, detail="Cookie file must be valid base64-encoded UTF-8 text") from exc
         if len(content) > 1_000_000 or "\x00" in decoded:
             raise HTTPException(status_code=413, detail="Cookie file is too large or contains invalid bytes")
+        try:
+            encrypted = encrypt_cookie(content, config.encryption_key)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
         cookie_dir = config.data_dir / "cookies"
         cookie_dir.mkdir(parents=True, exist_ok=True)
         if cookie_dir.is_symlink():
@@ -234,8 +239,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 suffix=".part", delete=False,
             ) as stream:
                 temporary = Path(stream.name)
-                os.fchmod(stream.fileno(), 0o600)
-                stream.write(content)
+                os.chmod(stream.name, 0o600)
+                stream.write(encrypted)
                 stream.flush()
                 os.fsync(stream.fileno())
             os.replace(temporary, target)

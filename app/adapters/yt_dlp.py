@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.cookies import materialize_cookie_file
 from app.security import validate_extra_args
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -99,6 +101,7 @@ async def run_ytdlp(
     on_progress: ProgressCallback,
     on_log: LogCallback,
     is_cancelled: CancelCallback,
+    encryption_key: str | None = None,
 ) -> list[Path]:
     effective = _effective_settings(global_settings, overrides)
     workdir.mkdir(parents=True, exist_ok=True)
@@ -127,16 +130,27 @@ async def run_ytdlp(
     if effective["subtitles_lang"]:
         argv.extend(["--sub-langs", effective["subtitles_lang"]])
     cookie_name = overrides.get("cookies_file") or global_settings.get("cookies_file")
+    cookie_source: Path | None = None
     if cookie_name:
         if not isinstance(cookie_name, str) or Path(cookie_name).name != cookie_name or cookie_name in {".", ".."}:
             raise ValueError("cookies_file must be a filename inside the service cookies directory")
         cookie_path = (cookie_dir / cookie_name).resolve()
         if cookie_path.parent != cookie_dir.resolve() or not cookie_path.is_file():
             raise ValueError("The selected cookies file does not exist in the service cookies directory")
-        argv.extend(["--cookies", str(cookie_path)])
-    argv.extend(effective["extra_args"])
-    argv.append(url)
+        cookie_source = cookie_path
+    context = materialize_cookie_file(cookie_source, workdir, encryption_key) if cookie_source else nullcontext(None)
+    with context as decrypted:
+        if decrypted is not None:
+            argv.extend(["--cookies", str(decrypted)])
+        argv.extend(effective["extra_args"])
+        argv.append(url)
+        return await _execute_ytdlp(argv, workdir, on_progress, on_log, is_cancelled)
 
+
+async def _execute_ytdlp(
+    argv: list[str], workdir: Path,
+    on_progress: ProgressCallback, on_log: LogCallback, is_cancelled: CancelCallback,
+) -> list[Path]:
     await on_log("Starting yt-dlp")
     await on_log("Started yt-dlp with service-managed output and progress options")
     process = await asyncio.create_subprocess_exec(
@@ -191,7 +205,7 @@ async def run_ytdlp(
                     process.kill()
                     await process.wait()
                 raise asyncio.CancelledError
-    except asyncio.CancelledError:
+    except BaseException:
         if process.returncode is None:
             process.terminate()
             try:

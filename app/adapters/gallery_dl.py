@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import re
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.cookies import materialize_cookie_file
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
@@ -109,6 +111,7 @@ async def run_gallery_dl(
     on_progress: ProgressCallback,
     on_log: LogCallback,
     is_cancelled: CancelCallback,
+    encryption_key: str | None = None,
 ) -> list[Path]:
     effective = _effective_settings(global_settings, overrides)
     workdir.mkdir(parents=True, exist_ok=True)
@@ -130,18 +133,29 @@ async def run_gallery_dl(
         argv.extend(["--proxy", effective["proxy"]])
 
     cookie_name = effective.get("cookies_file") or ""
+    cookie_source: Path | None = None
     if cookie_name:
         if Path(cookie_name).name != cookie_name or cookie_name in {".", ".."} or "\\" in cookie_name:
             raise ValueError("gallery-dl cookies_file must be a filename inside the service cookies directory")
         cookie_path = (cookie_dir / cookie_name).resolve()
         if cookie_path.parent != cookie_dir.resolve() or not cookie_path.is_file():
             raise ValueError("The selected cookies file does not exist in the service cookies directory")
-        argv.extend(["--cookies", str(cookie_path)])
+        cookie_source = cookie_path
 
-    for key, value in effective["options"].items():
-        argv.extend(["-o", f"{key}={value}"])
+    context = materialize_cookie_file(cookie_source, workdir, encryption_key) if cookie_source else nullcontext(None)
+    with context as decrypted:
+        if decrypted is not None:
+            argv.extend(["--cookies", str(decrypted)])
+        for key, value in effective["options"].items():
+            argv.extend(["-o", f"{key}={value}"])
+        argv.append(url)
+        return await _execute_gallery_dl(argv, workdir, on_progress, on_log, is_cancelled)
 
-    argv.append(url)
+
+async def _execute_gallery_dl(
+    argv: list[str], workdir: Path,
+    on_progress: ProgressCallback, on_log: LogCallback, is_cancelled: CancelCallback,
+) -> list[Path]:
     await on_log("Starting gallery-dl")
     await on_log("Started gallery-dl with service-managed output and progress options")
 
@@ -190,7 +204,7 @@ async def run_gallery_dl(
                     process.kill()
                     await process.wait()
                 raise asyncio.CancelledError
-    except asyncio.CancelledError:
+    except BaseException:
         if process.returncode is None:
             process.terminate()
             try:

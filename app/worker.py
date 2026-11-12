@@ -311,6 +311,7 @@ class JobWorker:
                         executable="yt-dlp", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
                         cookie_dir=self.settings.data_dir / "cookies",
+                        encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
                 elif engine == "gallery-dl":
@@ -318,6 +319,7 @@ class JobWorker:
                         executable="gallery-dl", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
                         cookie_dir=self.settings.data_dir / "cookies",
+                        encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
                 elif engine == "generic":
@@ -332,6 +334,7 @@ class JobWorker:
                         executable="you-get", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
                         cookie_dir=self.settings.data_dir / "cookies",
+                        encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
                 elif engine == "get-sauce":
