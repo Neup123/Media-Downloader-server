@@ -164,6 +164,7 @@ class BackgroundServices:
             service.process = await asyncio.create_subprocess_exec(
                 *self.command(name), stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.STDOUT, env=env,
+                cwd="/opt/cobalt/api" if name == "cobalt" and not self.settings.cobalt_command else directory,
                 start_new_session=os.name != "nt",
             )
             service.reader = asyncio.create_task(self._capture(name, service.process))

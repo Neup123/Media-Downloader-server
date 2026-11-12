@@ -36,5 +36,13 @@
     "passed": 14,
     "failed": 0
   },
-  "cobalt_upstream_smoke": "Pinned 11.7.1 API startup/readiness and TERM child reaping passed in builder container; no site download claimed"
+  "cobalt_upstream_smoke": "Pinned 11.7.1 API startup/readiness and TERM child reaping passed in builder container; no site download claimed",
+  "runtime_smoke": {
+    "script": "scripts/background_services_smoke.py",
+    "user": "10001:10001",
+    "network": "none",
+    "fresh_off_no_listeners": "passed",
+    "always_api_private_tunnel": "passed",
+    "shared_on_demand_grace_logs_freed_ports": "passed"
+  }
 }
