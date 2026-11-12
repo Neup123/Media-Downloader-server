@@ -26,6 +26,8 @@ iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 8080 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 16800 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 8000 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 9000 -j ACCEPT
+# cobalt's private ffmpeg tunnel is pinned to this port at image build time.
+iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 9001 -j ACCEPT
 
 # Block local, private, shared, benchmark, documentation, reserved and
 # multicast IPv4 space. This applies to EVERY subprocess in the namespace,

@@ -7,7 +7,7 @@
     "failed": 17
   },
   "implementation_full_suite": {
-    "passed": 539,
+    "passed": 540,
     "failed": 17
   },
   "failure_sets_identical": true,
@@ -33,7 +33,8 @@
   "compileall": "passed",
   "integration_rig": "not run; requires owner pyLoad profile/key and hoster interaction",
   "focused_lifecycle_worker": {
-    "passed": 13,
+    "passed": 14,
     "failed": 0
-  }
+  },
+  "cobalt_upstream_smoke": "Pinned 11.7.1 API startup/readiness and TERM child reaping passed in builder container; no site download claimed"
 }

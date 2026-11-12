@@ -13,7 +13,11 @@ RUN git init && git remote add origin https://github.com/imputnet/cobalt.git \
     && git fetch --depth=1 origin a636575b09de1fc55d9b8cd98cac88f5f2f16b42 \
     && git checkout --detach FETCH_HEAD \
     && corepack enable && pnpm install --prod --frozen-lockfile \
-    && pnpm deploy --filter=@imput/cobalt-api --prod /opt/cobalt-runtime
+    && pnpm deploy --filter=@imput/cobalt-api --prod /opt/cobalt-runtime \
+    # Upstream's private ffmpeg tunnel picks a random loopback port. Pin it
+    # so the egress guard can permit this one endpoint without opening a range.
+    && test "$(grep -c 'port: 0,' /opt/cobalt-runtime/src/core/itunnel.js)" = 1 \
+    && sed -i 's/port: 0,/port: 9001,/' /opt/cobalt-runtime/src/core/itunnel.js
 
 # Build the React web UI as static assets.
 FROM node:22-alpine AS web-build
@@ -40,12 +44,12 @@ RUN apt-get update \
     && chown -R downloader:downloader /app /data
 
 WORKDIR /app
-COPY --from=cobalt-build /usr/local/bin/node /usr/local/bin/node
-COPY --from=cobalt-build /opt/cobalt-runtime /opt/cobalt/api
-COPY --from=cobalt-build /opt/cobalt/.git /opt/cobalt/.git
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt
+COPY --from=cobalt-build /usr/local/bin/node /usr/local/bin/node
+COPY --from=cobalt-build /opt/cobalt-runtime /opt/cobalt/api
+COPY --from=cobalt-build /opt/cobalt/.git /opt/cobalt/.git
 COPY app/ ./app/
 # Probe shims use importlib.metadata and fail when the installed package is
 # missing, rather than reporting a misleading Python interpreter version.

@@ -134,7 +134,13 @@ class BackgroundServices:
         if self.closed or self.mode(name) == "off":
             raise RuntimeError(f"{name} service is off")
         if service.process and service.process.returncode is None:
-            return
+            if service.state == "running" and service.error is None:
+                return
+            # A failed readiness cleanup may retain a live child. Never treat
+            # that handle as a successful boot on the following job.
+            await self._stop(name)
+            if service.process and service.process.returncode is None:
+                raise RuntimeError(f"The {'pyLoad' if name == 'pyload' else name} service did not start: previous process could not be stopped; see service_error")
         service.state = "starting"
         service.error = None
         try:

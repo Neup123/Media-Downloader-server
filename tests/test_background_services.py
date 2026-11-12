@@ -248,6 +248,7 @@ def test_settings_autosave_applies_and_reports_live_state(settings, monkeypatch,
         assert starts == []
         response = client.put(path, headers=auth_headers, json={"settings": {"mode": "on-demand"}})
         assert response.json()["state"] == "stopped"
+
         assert starts == []
         response = client.put(path, headers=auth_headers, json={"settings": {"mode": "always"}})
         assert response.json()["state"] == "running"
@@ -255,3 +256,24 @@ def test_settings_autosave_applies_and_reports_live_state(settings, monkeypatch,
         assert client.get(path, headers=auth_headers).json()["state"] == "running"
         response = client.put(path, headers=auth_headers, json={"settings": {"mode": "off"}})
         assert response.json()["state"] == "stopped"
+
+
+def test_failed_cleanup_handle_cannot_bypass_readiness(client, settings, monkeypatch):
+    async def run():
+        manager, ids = setup_service(client, settings)
+        from types import SimpleNamespace
+        service = manager.services["cobalt"]
+        service.process = SimpleNamespace(returncode=None)
+        service.state = "running"
+        service.error = "Service stop failed"
+
+        async def cannot_stop(*args):
+            pass
+
+        monkeypatch.setattr(manager, "_stop", cannot_stop)
+        with pytest.raises(RuntimeError, match="service did not start: previous process"):
+            await manager.acquire("cobalt", ids[0])
+        assert not service.users
+        service.process = None
+        await manager.close()
+    asyncio.run(run())

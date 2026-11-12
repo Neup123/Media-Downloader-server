@@ -47,8 +47,10 @@ COBALT_API_URL=http://127.0.0.1:9000
 ```
 
 Keep pyLoad's profile web UI bound to loopback, matching that API URL/port.
-The guarded Compose profile permits only the default IPv4 loopback API ports
-8000 and 9000; keep these endpoints at their defaults in that profile.
+The guarded Compose profile permits the default IPv4 loopback API ports 8000
+and 9000, plus cobalt's private ffmpeg tunnel on 9001. The image pins upstream's
+otherwise random private tunnel port to 9001; no loopback port range is opened.
+Keep API endpoints at their defaults in the guarded profile.
 The default launch passes `--storagedir` to match the configured shared root.
 It disables upstream PID-file handling (`--pidfile ''`): Core owns and reaps
 the child itself, so stale/reused upstream PID files cannot select or kill an
