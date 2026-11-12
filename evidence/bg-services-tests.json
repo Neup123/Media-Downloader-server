@@ -7,7 +7,7 @@
     "failed": 17
   },
   "implementation_full_suite": {
-    "passed": 538,
+    "passed": 539,
     "failed": 17
   },
   "failure_sets_identical": true,
@@ -31,5 +31,9 @@
     "tests/test_you_get.py::test_you_get_uses_service_managed_output_and_detects_files"
   ],
   "compileall": "passed",
-  "integration_rig": "not run; requires owner pyLoad profile/key and hoster interaction"
+  "integration_rig": "not run; requires owner pyLoad profile/key and hoster interaction",
+  "focused_lifecycle_worker": {
+    "passed": 13,
+    "failed": 0
+  }
 }

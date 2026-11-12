@@ -21,9 +21,11 @@ ip6tables -w -A DOWNLOADER_EGRESS -m conntrack --ctstate ESTABLISHED,RELATED -j 
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.11/32 -p udp --dport 53 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.11/32 -p tcp --dport 53 -j ACCEPT
 
-# The local health endpoint and loopback-only aria2 JSON-RPC are required.
+# Core health/RPC and the two opt-in daemon APIs use fixed loopback ports.
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 8080 -j ACCEPT
 iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 16800 -j ACCEPT
+iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 8000 -j ACCEPT
+iptables -w -A DOWNLOADER_EGRESS -d 127.0.0.1/32 -p tcp --dport 9000 -j ACCEPT
 
 # Block local, private, shared, benchmark, documentation, reserved and
 # multicast IPv4 space. This applies to EVERY subprocess in the namespace,
