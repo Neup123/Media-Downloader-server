@@ -231,7 +231,7 @@ class BackgroundServices:
     async def acquire(self, name, job_id):
         service = self.services[name]
         # Publish before waiting for the lock/readiness, including shared boots.
-        if service.state != "running" or not service.process or service.process.returncode is not None:
+        if service.state != "running" or service.error is not None or not service.process or service.process.returncode is not None:
             self.phase(job_id, name, "starting_service")
         service.logs.add(job_id)
         async with service.lock:

@@ -268,7 +268,8 @@ def test_failed_cleanup_handle_cannot_bypass_readiness(client, settings, monkeyp
         service.error = "Service stop failed"
 
         async def cannot_stop(*args):
-            pass
+            with manager.sessions() as session:
+                assert session.get(Job, ids[0]).progress["phase"] == "starting_service"
 
         monkeypatch.setattr(manager, "_stop", cannot_stop)
         with pytest.raises(RuntimeError, match="service did not start: previous process"):
