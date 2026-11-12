@@ -60,6 +60,7 @@ def test_real_shared_process_grace_reuse_and_logs(client, settings):
     async def run():
         manager, ids = setup_service(client, settings, grace=.08)
         try:
+            await manager.apply("cobalt")
             await asyncio.gather(*(manager.acquire("cobalt", job) for job in ids))
             service = manager.services["cobalt"]
             child = service.process
@@ -70,6 +71,8 @@ def test_real_shared_process_grace_reuse_and_logs(client, settings):
             await asyncio.sleep(.12)
             assert child.returncode is None  # Other job still owns it.
             await manager.release("cobalt", ids[1])
+            await manager.apply("cobalt")  # Same-mode autosave preserves grace.
+            assert service.process is child
             await manager.acquire("cobalt", ids[0])
             assert service.process is child
             await manager.release("cobalt", ids[0])

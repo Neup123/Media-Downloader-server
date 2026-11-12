@@ -43,6 +43,7 @@ class Service:
     idle: asyncio.Task | None = None
     reader: asyncio.Task | None = None
     retry_after: float = 0
+    applied_mode: str = "off"
 
 
 class BackgroundServices:
@@ -260,10 +261,14 @@ class BackgroundServices:
     async def apply(self, name):
         service = self.services[name]
         async with service.lock:
+            mode = self.mode(name)
+            if mode == "on-demand" and service.applied_mode == mode:
+                # An unchanged autosave must preserve the existing idle grace.
+                return
             if service.idle:
                 service.idle.cancel()
                 service.idle = None
-            mode = self.mode(name)
+            service.applied_mode = mode
             if mode == "always":
                 await self._start(name)
             elif mode == "off" or not service.users:
