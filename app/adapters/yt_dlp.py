@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.failure_messages import CliFailed, LastErrorLine, UserFacingFailure
 from app.adapters.process_env import downloader_environment
 from app.security import validate_extra_args
 
@@ -139,13 +140,18 @@ async def run_ytdlp(
 
     await on_log("Starting yt-dlp")
     await on_log("Started yt-dlp with service-managed output and progress options")
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise UserFacingFailure("yt-dlp is not installed on the server.",
+                                "Contact the administrator / reinstall the engine.") from exc
+    errors = LastErrorLine()
     reported_files: list[Path] = []
     assert process.stdout is not None
     try:
@@ -182,7 +188,9 @@ async def run_ytdlp(
             if progress is not None:
                 await on_progress(progress)
             else:
-                await on_log(_redact(line))
+                safe_line = _redact(line)
+                errors.capture(safe_line)
+                await on_log(safe_line)
             if await is_cancelled():
                 process.terminate()
                 try:
@@ -202,7 +210,7 @@ async def run_ytdlp(
         raise
     return_code = await process.wait()
     if return_code != 0:
-        raise RuntimeError(f"yt-dlp exited with status {return_code}")
+        raise CliFailed("yt-dlp", return_code, errors.value)
 
     files = sorted(set(reported_files))
     if not files:

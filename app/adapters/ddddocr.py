@@ -16,9 +16,11 @@ async def run_ddddocr(
     run_carefully: bool,
     user_paid_solver: Callable[[bytes], Awaitable[str | None]] | None = None,
     configured_paid_solver: Callable[[bytes], Awaitable[str | None]] | None = None,
+    on_log: Callable[[str], Awaitable[None]] | None = None,
 ) -> str:
     return await solve_captcha(
         image, ddddocr_enabled=run_carefully,
         user_paid_solver=user_paid_solver,
         configured_paid_solver=configured_paid_solver,
+        on_log=on_log,
     )

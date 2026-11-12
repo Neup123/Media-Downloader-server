@@ -5,6 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.failure_messages import CliFailed, LastErrorLine, UserFacingFailure
 from app.adapters.process_env import downloader_environment
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -145,13 +146,18 @@ async def run_gallery_dl(
     await on_log("Starting gallery-dl")
     await on_log("Started gallery-dl with service-managed output and progress options")
 
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise UserFacingFailure("gallery-dl is not installed on the server.",
+                                "Contact the administrator / reinstall the engine.") from exc
+    errors = LastErrorLine()
     assert process.stdout is not None
     try:
         while True:
@@ -180,7 +186,9 @@ async def run_gallery_dl(
             if progress is not None:
                 await on_progress(progress)
             else:
-                await on_log(_redact(line))
+                safe_line = _redact(line)
+                errors.capture(safe_line)
+                await on_log(safe_line)
 
             if await is_cancelled():
                 process.terminate()
@@ -202,7 +210,7 @@ async def run_gallery_dl(
 
     return_code = await process.wait()
     if return_code != 0:
-        raise RuntimeError(f"gallery-dl exited with status {return_code}")
+        raise CliFailed("gallery-dl", return_code, errors.value)
 
     ignored_suffixes = (".part", ".tmp", ".ytdl", ".aria2")
     files = sorted(

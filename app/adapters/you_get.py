@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit
 from typing import Any, Awaitable, Callable
 
+from app.failure_messages import CliFailed, UserFacingFailure
 from app.adapters.common_cli import run_cli
 from app.adapters.yt_dlp import run_ytdlp
 
@@ -58,16 +59,27 @@ async def run_you_get(
             "youtube.com", "www.youtube.com", "m.youtube.com",
             "music.youtube.com", "youtu.be", "www.youtu.be",
         }
-        if host not in youtube_hosts or "you-get exited with status" not in str(exc):
+        failed_exit = (
+            (isinstance(exc, CliFailed) and exc.engine == "you-get")
+            or "you-get exited with status" in str(exc)
+        )
+        if host not in youtube_hosts or not failed_exit:
             raise
         await on_log("you-get YouTube extractor failed; falling back to bundled yt-dlp")
         fallback_overrides = (
             {"cookies_file": options["cookies_file"]}
             if options["cookies_file"] else {}
         )
-        return await run_ytdlp(
-            executable="yt-dlp", url=url, workdir=workdir,
-            global_settings={}, overrides=fallback_overrides,
-            cookie_dir=cookie_dir, on_progress=on_progress,
-            on_log=on_log, is_cancelled=is_cancelled,
-        )
+        try:
+            return await run_ytdlp(
+                executable="yt-dlp", url=url, workdir=workdir,
+                global_settings={}, overrides=fallback_overrides,
+                cookie_dir=cookie_dir, on_progress=on_progress,
+                on_log=on_log, is_cancelled=is_cancelled,
+            )
+        except Exception as fallback_error:
+            raise UserFacingFailure(
+                "you-get could not handle this YouTube link; tried yt-dlp as a fallback "
+                f"and it failed: {fallback_error}.",
+                "Try yt-dlp directly for this link.",
+            ) from fallback_error

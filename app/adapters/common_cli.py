@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
+from app.failure_messages import CliFailed, LastErrorLine, UserFacingFailure
 from app.adapters.process_env import downloader_environment
 from app.redaction import _redact
 
@@ -42,12 +43,17 @@ async def run_cli(
 ) -> list[Path]:
     workdir.mkdir(parents=True, exist_ok=True)
     await on_log(f"Starting {name}")
-    process = await asyncio.create_subprocess_exec(
-        *argv, cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise UserFacingFailure(f"{name} is not installed on the server.",
+                                "Contact the administrator / reinstall the engine.") from exc
+    errors = LastErrorLine()
     assert process.stdout is not None
     previous_size = 0
     try:
@@ -61,7 +67,9 @@ async def run_cli(
             if raw == b"":
                 break
             if raw:
-                await on_log(_redact(raw.decode("utf-8", errors="replace").rstrip()))
+                line = _redact(raw.decode("utf-8", errors="replace").rstrip())
+                errors.capture(line)
+                await on_log(line)
             files = _output_files(workdir)
             downloaded = sum(path.stat().st_size for path in files if path.exists())
             await on_progress({
@@ -83,7 +91,7 @@ async def run_cli(
         raise
     code = await process.wait()
     if code != 0:
-        raise RuntimeError(f"{name} exited with status {code}")
+        raise CliFailed(name, code, errors.value)
     files = _output_files(workdir)
     if not files:
         raise RuntimeError(f"{name} completed without any output file")

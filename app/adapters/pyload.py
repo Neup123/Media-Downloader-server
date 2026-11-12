@@ -18,6 +18,7 @@ import httpx
 
 from app.captcha import CaptchaWaiting
 from app.adapters.ddddocr import run_ddddocr
+from app.failure_messages import UserFacingFailure
 
 
 def validate_pyload_endpoint(value: str) -> str:
@@ -80,20 +81,41 @@ async def run_pyload(
         transport=transport, headers=headers,
     ) as client:
         async def call(method: str, route: str, **kwargs):
-            response = await client.request(method, base_url + "/api/" + route, **kwargs)
-            response.raise_for_status()
+            try:
+                response = await client.request(method, base_url + "/api/" + route, **kwargs)
+                response.raise_for_status()
+            except httpx.HTTPError as exc:
+                await on_log(f"pyLoad request failed: {exc}")
+                raise UserFacingFailure(
+                    "The pyLoad service is unreachable at the configured address.",
+                    "Check that the pyLoad daemon is running and the address in settings is correct.",
+                ) from exc
             body = response.json()
             if isinstance(body, dict) and "error" in body:
-                raise RuntimeError("pyLoad API reported an error")
+                detail = body["error"]
+                if isinstance(detail, dict):
+                    detail = detail.get("message") or detail.get("detail") or detail.get("error") or detail
+                text = str(detail)[:500]
+                await on_log(f"pyLoad API reported an error: {text}")
+                raise RuntimeError(f"pyLoad reported an error: {text}")
             return body
 
         package_id = existing_package_id
         if package_id is None:
-            package_id = await call("POST", "add_package", json={
-                "name": "Core job", "links": [url], "dest": 1,
-            })
+            try:
+                package_id = await call("POST", "add_package", json={
+                    "name": "Core job", "links": [url], "dest": 1,
+                })
+            except UserFacingFailure:
+                raise
+            except RuntimeError as exc:
+                raise UserFacingFailure(
+                    f"pyLoad could not start this download (enqueue failed): {exc}.",
+                    "Retry; if it repeats, check the pyLoad daemon.",
+                ) from exc
         if type(package_id) is not int or package_id <= 0:
-            raise RuntimeError("pyLoad failed to enqueue a package")
+            raise UserFacingFailure("pyLoad could not start this download (enqueue failed).",
+                                    "Retry; if it repeats, check the pyLoad daemon.")
         await on_log("pyLoad package accepted by authenticated API")
         try:
             while True:
@@ -109,6 +131,7 @@ async def run_pyload(
                             image_bytes = base64.b64decode(image_data, validate=True)
                             result = await run_ddddocr(
                                 image_bytes, run_carefully=run_ddddocr_opt_in,
+                                on_log=on_log,
                             )
                         except (ValueError, CaptchaWaiting):
                             pass
@@ -126,12 +149,32 @@ async def run_pyload(
                     "package_id": package_id,
                 })
                 if not isinstance(package, dict):
-                    raise RuntimeError("pyLoad package status response is invalid")
+                    raise UserFacingFailure("pyLoad returned an unexpected status for this package.",
+                                            "Retry; if it repeats, check the pyLoad daemon.")
                 files = package.get("links") or []
+                if not isinstance(files, list) or any(
+                    not isinstance(x, dict) or type(x.get("status")) is not int
+                    or x["status"] not in range(15) for x in files
+                ):
+                    raise UserFacingFailure("pyLoad returned an unexpected status for this package.",
+                                            "Retry; if it repeats, check the pyLoad daemon.")
                 finished = [x for x in files if x.get("status") == 0]
                 failures = [x for x in files if x.get("status") in {8, 9, 14}]
                 if failures:
-                    raise RuntimeError("pyLoad package contains a failed or aborted transfer")
+                    reasons = []
+                    for link in failures:
+                        reason = next((link[key] for key in (
+                            "errorMessage", "error", "reason", "statusmsg", "statusMessage"
+                        ) if isinstance(link.get(key), str) and link[key].strip()), None)
+                        if reason:
+                            name = str(link.get("name") or "file")[:100]
+                            reasons.append(f"{name}: {reason[:200]}")
+                    details = " Reasons: " + "; ".join(reasons[:3]) + "." if reasons else ""
+                    raise UserFacingFailure(
+                        f"pyLoad could not download {len(failures)} of {len(files)} files in this package."
+                        + details,
+                        "Retry the failed files; if a hoster limit is reported, wait before retrying.",
+                    )
                 if files and len(finished) == len(files):
                     return _finished_output_files(package, workdir, shared_root)
                 await on_progress({

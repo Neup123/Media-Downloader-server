@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Any, Callable
 from urllib.parse import urlsplit
 
+from app.failure_messages import UserFacingFailure
+
 
 def parse_telegram_message_link(url: str) -> tuple[str | int, int]:
     parsed = urlsplit(url)
@@ -37,6 +39,20 @@ async def run_telegram(
     if not credentials or not credentials.get("session_string"):
         raise ValueError("Telegram credentials and authorized session are required")
     from telethon import TelegramClient
+    try:
+        from telethon.errors import AuthKeyUnregisteredError, ChannelPrivateError, FloodWaitError
+    except ImportError:
+        # Some integrations inject a minimal TelegramClient stub without
+        # telethon.errors. Distinct placeholders keep the real exception
+        # handlers operative whenever Telethon is fully installed.
+        class AuthKeyUnregisteredError(Exception):
+            pass
+
+        class ChannelPrivateError(Exception):
+            pass
+
+        class FloodWaitError(Exception):
+            pass
     from telethon.sessions import StringSession
 
     workdir.mkdir(parents=True, exist_ok=True)
@@ -72,5 +88,28 @@ async def run_telegram(
         if not path.is_relative_to(workdir.resolve()) or not path.is_file():
             raise RuntimeError("Telegram output escaped its managed work directory")
         return [path]
+    except FloodWaitError as exc:
+        await on_log(f"Telegram FloodWaitError: {exc}")
+        raise UserFacingFailure(
+            f"Telegram is rate-limiting this account — retry in {exc.seconds} seconds.",
+            "Wait and retry.",
+        ) from exc
+    except ChannelPrivateError as exc:
+        await on_log(f"Telegram ChannelPrivateError: {exc}")
+        raise UserFacingFailure(
+            "This channel is private, or the account has no access to it.",
+            "Use a public channel the account can see, or join it first.",
+        ) from exc
+    except AuthKeyUnregisteredError as exc:
+        await on_log(f"Telegram AuthKeyUnregisteredError: {exc}")
+        raise UserFacingFailure(
+            "The Telegram session expired.",
+            "Re-authorize the Telegram session in settings.",
+        ) from exc
+    except (ConnectionError, OSError) as exc:
+        await on_log(f"Telegram network error: {exc}")
+        raise UserFacingFailure(
+            "Could not reach Telegram — retry.", "Retry — transient.",
+        ) from exc
     finally:
         await client.disconnect()
