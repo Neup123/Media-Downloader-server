@@ -89,7 +89,24 @@ paths:
                 formats:
                   - {format_id: '720p', ext: mp4, resolution: 1280x720, vcodec: h264, acodec: aac, filesize: null}
                 subtitle_languages: []
-        '422': { description: Invalid or unsupported URL, or preview failed }
+        '422':
+          description: |-
+            Preview failure. The existing detail is unchanged (a string for
+            service failures, an array for request schema validation).
+            The additive reason_code identifies the evidenced origin:
+            - malformed_link: malformed, disallowed or safety-rejected URL, or invalid preview request;
+            - unsupported_domain: extractor confirms no handler claims the URL before a source page is fetched;
+            - item_not_found: source item HTTP 404 or 410 confirmed by a typed HTTP error;
+            - not_media: source page was fetched successfully but the generic extractor found no downloadable media;
+            - could_not_check: timeout, network/DNS failure, or ambiguous/opaque extractor error.
+            A deleted/private message without a typed source-status signal is
+            ambiguous and uses could_not_check; error text is never parsed.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PreviewFailure' }
+              example:
+                detail: yt-dlp metadata inspection failed (exit 1)
+                reason_code: could_not_check
   /torrent/manifest:
     post:
       operationId: inspectTorrentManifest
@@ -852,6 +869,18 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    PreviewFailure:
+      type: object
+      required: [detail, reason_code]
+      properties:
+        detail:
+          description: Unchanged human-readable error or FastAPI validation detail.
+          anyOf:
+            - { type: string }
+            - { type: array, items: { type: object } }
+        reason_code:
+          type: string
+          enum: [malformed_link, unsupported_domain, item_not_found, not_media, could_not_check]
     EngineStatusOut:
       type: object
       required: [name, label, role, priority, available, installed, version, defaults]

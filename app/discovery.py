@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Any
@@ -14,8 +15,15 @@ MAX_PREVIEW_OUTPUT = 2_000_000
 PREVIEW_TIMEOUT_SECONDS = 45
 
 
+REASON_CODES = frozenset({
+    "malformed_link", "unsupported_domain", "item_not_found", "not_media", "could_not_check",
+})
+
+
 class PreviewError(RuntimeError):
-    pass
+    def __init__(self, detail: str, reason_code: str = "could_not_check") -> None:
+        super().__init__(detail)
+        self.reason_code = reason_code if reason_code in REASON_CODES else "could_not_check"
 
 
 def _optional_text(value: Any, limit: int = 500) -> str | None:
@@ -123,14 +131,22 @@ async def inspect_ytdlp(
         raise ValueError("max_entries must be between 1 and 100")
     if not 0 <= offset <= 100_000:
         raise ValueError("offset must be between 0 and 100000")
-    argv = [
-        executable, "--ignore-config", "--dump-single-json",
-        "--flat-playlist", "--playlist-start", str(offset + 1),
-        "--playlist-end", str(offset + max_entries + 1),
-        "--skip-download", "--no-warnings", url,
-    ]
+    # The default yt-dlp path uses its Python API in a separate bounded child
+    # so typed extractor/network exceptions can be reported as reason codes.
+    # Preserve the explicit executable hook for existing CLI callers/tests.
+    structured = executable == "yt-dlp"
+    argv = (
+        [sys.executable, "-m", "app.preview_probe", str(max_entries), str(offset), url]
+        if structured else [
+            executable, "--ignore-config", "--dump-single-json",
+            "--flat-playlist", "--playlist-start", str(offset + 1),
+            "--playlist-end", str(offset + max_entries + 1),
+            "--skip-download", "--no-warnings", url,
+        ]
+    )
     process = await asyncio.create_subprocess_exec(
-        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        *argv, stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE if structured else asyncio.subprocess.DEVNULL,
         env=downloader_environment(),
     )
     assert process.stdout is not None
@@ -159,7 +175,19 @@ async def inspect_ytdlp(
         raw = await read_bounded()
         code = await asyncio.wait_for(process.wait(), timeout=3)
         if code != 0:
-            raise PreviewError(f"yt-dlp metadata inspection failed (exit {code})")
+            reason_code = "could_not_check"
+            if structured:
+                assert process.stderr is not None
+                try:
+                    # The child writes only one bounded JSON diagnostic, no raw
+                    # URL, HTTP response body, extractor message, or credentials.
+                    diagnostic = await asyncio.wait_for(process.stderr.read(512), timeout=1)
+                    supplied = json.loads(diagnostic).get("reason_code")
+                    if supplied in REASON_CODES:
+                        reason_code = supplied
+                except (asyncio.TimeoutError, ValueError, AttributeError, TypeError):
+                    pass
+            raise PreviewError(f"yt-dlp metadata inspection failed (exit {code})", reason_code)
         try:
             metadata = json.loads(raw)
         except (json.JSONDecodeError, UnicodeDecodeError) as exc:
