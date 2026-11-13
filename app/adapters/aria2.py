@@ -20,6 +20,7 @@ ARIA2_OPTION_ALLOWLIST = {
     "connect-timeout", "timeout", "lowest-speed-limit", "max-download-limit",
     "user-agent", "referer", "header", "allow-overwrite", "auto-file-renaming",
     "check-integrity", "seed-time", "seed-ratio", "bt-max-peers", "bt-stop-timeout",
+    "select-file",
 }
 
 
