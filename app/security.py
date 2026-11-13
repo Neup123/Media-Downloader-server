@@ -10,6 +10,11 @@ class UnsafeUrlError(ValueError):
     pass
 
 
+class SourceResolutionError(UnsafeUrlError):
+    """DNS lookup failed, not a malformed or policy-rejected source URL."""
+    pass
+
+
 def _validated_urlsplit(url: str):
     """Reject URL spellings that different HTTP clients might reinterpret.
 
@@ -237,7 +242,7 @@ def resolve_http_target(url: str, allow_private: bool = False) -> str | None:
     try:
         records = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, proto=socket.IPPROTO_TCP)
     except (socket.gaierror, OSError) as exc:
-        raise UnsafeUrlError("Could not resolve target hostname") from exc
+        raise SourceResolutionError("Could not resolve target hostname") from exc
     addresses = set()
     for record in records:
         try:
@@ -248,7 +253,7 @@ def resolve_http_target(url: str, allow_private: bool = False) -> str | None:
             raise UnsafeUrlError("DNS resolution includes a private or reserved address")
         addresses.add(address)
     if not addresses:
-        raise UnsafeUrlError("DNS resolution returned no IP addresses")
+        raise SourceResolutionError("DNS resolution returned no IP addresses")
     # curl requires IPv6 addresses inside brackets.
     encoded = ",".join(
         f"[{ip}]" if ip.version == 6 else str(ip)
