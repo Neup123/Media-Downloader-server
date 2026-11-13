@@ -219,34 +219,106 @@ class Aria2Rpc:
     ) -> list[Path]:
         await self.start()
         workdir.mkdir(parents=True, exist_ok=True)
+        root = workdir.resolve()
         options = _effective_options(global_settings, overrides)
-        options["dir"] = str(workdir)
+        options["dir"] = str(root)
         options["check-integrity"] = "true"
-        gid = await self.call("aria2.addUri", [[url], options])
+        source = url.split("?", 1)[0].lower()
+        source_is_container = (
+            url.lower().startswith("magnet:?") or
+            source.endswith((".torrent", ".metalink", ".meta4"))
+        )
+        if source_is_container:
+            options["pause-metadata"] = "true"
+        gid = str(await self.call("aria2.addUri", [[url], options]))
+        tracked = {gid}
+        active = gid
+        followon_deadline: float | None = None
+        succeeded = False
         self._job_gids[job_id] = gid
-        await on_log(f"Queued with aria2 JSON-RPC (GID {gid})")
+        status_keys = [
+            "status", "totalLength", "completedLength", "downloadSpeed",
+            "errorCode", "errorMessage", "files", "followedBy", "bittorrent",
+        ]
         try:
+            await on_log(f"Queued with aria2 JSON-RPC (GID {gid})")
             while True:
                 if await is_cancelled():
-                    try:
-                        await self.call("aria2.remove", [gid])
-                    except RuntimeError:
-                        await self.call("aria2.forceRemove", [gid])
                     raise asyncio.CancelledError
-                status = await self.call("aria2.tellStatus", [gid, [
-                    "status", "totalLength", "completedLength", "downloadSpeed", "errorCode", "errorMessage", "files",
-                ]])
+                try:
+                    status = await self.call("aria2.tellStatus", [active, status_keys])
+                except RuntimeError:
+                    # aria2 may publish followedBy before the new GID is queryable.
+                    if active != gid and followon_deadline is not None and (
+                        asyncio.get_running_loop().time() < followon_deadline
+                    ):
+                        await asyncio.sleep(0.25)
+                        continue
+                    raise
+                children = [str(child) for child in status.get("followedBy") or []]
+                tracked.update(children)
+                current = status.get("status")
+                files = status.get("files") or []
+                metadata_file = any(
+                    Path(str(item.get("path") or "")).name.startswith("[METADATA]")
+                    for item in files
+                )
+                # Parent GIDs for magnets, remote torrents and Metalinks can
+                # finish before their payload GID is available in aria2.
+                metadata_phase = active == gid and (metadata_file or children or source_is_container)
+                parent_complete = metadata_phase and current == "complete"
+                if children:
+                    # Follow every chain, not just the first metadata successor.
+                    child = children[0]
+                    if child != active:
+                        active = child
+                        followon_deadline = asyncio.get_running_loop().time() + 10.0
+                        # Do not advertise a child for pause/resume until its
+                        # destination has been verified.
+                        await asyncio.sleep(0.25)
+                        continue
+                if current == "error":
+                    raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
+                if current == "removed":
+                    raise RuntimeError("aria2 download was removed")
+                if metadata_phase:
+                    if parent_complete and followon_deadline is None:
+                        followon_deadline = asyncio.get_running_loop().time() + 10.0
+                    if parent_complete and asyncio.get_running_loop().time() >= followon_deadline:
+                        raise RuntimeError("aria2 completed metadata without a payload GID")
+                    await on_progress({
+                        "state": "downloading", "engine_status": "active",
+                        "downloaded_bytes": None, "total_bytes": None,
+                        "percent": None, "speed_bytes_per_second": None,
+                        "eta_seconds": None, "filename": None,
+                    })
+                    await asyncio.sleep(0.25)
+                    continue
+                if active != gid and self._job_gids.get(job_id) != active:
+                    # Some aria2 follow-ons silently fall back to --dir. Do not
+                    # deliver or keep downloading files outside this job's root.
+                    child_options = await self.call("aria2.getOption", [active])
+                    child_dir = Path(str(child_options.get("dir") or "")).resolve()
+                    if child_dir != root:
+                        await self.call("aria2.changeOption", [active, {"dir": str(root)}])
+                        child_options = await self.call("aria2.getOption", [active])
+                        if Path(str(child_options.get("dir") or "")).resolve() != root:
+                            raise RuntimeError("aria2 follow-on transfer directory is outside the job directory")
+                    self._job_gids[job_id] = active
+                    if source_is_container and current == "paused":
+                        await self.call("aria2.unpause", [active])
+                        await asyncio.sleep(0.25)
+                        continue
                 total = _int_or_none(status.get("totalLength"))
                 completed = _int_or_none(status.get("completedLength"))
                 speed = _int_or_none(status.get("downloadSpeed"))
                 percent = round(completed / total * 100, 2) if total and completed is not None else None
-                filename = None
-                files = status.get("files") or []
-                if files:
-                    filename = Path(files[0].get("path", "")).name or None
+                selected = [item for item in files if str(item.get("selected", "true")).lower() != "false"]
+                filename = next((Path(str(item.get("path") or "")).name for item in selected
+                                 if item.get("path") and not Path(str(item["path"])).name.startswith("[METADATA]")), None)
                 await on_progress({
-                    "state": "paused" if status.get("status") == "paused" else "downloading",
-                    "engine_status": status.get("status"),
+                    "state": "paused" if current == "paused" else "downloading",
+                    "engine_status": current,
                     "downloaded_bytes": completed,
                     "total_bytes": total,
                     "percent": percent,
@@ -254,33 +326,50 @@ class Aria2Rpc:
                     "eta_seconds": int((total - completed) / speed) if total and completed is not None and speed and speed > 0 else None,
                     "filename": filename,
                 })
-                current = status.get("status")
                 if current == "complete":
                     result = []
-                    for item in status.get("files") or []:
-                        path = Path(item.get("path", "")).resolve()
-                        try:
-                            path.relative_to(workdir.resolve())
-                        except ValueError:
+                    for item in selected:
+                        raw_path = item.get("path")
+                        if not isinstance(raw_path, str) or not raw_path:
                             continue
-                        if path.is_file():
+                        path = Path(raw_path).resolve()
+                        if path.is_relative_to(root) and path.is_file():
                             result.append(path)
                     if not result:
                         raise RuntimeError("aria2 reported completion but no output file was found")
+                    succeeded = True
                     return result
-                if current == "error":
-                    raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
-                if current == "removed":
-                    raise RuntimeError("aria2 download was removed")
                 if current == "paused":
-                    # Pause is not an error: report the state and await resume.
-                    # The job-level bounded engine deadline prevents indefinite stall.
+                    # User pause is a live state, not a failure.
                     await asyncio.sleep(1.0)
                     continue
                 await asyncio.sleep(1.0)
-
         finally:
             self._job_gids.pop(job_id, None)
+            if not succeeded:
+                # Refresh the chain before removing the parent. The child can
+                # appear between the final poll and cancellation/failure.
+                pending = list(tracked)
+                seen = set()
+                while pending:
+                    current_gid = pending.pop()
+                    if current_gid in seen:
+                        continue
+                    seen.add(current_gid)
+                    try:
+                        status = await self.call("aria2.tellStatus", [current_gid, ["followedBy"]])
+                        pending.extend(str(child) for child in status.get("followedBy") or [])
+                    except (RuntimeError, httpx.HTTPError):
+                        pass
+                for current_gid in seen:
+                    try:
+                        await self.call("aria2.forceRemove", [current_gid])
+                    except (RuntimeError, httpx.HTTPError):
+                        pass
+                    try:
+                        await self.call("aria2.removeDownloadResult", [current_gid])
+                    except (RuntimeError, httpx.HTTPError):
+                        pass
 
     async def close(self) -> None:
         try:

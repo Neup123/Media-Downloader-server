@@ -58,3 +58,60 @@ def test_pause_and_resume_control_same_gid_without_adding_a_new_uri(tmp_path):
             await adapter.pause("different-job")
         await adapter.close()
     asyncio.run(exercise())
+
+
+def test_pause_resume_targets_payload_after_followon_transition(tmp_path, monkeypatch):
+    async def exercise():
+        workdir = tmp_path / "job"
+        workdir.mkdir()
+        output = workdir / "payload.bin"
+        output.write_bytes(b"done")
+        rpc = Aria2Rpc(tmp_path, 16802)
+        rpc.start = AsyncMock()
+        observed = []
+        parent = {
+            "status": "complete", "followedBy": ["payload"],
+            "files": [{"path": "[METADATA]abc"}],
+        }
+        paused = {
+            "status": "paused", "totalLength": "4", "completedLength": "0",
+            "files": [{"path": str(output), "selected": "true"}],
+        }
+        complete = {**paused, "status": "complete", "completedLength": "4"}
+        polls = 0
+
+        async def call(method, params):
+            nonlocal polls
+            observed.append((method, params))
+            if method == "aria2.addUri":
+                return "metadata"
+            if method == "aria2.tellStatus":
+                if params[0] == "metadata":
+                    return parent
+                polls += 1
+                return paused if polls == 1 else complete
+            if method == "aria2.getOption":
+                return {"dir": str(workdir.resolve())}
+            if method in {"aria2.unpause", "aria2.pause"}:
+                return "OK"
+            raise AssertionError(method)
+
+        rpc.call = AsyncMock(side_effect=call)
+        async def progress(event):
+            if event["engine_status"] == "complete" and rpc.can_control("j"):
+                assert rpc._job_gids["j"] == "payload"
+                await rpc.pause("j")
+                await rpc.resume("j")
+
+        monkeypatch.setattr("app.adapters.aria2.asyncio.sleep", AsyncMock())
+        try:
+            assert await rpc.download(
+                url="magnet:?xt=urn:btih:abc", job_id="j", workdir=workdir,
+                global_settings={}, overrides={}, on_progress=progress,
+                on_log=AsyncMock(), is_cancelled=AsyncMock(return_value=False),
+            ) == [output]
+            assert ("aria2.pause", ["payload"]) in observed
+            assert ("aria2.unpause", ["payload"]) in observed
+        finally:
+            await rpc.close()
+    asyncio.run(exercise())
