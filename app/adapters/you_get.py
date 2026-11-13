@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.common_cli import run_cli
+from app.cookies import materialize_cookie_file
 
 
 def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -30,20 +32,27 @@ async def run_you_get(
     global_settings: dict[str, Any], overrides: dict[str, Any],
     cookie_dir: Path,
     on_progress: Callable, on_log: Callable, is_cancelled: Callable,
+    encryption_key: str | None = None,
 ) -> list[Path]:
     options = effective_settings(global_settings, overrides)
+    workdir.mkdir(parents=True, exist_ok=True)
     argv = [executable, "--output-dir", str(workdir)]
     if options["format"]:
         argv.extend(["--format", options["format"]])
     if options["no_proxy"]:
         argv.append("--no-proxy")
+    cookie_source: Path | None = None
     if options["cookies_file"]:
         path = (cookie_dir / options["cookies_file"]).resolve()
         if path.parent != cookie_dir.resolve() or not path.is_file():
             raise ValueError("Selected you-get cookie file was not found")
-        argv.extend(["--cookies", str(path)])
-    argv.append(url)
-    return await run_cli(
-        name="you-get", argv=argv, workdir=workdir,
-        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-    )
+        cookie_source = path
+    context = materialize_cookie_file(cookie_source, workdir, encryption_key) if cookie_source else nullcontext(None)
+    with context as decrypted:
+        if decrypted is not None:
+            argv.extend(["--cookies", str(decrypted)])
+        argv.append(url)
+        return await run_cli(
+            name="you-get", argv=argv, workdir=workdir,
+            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+        )
