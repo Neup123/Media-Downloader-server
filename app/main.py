@@ -101,7 +101,32 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     @app.get("/healthz", tags=["system"])
     def healthz():
+        """Process liveness only; a healthy HTTP process can still lack queue readiness."""
         return {"status": "ok", "service": "downloader-server"}
+
+    @app.get("/readyz", tags=["system"])
+    def readyz():
+        """Database query + scheduler heartbeat. Does not probe remote engines or WebDAV."""
+        try:
+            with session_factory() as session:
+                session.execute(select(1)).scalar_one()
+        except Exception:
+            return JSONResponse(status_code=503, content={
+                "status": "degraded", "component": "database",
+            })
+        if worker is None:
+            return JSONResponse(status_code=503, content={
+                "status": "degraded", "component": "scheduler",
+                "reason": "scheduler_disabled",
+            })
+        ready, reason = worker.readiness()
+        if not ready:
+            return JSONResponse(status_code=503, content={
+                "status": "degraded", "component": "scheduler",
+                "reason": reason,
+                "consecutive_failures": worker._scheduler_consecutive_errors,
+            })
+        return {"status": "ready", "service": "downloader-server"}
 
     @app.post("/api/v1/preview", tags=["jobs"])
     async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
