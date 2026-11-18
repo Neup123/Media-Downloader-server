@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
 import { JobCard } from './JobCard';
+import { previewSelectionSummary } from './preview-selection-size';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
@@ -49,7 +50,8 @@ type YtSettings = {
 };
 type MediaPreview = {
   title: string; kind: 'video' | 'playlist'; entry_count: number;
-  entries: { index: number; title: string; id: string; duration: number | null }[];
+  entries: { index: number; title: string; id: string; duration: number | null;
+    size_bytes?: number | null; size_estimate_bytes?: number | null }[];
   formats: { format_id: string; ext: string; resolution: string; filesize: number | null }[];
 };
 type AriaSettings = { options: Record<string, string> };
@@ -1241,7 +1243,7 @@ export default function App() {
                     <option value={ytOverride.format}>Current: {ytOverride.format}</option>
                     {mediaPreview.formats.map(format => <option key={format.format_id} value={format.format_id}>{format.format_id} · {format.ext} · {format.resolution}</option>)}
                   </select></label>
-                : <div><p className="muted">Select entries to download ({mediaPreview.entries.length} previewed).</p>
+                : <div><p className="muted" role="status" aria-live="polite">{previewSelectionSummary(mediaPreview.entries, selectedPlaylistEntries)}</p>
                     <div className="preview-list">{mediaPreview.entries.map(entry =>
                       <label className="check" key={entry.index}><input type="checkbox" checked={selectedPlaylistEntries.includes(entry.index)} onChange={event => togglePreviewEntry(entry.index, event.target.checked)} /> {entry.index}. {entry.title}</label>
                     )}</div>
