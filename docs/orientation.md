@@ -9,6 +9,12 @@ This document describes the **implemented development baseline**, not a producti
 | Core downloader | [Media-Downloader-server](https://github.com/Neup123/Media-Downloader-server) | API, authentication, job lifecycle, queue/worker, engines, file delivery, standalone React UI, database schema, security policy, CI and engine update automation |
 | Nextcloud adapter | [downloader-server-nextcloud](https://github.com/Neup123/downloader-server-nextcloud) | Signed AppAPI ExApp gateway, user/administrator entitlement, native Nextcloud PHP bridge and UI, user-scoped WebDAV identity, search/notification integration |
 
+**UI ownership is a hard architectural boundary:**
+- **Core repository:** owns the standalone downloader web application and its own task-oriented download UX. This interface runs against Core and is not a Nextcloud plugin screen.
+- **Nextcloud repository:** owns *only* the Nextcloud plugin's native UI surfaces (Files actions, header, Dashboard widget, Library integration, personal/admin plugin settings). These surfaces call the signed AppAPI adapter and must not contain, embed, reconstruct, or redirect to Core's standalone downloader UI.
+- **Shared contract is not shared UI:** job statuses, preview data, settings capabilities, errors, and permitted operations must agree across Core and the plugin through versioned/generated contracts. A generated browser-side job-state helper inside the Nextcloud plugin is a contract consumer, not a second downloader application.
+- A download launched inside Nextcloud still uses Core to execute; only its **plugin-facing controls** are rendered by Nextcloud. Core's standalone UI remains independently maintained in the Core repository.
+
 Do not implement download engines or duplicate routing in the Nextcloud repository. Core source changes are imported by its separately verified core-sync workflow; each repository owns its own tests, PRs and deployment gates.
 
 ## Trust-boundary diagram
