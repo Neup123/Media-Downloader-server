@@ -1,0 +1,167 @@
+"""Canonical downloader engine registry: identity, defaults, options and UI metadata.
+
+The standalone Core UI generates its engine IDs, descriptions and default values
+from this module. Nextcloud's native plugin owns only its own presentation, not a
+second standalone UI or engine registry.
+"""
+from __future__ import annotations
+
+from typing import Any
+from app.adapters.get_sauce import DEFAULTS as GET_SAUCE_DEFAULTS
+
+def field(key: str, label: str, category: str, kind: str = "text", description: str = "", **extra: Any) -> dict[str, Any]:
+    return {
+        "key": key, "label": label, "category": category,
+        "type": kind, "description": description, **extra,
+    }
+
+
+OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    "get-sauce": [
+        field("stream_index", "Stream/quality index", "Media", "integer", "0 selects the best stream", minimum=0, maximum=10000),
+        field("amount", "Limit image downloads", "Media", "integer", "0 uses engine default", minimum=0, maximum=100000),
+        field("pages", "Page indices/ranges", "Media", "text", "Comma-separated indices and ranges"),
+        field("workers", "Download workers", "Concurrency", "integer", minimum=1, maximum=32),
+        field("timeout_minutes", "HTTP timeout (minutes)", "Network", "integer", minimum=1, maximum=120),
+        field("merge", "Output merge mode", "Files", "text", "default, none or cbz"),
+        field("subdirectory", "Create media subfolder", "Files", "boolean"),
+    ],
+    "svtplay-dl": [
+        field("quality", "Quality selector", "Media", "text", "svtplay-dl --quality"),
+        field("resolution", "Preferred resolutions", "Media", "text", "Comma-separated values such as 480,720,1080"),
+        field("output_format", "Output container (mp4 or mkv)", "Files", "text"),
+        field("subtitles", "Download subtitles", "Subtitles", "boolean"),
+        field("all_subtitles", "Download all subtitle languages", "Subtitles", "boolean"),
+        field("all_episodes", "Download all episodes", "Series", "boolean"),
+    ],
+    "you-get": [
+        field("format", "Format code", "Media", "text", "you-get --format, e.g. stream identifier"),
+        field("no_proxy", "Disable system proxy", "Network", "boolean"),
+        field("cookies_file", "Cookie file", "Authentication", "text", "Netscape cookie file stored by the service"),
+    ],
+    "generic": [
+        field("filename", "Output filename", "File", "text", "Simple filename, leave blank to derive from URL"),
+        field("follow_redirects", "Follow HTTP redirects", "Network", "boolean", "Disabled by default until trusted egress controls are configured"),
+        field("max_redirects", "Maximum redirects", "Network", "integer", minimum=0, maximum=10),
+        field("retry_count", "Retry attempts", "Network", "integer", minimum=0, maximum=10),
+        field("user_agent", "User-Agent header", "HTTP", "text"),
+    ],
+    "yt-dlp": [
+        field("format", "Format selector", "Quality", "text", "yt-dlp -f selector, e.g. bv*+ba/b"),
+        field("allow_playlist", "Allow playlists", "Playlists", "boolean", "Enable playlist downloads"),
+        field("playlist_items", "Playlist items", "Playlists", "text", "Comma-separated indices and ranges"),
+        field("subtitles_lang", "Subtitle languages", "Subtitles", "text"),
+        field("write_subtitles", "Download subtitles", "Subtitles", "boolean"),
+        field("embed_subtitles", "Embed subtitles", "Subtitles", "boolean"),
+        field("cookies_file", "Cookies file", "Authentication", "text"),
+    ],
+    "aria2c": [
+        field("max-connection-per-server", "Connections per server", "Connections", "integer", minimum=1, maximum=16),
+        field("split", "Split download into parts", "Connections", "integer", minimum=1, maximum=64),
+        field("min-split-size", "Minimum split size", "Connections", "text", "e.g. 1M"),
+        field("max-download-limit", "Download speed limit", "Bandwidth", "text", "e.g. 2M"),
+        field("lowest-speed-limit", "Minimum accepted speed", "Bandwidth", "text", "e.g. 4K"),
+        field("connect-timeout", "Connect timeout (seconds)", "Network", "integer", minimum=1, maximum=600),
+        field("timeout", "Network timeout (seconds)", "Network", "integer", minimum=1, maximum=3600),
+        field("max-tries", "Retry attempts", "Retries", "integer", minimum=0, maximum=100),
+        field("retry-wait", "Retry wait (seconds)", "Retries", "integer", minimum=0, maximum=3600),
+        field("user-agent", "User-Agent", "HTTP", "text"),
+        field("referer", "Referer", "HTTP", "text"),
+        field("header", "Custom HTTP header", "HTTP", "text", "Do not enter private credentials in shared settings"),
+        field("allow-overwrite", "Overwrite existing files", "Files", "boolean"),
+        field("auto-file-renaming", "Rename conflicting files", "Files", "boolean"),
+        field("check-integrity", "Verify integrity", "Files", "boolean"),
+        field("seed-time", "Torrent seed duration (minutes)", "BitTorrent", "integer", minimum=0, maximum=100000),
+        field("seed-ratio", "Torrent seed ratio", "BitTorrent", "text"),
+        field("bt-max-peers", "Maximum torrent peers", "BitTorrent", "integer", minimum=0, maximum=10000),
+        field("bt-stop-timeout", "Stop torrent after idle (seconds)", "BitTorrent", "integer", minimum=0, maximum=86400),
+    ],
+    "gallery-dl": [
+        field("extractor.sleep", "Delay before each download", "Rate limits", "text", "Seconds or duration range"),
+        field("extractor.sleep-request", "Delay between extractor requests", "Rate limits", "text", "Seconds or duration range"),
+        field("extractor.sleep-retries", "Retry backoff", "Retries", "text", "e.g. lin=1 or exp=30"),
+        field("extractor.skip", "Skip existing files", "Files", "boolean"),
+        field("extractor.filename", "Output filename template", "Files", "text", "Use extractor metadata keys"),
+        field("extractor.directory", "Album subdirectory template", "Files", "text", "Relative to service-controlled base"),
+        field("extractor.file-unique", "Skip duplicate URLs", "Files", "boolean"),
+        field("extractor.date-after", "Only items after date", "Filtering", "text", "ISO 8601 date or timestamp"),
+        field("extractor.date-before", "Only items before date", "Filtering", "text", "ISO 8601 date or timestamp"),
+    ],
+}
+
+
+def get_catalog(engine: str) -> list[dict[str, Any]]:
+    if engine not in ENGINE_REGISTRY:
+        raise ValueError("Unsupported engine")
+    return ENGINE_REGISTRY[engine]["fields"]
+
+ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
+    "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
+    "you-get": {"format": "", "cookies_file": "", "no_proxy": False},
+    "svtplay-dl": {"resolution": "", "quality": "", "subtitles": False, "all_subtitles": False, "all_episodes": False, "output_format": "mp4"},
+    "get-sauce": GET_SAUCE_DEFAULTS,
+    "yt-dlp": {
+        "format": "bv*+ba/b",
+        "subtitles_lang": "",
+        "write_subtitles": False,
+        "embed_subtitles": False,
+        "extra_args": [],
+        "allow_playlist": False,
+        "playlist_items": "",
+    },
+    "gallery-dl": {
+        "options": {},
+        "cookies_file": "",
+        "proxy": "",
+    },
+    "aria2c": {
+        "options": {
+            "max-connection-per-server": "4",
+            "split": "4",
+            "max-tries": "5",
+            "retry-wait": "5",
+        },
+    },
+}
+
+ENGINE_DESCRIPTIONS = [
+    {"name": "yt-dlp", "label": "yt-dlp", "role": "Site extraction and media downloads", "priority": "P0", "available": True},
+    {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
+    {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
+    {"name": "generic", "label": "generic / curl", "role": "Plain direct HTTP(S) downloads", "priority": "P1", "available": True},
+    {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
+    {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
+    {"name": "get-sauce", "label": "get-sauce", "role": "Specialized media and gallery extractor", "priority": "P2", "available": True},
+]
+
+
+ENGINE_UI_META = {
+    "yt-dlp": {"title": "Video & audio sites", "purpose": "Videos, playlists, subtitles and audio from supported sites"},
+    "aria2c": {"title": "Large files & torrents", "purpose": "Direct files, magnets, FTP and torrent downloads"},
+    "gallery-dl": {"title": "Image galleries", "purpose": "Image collections from supported gallery websites"},
+    "generic": {"title": "Direct file downloads", "purpose": "Files from public HTTP and HTTPS links"},
+    "you-get": {"title": "Alternative video sites", "purpose": "Fallback downloader for supported videos and audio"},
+    "svtplay-dl": {"title": "Nordic television", "purpose": "Video and subtitles from Nordic broadcasting sites"},
+    "get-sauce": {"title": "Specialized media", "purpose": "Specialized media and gallery download sources"},
+}
+
+def _build_registry() -> dict[str, dict[str, Any]]:
+    names = [description["name"] for description in ENGINE_DESCRIPTIONS]
+    if len(names) != len(set(names)):
+        raise RuntimeError("Duplicate engine identifiers in registry")
+    target = set(names)
+    if target != set(ENGINE_DEFAULTS) or target != set(OPTION_CATALOG) or target != set(ENGINE_UI_META):
+        raise RuntimeError("Engine metadata, defaults, options and descriptions differ")
+    return {
+        entry["name"]: {
+            **entry,
+            **ENGINE_UI_META[entry["name"]],
+            "defaults": ENGINE_DEFAULTS[entry["name"]],
+            "fields": OPTION_CATALOG[entry["name"]],
+        }
+        for entry in ENGINE_DESCRIPTIONS
+    }
+
+
+ENGINE_REGISTRY = _build_registry()
+ENGINE_NAMES = tuple(ENGINE_REGISTRY)
