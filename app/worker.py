@@ -20,6 +20,7 @@ from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
 from app.redaction import _redact
+from app.user_failures import user_failure_message
 from app.security import preflight_source_dns
 
 
@@ -417,7 +418,7 @@ class JobWorker:
                         current.progress = {**(current.progress or {}),
                                             "partial_delivery": True,
                                             "verified_file_count": len(current.output_files)}
-                    current.error = message[:2000]
+                    current.error = user_failure_message(exc, during_delivery=was_delivering)
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")
                     session.commit()
