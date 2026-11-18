@@ -507,6 +507,14 @@ paths:
           in: query
           description: Exclude Nextcloud-owned jobs from the standalone Library
           schema: { type: boolean, default: false }
+        - name: owner_id
+          in: query
+          description: Owner filter for server-authorized Nextcloud requests
+          schema: { type: [string, 'null'], maxLength: 255 }
+        - name: submission_id
+          in: query
+          description: Lookup a single owner's signed submission intent; owner_id is required
+          schema: { type: [string, 'null'], minLength: 36, maxLength: 36 }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
