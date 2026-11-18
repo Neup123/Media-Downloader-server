@@ -35,6 +35,11 @@ def _optional_number(value: Any) -> float | int | None:
     return value if type(value) in (int, float) and value >= 0 else None
 
 
+def _optional_bytes(value: Any) -> int | None:
+    """Expose finite nonnegative byte counts JS can sum exactly, not arbitrary floats."""
+    return value if type(value) is int and 0 <= value <= 9_007_199_254_740_991 else None
+
+
 def _thumbnail(data: dict[str, Any]) -> str | None:
     """Only expose explicit HTTP(S) image locations, never invent a placeholder."""
     from urllib.parse import urlsplit
@@ -56,6 +61,8 @@ def _media_fields(data: dict[str, Any]) -> dict[str, Any]:
     return {
         "thumbnail": _thumbnail(data),
         "duration": _optional_number(data.get("duration")),
+        "size_bytes": _optional_bytes(data.get("filesize")),
+        "size_estimate_bytes": _optional_bytes(data.get("filesize_approx")),
         "timestamp": _optional_number(data.get("timestamp")),
         "release_timestamp": _optional_number(data.get("release_timestamp")),
         "upload_date": _optional_text(data.get("upload_date"), 16),
