@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
+import {ENGINE_REGISTRY, ENGINE_DESCRIPTIONS, ENGINE_ORDER, type Engine, type EngineSelection} from './engine-registry.generated';
 import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
@@ -7,8 +8,6 @@ import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
 import { moveRule, stepRule, isReordered } from './rule-order';
 import { normalizeLocale, isRtl, translate, type Locale } from './i18n';
 
-type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
-type EngineSelection = 'auto' | Engine;
 type View = 'download' | 'library' | 'my-settings' | 'administration';
 type AdminArea = 'connection' | 'delivery' | 'engines' | 'automation' | 'access';
 const LEGACY_NAVIGATION: Record<string, {view: View; area?: AdminArea}> = {
@@ -61,17 +60,6 @@ type GetSauceSettings = { stream_index: number; amount: number; workers: number;
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
 
-const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
-  'yt-dlp': {title: 'Video & audio sites', purpose: 'Videos, playlists, subtitles and audio from supported sites'},
-  aria2c: {title: 'Large files & torrents', purpose: 'Direct files, magnets, FTP and torrent downloads'},
-  'gallery-dl': {title: 'Image galleries', purpose: 'Image collections from supported gallery websites'},
-  generic: {title: 'Direct file downloads', purpose: 'Files from public HTTP and HTTPS links'},
-  'you-get': {title: 'Alternative video sites', purpose: 'Fallback downloader for supported videos and audio'},
-  'svtplay-dl': {title: 'Nordic television', purpose: 'Video and subtitles from Nordic broadcasting sites'},
-  'get-sauce': {title: 'Specialized media', purpose: 'Specialized media and gallery download sources'},
-};
-const ENGINE_ORDER = Object.keys(ENGINE_DESCRIPTIONS) as Engine[];
-
 function CommonOptionFields({ fields, values, onChange }: {
   fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
 }) {
@@ -97,18 +85,13 @@ function CommonOptionFields({ fields, values, onChange }: {
 }
 
 const API = '/api/v1';
-const ytDefaults: YtSettings = {
-  format: 'bv*+ba/b', subtitles_lang: '', write_subtitles: false,
-  embed_subtitles: false, extra_args: [], allow_playlist: false, playlist_items: '',
-};
-const ariaDefaults: AriaSettings = {
-  options: { 'max-connection-per-server': '4', split: '4', 'max-tries': '5', 'retry-wait': '5' },
-};
-const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy: '' };
-const genericDefaults: GenericSettings = { filename: '', follow_redirects: false, max_redirects: 5, retry_count: 2, user_agent: '' };
-const youGetDefaults: YouGetSettings = { format: '', cookies_file: '', no_proxy: false };
-const svtDefaults: SvtSettings = { resolution: '', quality: '', subtitles: false, all_subtitles: false, all_episodes: false, output_format: 'mp4' };
-const getSauceDefaults: GetSauceSettings = { stream_index: 0, amount: 0, workers: 4, merge: 'default', pages: '', subdirectory: false, timeout_minutes: 15 };
+const ytDefaults: YtSettings = {...ENGINE_REGISTRY['yt-dlp'].defaults, extra_args: [...ENGINE_REGISTRY['yt-dlp'].defaults.extra_args]};
+const ariaDefaults: AriaSettings = {options: {...ENGINE_REGISTRY.aria2c.defaults.options}};
+const galleryDefaults: GallerySettings = {...ENGINE_REGISTRY['gallery-dl'].defaults, options: {...ENGINE_REGISTRY['gallery-dl'].defaults.options}};
+const genericDefaults: GenericSettings = {...ENGINE_REGISTRY.generic.defaults};
+const youGetDefaults: YouGetSettings = {...ENGINE_REGISTRY['you-get'].defaults};
+const svtDefaults: SvtSettings = {...ENGINE_REGISTRY['svtplay-dl'].defaults};
+const getSauceDefaults: GetSauceSettings = {...ENGINE_REGISTRY['get-sauce'].defaults};
 
 function parseOptionsJson(value: string): Record<string, string> {
   const parsed = parseJsonObject(value);
