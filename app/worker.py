@@ -224,9 +224,6 @@ class JobWorker:
             global_settings = {**ENGINE_DEFAULTS.get(engine, {}), **(engine_row.settings if engine_row else {})}
             session.commit()
 
-        workdir = (self.settings.data_dir / "jobs" / job_id).resolve()
-        workdir.mkdir(parents=True, exist_ok=True)
-
         async def on_log(message: str) -> None:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
@@ -274,6 +271,9 @@ class JobWorker:
                     session.commit()
 
         try:
+            # A workspace error must pass through the normal FAILED transition.
+            workdir = (self.settings.data_dir / "jobs" / job_id).resolve()
+            workdir.mkdir(parents=True, exist_ok=True)
             recovery = inspect_workspace_recovery(workdir)
             existing_files = list(recovery.files)
             if recovery.state != WorkspaceRecoveryState.VERIFIED_COMPLETION:
