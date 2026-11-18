@@ -181,3 +181,27 @@ def test_stale_records_are_cleared_before_an_unverified_redownload(settings, mon
         assert current.output_files[0]["filename"] == "new.bin"
         assert "Cleared prior delivery records" in current.log_text
     engine.dispose()
+
+
+def test_workspace_creation_failure_transitions_starting_job_to_failed(settings, monkeypatch):
+    """No restart should be needed after a permissions/filesystem error."""
+    from pathlib import Path
+
+    engine, sessions, job_id, worker = _new_worker(settings)
+    blocked = (settings.data_dir / "jobs" / job_id).resolve()
+    original = Path.mkdir
+
+    def failing_mkdir(path, *args, **kwargs):
+        if path.resolve() == blocked:
+            raise PermissionError("simulated workspace permissions failure")
+        return original(path, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "mkdir", failing_mkdir)
+    asyncio.run(worker._execute(job_id))
+
+    with sessions() as session:
+        job = session.get(Job, job_id)
+        assert job.status == "failed"
+        assert job.finished_at is not None
+        assert "simulated workspace permissions failure" in job.log_text
+    engine.dispose()
