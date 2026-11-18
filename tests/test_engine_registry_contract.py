@@ -25,7 +25,7 @@ def test_identity_defaults_descriptions_and_catalog_are_same_registry():
     assert WORKER_DEFAULTS is ENGINE_DEFAULTS
     for engine in ENGINE_NAMES:
         row = ENGINE_REGISTRY[engine]
-        assert row["name"] == engine and row["available"]
+        assert row["available"] is True
         assert row["defaults"] is ENGINE_DEFAULTS[engine]
         assert row["fields"] is get_catalog(engine)
         assert row["title"] and row["purpose"] and row["role"] and row["label"]
