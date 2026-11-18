@@ -59,7 +59,7 @@ type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean 
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
 type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
-type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
+type EngineStatus = { name: Engine; installed: boolean; version?: string | null; url_schemes: string[] };
 
 const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
   'yt-dlp': {title: 'Video & audio sites', purpose: 'Videos, playlists, subtitles and audio from supported sites'},
@@ -1078,19 +1078,30 @@ export default function App() {
 
   const verifiedDownload = firstCompletedVerified || jobs.some(job => job.status === 'completed'
     && job.output_files?.length && job.output_files.every(file => file.verified));
+  // Core advertises the schemes accepted by each engine; avoid a second hand-written whitelist.
+  const selectedEngine = selectedPresetId
+    ? presets.find(p => p.id === selectedPresetId)?.engine || engine
+    : engine;
+  const advertisedSchemes = new Set(
+    engineStatus
+      .filter(item => item.installed && (selectedEngine === 'auto' || item.name === selectedEngine))
+      .flatMap(item => item.url_schemes ?? []),
+  );
   let sourceHint = '';
   if (url.trim()) {
     try {
       const parsed = new URL(url.trim());
-      if (['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol) && parsed.hostname) {
-        sourceHint = '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
-      } else if (parsed.protocol === 'magnet:') {
-        sourceHint = '✓ Magnet link detected';
+      const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
+      const validAuthority = scheme === 'magnet' ? Boolean(parsed.search) : Boolean(parsed.hostname);
+      if (advertisedSchemes.has(scheme) && validAuthority) {
+        sourceHint = scheme === 'magnet'
+          ? '✓ Magnet link detected'
+          : '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
       } else {
-        sourceHint = 'Enter a public HTTP(S), FTP, SFTP or magnet link.';
+        sourceHint = 'This link type is not available with the selected download engine.';
       }
     } catch {
-      sourceHint = 'Enter a full link beginning with https:// or another supported protocol.';
+      sourceHint = 'Enter a complete public link, such as https://example.com/video.';
     }
   }
   const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
@@ -1196,7 +1207,7 @@ export default function App() {
           </div>
           {linkMode === 'one' ? <div>
             <label>{t('Link to download')}<div className="url-entry">
-              <input type="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
+              <input type="text" inputMode="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
               <button className="secondary" type="button" onClick={() => void navigator.clipboard.readText().then(setUrl).catch(() =>
                 setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>{t('Paste')}</button>
             </div></label>
