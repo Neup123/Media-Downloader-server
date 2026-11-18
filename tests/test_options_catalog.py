@@ -36,3 +36,11 @@ def test_list_engines_reports_installation_status(client, auth_headers):
     for item in result.json():
         assert isinstance(item["installed"], bool)
         assert "version" in item
+
+
+def test_aria2_policy_options_are_rejected_by_settings_api(client, auth_headers):
+    from app.adapters.aria2 import ARIA2_FIXED_OPTIONS
+    for key in ARIA2_FIXED_OPTIONS:
+        response = client.put("/api/v1/engines/aria2c/settings", headers=auth_headers,
+                              json={"settings": {"options": {key: "false"}}})
+        assert response.status_code == 422, (key, response.text)
