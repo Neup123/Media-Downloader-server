@@ -35,7 +35,7 @@ from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn
-from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url
+from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url, supported_url_schemes
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
 
@@ -188,6 +188,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 "available": executable is not None and version not in (None, "unknown"),
                 "version": version,
                 "defaults": ENGINE_DEFAULTS[item["name"]],
+                "url_schemes": supported_url_schemes(item["name"]),
             })
         return result
 
