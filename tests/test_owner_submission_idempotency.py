@@ -29,6 +29,14 @@ def test_same_owner_request_replays_original_job_without_exposing_secret_or_requ
     second=client.post("/api/v1/jobs",headers=auth_headers,json=body)
     assert second.status_code == 202, second.text
     assert first.json()["id"] == second.json()["id"]
+    found=client.get("/api/v1/jobs",headers=auth_headers,params={
+        "owner_id":"alice","submission_id":body["submission_id"]
+    })
+    assert found.status_code==200
+    assert [row["id"] for row in found.json()]==[first.json()["id"]]
+    assert client.get("/api/v1/jobs",headers=auth_headers,params={
+        "submission_id":body["submission_id"]
+    }).status_code==422
     assert "submission_id" not in second.json()
     assert "submission_fingerprint" not in second.json()
     assert "test-private-app-password" not in second.text
