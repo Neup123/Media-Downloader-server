@@ -64,7 +64,4 @@ def test_every_engine_catalog_is_served_by_same_api_contract(client, auth_header
     for name in ENGINE_NAMES:
         opts = client.get(f"/api/v1/engines/{name}/options", headers=auth_headers)
         assert opts.status_code == 200, (name, opts.text)
-        assert opts.json()["fields"] == [
-            {**item, "minimum": item.get("minimum"), "maximum": item.get("maximum")}
-            for item in get_catalog(name)
-        ]
+        assert opts.json()["fields"] == get_catalog(name)
