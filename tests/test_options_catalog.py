@@ -14,6 +14,9 @@ def test_option_catalog_exposes_typed_fields_for_all_p0_engines(client, auth_hea
 
     aria_keys = {field["key"] for field in get_catalog("aria2c")}
     assert {"max-connection-per-server", "split", "retry-wait"}.issubset(aria_keys)
+    from app.adapters.aria2 import ARIA2_FIXED_OPTIONS, ARIA2_OPTION_ALLOWLIST
+    assert not aria_keys.intersection(ARIA2_FIXED_OPTIONS)
+    assert aria_keys.issubset(ARIA2_OPTION_ALLOWLIST)
     gallery_keys = {field["key"] for field in get_catalog("gallery-dl")}
     assert {"extractor.sleep", "extractor.sleep-request", "extractor.skip"}.issubset(gallery_keys)
 
