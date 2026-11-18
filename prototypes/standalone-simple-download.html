@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Downloader — simple flow prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{font-family:system-ui,sans-serif;color-scheme:light}body{background:#f5f7fb;color:#17243a}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #2563eb;outline-offset:3px}
+button{min-height:44px} .pill{border:1px solid #cbd5e1;border-radius:999px;padding:.45rem 1rem}
+.pill[aria-pressed=true]{background:#dbeafe;border-color:#2563eb;color:#1e40af}
+</style></head><body>
+<header class="bg-white border-b"><div class="max-w-4xl mx-auto px-4 py-4 flex justify-between items-center gap-3">
+<strong class="text-xl">↓ Downloader</strong><span class="text-sm text-slate-600">Interactive prototype · no server connection</span></div></header>
+<main class="max-w-4xl mx-auto p-4 sm:p-8 space-y-6">
+<nav class="flex gap-2" aria-label="Main navigation"><button id="nav-new" class="pill" aria-pressed="true">New download</button><button id="nav-history" class="pill" aria-pressed="false">My downloads</button></nav>
+<section id="new-view" class="bg-white shadow-sm border rounded-2xl p-5 sm:p-8 space-y-5">
+<div><h1 class="text-2xl font-bold">What would you like to download?</h1><p class="text-slate-600 mt-1">Paste a link. We'll choose the right downloader automatically.</p></div>
+<form id="form" class="space-y-5">
+<div><label for="url" class="block font-semibold mb-2">Link</label><div class="flex flex-col sm:flex-row gap-2"><input id="url" type="url" required placeholder="https://example.com/video" class="border rounded-lg px-4 py-3 flex-1 min-w-0" aria-describedby="link-help"><button type="button" id="paste" class="border rounded-lg px-4">Paste</button></div><p id="link-help" class="text-sm text-slate-600 mt-2" role="status">Supports website videos, image galleries and direct files.</p></div>
+<fieldset class="border rounded-xl p-4"><legend class="px-2 font-semibold">Download as</legend><div class="flex flex-wrap gap-2"><button type="button" class="pill kind" data-kind="auto" aria-pressed="true">Automatic</button><button type="button" class="pill kind" data-kind="video" aria-pressed="false">Video</button><button type="button" class="pill kind" data-kind="audio" aria-pressed="false">Audio</button><button type="button" class="pill kind" data-kind="file" aria-pressed="false">File</button></div></fieldset>
+<details class="border rounded-xl p-4"><summary class="cursor-pointer font-semibold">More options</summary><div class="grid sm:grid-cols-2 gap-4 mt-4"><label class="block">Quality<select id="quality" class="block w-full border rounded-lg p-3 mt-1"><option>Best available</option><option>1080p or lower</option><option>720p or lower</option></select></label><label class="block">Save in folder<input id="folder" class="block w-full border rounded-lg p-3 mt-1" placeholder="Default folder"></label></div><p class="text-sm text-slate-600 mt-3">Advanced engine configuration belongs in Administration, not here.</p></details>
+<div class="flex items-center gap-3 flex-wrap"><button type="submit" id="start" class="bg-blue-700 text-white rounded-lg px-6 py-3 font-semibold disabled:opacity-50">Start download</button><span id="form-status" role="status" class="text-sm"></span></div>
+</form></section>
+<section id="history-view" hidden class="bg-white shadow-sm border rounded-2xl p-5 sm:p-8 space-y-4"><div class="flex items-center justify-between gap-2"><div><h1 class="text-2xl font-bold">My downloads</h1><p class="text-slate-600">Track progress and find your files.</p></div><button id="another" class="pill">+ New</button></div><div id="jobs" class="space-y-3" aria-live="polite"><p class="text-slate-600">Nothing here yet. Start a download to see it here.</p></div></section>
+</main>
+<script>
+const $=id=>document.getElementById(id);let kind='auto',jobs=[];
+function show(view){const history=view==='history';$('new-view').hidden=history;$('history-view').hidden=!history;$('nav-new').setAttribute('aria-pressed',String(!history));$('nav-history').setAttribute('aria-pressed',String(history));if(history)render();}
+$('nav-new').onclick=()=>show('new');$('nav-history').onclick=()=>show('history');$('another').onclick=()=>show('new');
+document.querySelectorAll('.kind').forEach(b=>b.onclick=()=>{kind=b.dataset.kind;document.querySelectorAll('.kind').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));});
+$('url').addEventListener('input',()=>{const s=$('url').value.trim();$('link-help').textContent=!s?'Supports website videos, image galleries and direct files.':/^https?:\/\//i.test(s)?'Link format looks good. This prototype does not check whether the site is supported.':'Enter a link starting with https:// or http://';});
+$('paste').onclick=async()=>{try{$('url').value=await navigator.clipboard.readText();$('url').dispatchEvent(new Event('input'));}catch{$('form-status').textContent='Clipboard access is unavailable. Paste with Ctrl+V instead.';}};
+$('form').onsubmit=e=>{e.preventDefault();const url=$('url').value.trim();if(!/^https?:\/\//i.test(url)){$('form-status').textContent='Please enter an HTTP or HTTPS link.';return;}jobs.unshift({url,kind,quality:$('quality').value,folder:$('folder').value,status:'Queued'});$('form-status').textContent='Added to the queue (demo only).';show('history');};
+function render(){const target=$('jobs');target.replaceChildren();if(!jobs.length){target.textContent='Nothing here yet. Start a download to see it here.';return;}jobs.forEach((j,i)=>{const item=document.createElement('article');item.className='border rounded-xl p-4 space-y-2';const name=document.createElement('p');name.className='font-semibold break-all';name.textContent=j.url;const state=document.createElement('p');state.className='text-sm text-slate-600';state.textContent=j.status+' · '+j.kind+' · '+j.quality+(j.folder?' · '+j.folder:'');const controls=document.createElement('div');controls.className='flex gap-2 flex-wrap';const advance=document.createElement('button');advance.className='pill';advance.textContent=j.status==='Queued'?'Simulate progress':j.status==='Downloading'?'Simulate completion':'Download finished';advance.disabled=j.status==='Completed';advance.onclick=()=>{j.status=j.status==='Queued'?'Downloading':'Completed';render();};const remove=document.createElement('button');remove.className='pill';remove.textContent='Remove from demo';remove.onclick=()=>{jobs.splice(i,1);render();};controls.append(advance,remove);item.append(name,state,controls);target.append(item);});}
+</script></body></html>
