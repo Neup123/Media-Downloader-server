@@ -23,8 +23,10 @@ def user_failure_message(error: Exception, *, during_delivery: bool = False) -> 
         if "folder is missing" in detail:
             return "Destination folder is missing. Choose an existing folder."
         return "Could not verify file delivery. Check the destination and retry."
-    if isinstance(error, (SourceResolutionError, UnsafeUrlError)):
-        return "The source link could not be reached safely. Check the link and try again."
+    if isinstance(error, UnsafeUrlError):
+        return "The source link was blocked for safety; private or reserved addresses are not allowed."
+    if isinstance(error, SourceResolutionError):
+        return "The source link could not be reached. Check the address and try again."
     if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
         return "The download took too long. Try again."
     if during_delivery:
