@@ -415,4 +415,4 @@ The P1 `generic/wget` role is implemented with **curl** rather than installing a
 
 ---
 
-**Phase status:** Phase 0 blueprint and service-stack decision. No application code is included in this phase.
+**Historical phase status:** This document originated as a Phase 0 blueprint. The development implementation now exists in the Core repository. See [current architecture](docs/orientation.md), [README](README.md) and [acceptance ledger](ACCEPTANCE_STATUS.md) for the present code and verified gates; this historical blueprint is not a claim that no application code exists.
