@@ -520,7 +520,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     def retry_all_failed(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
         """Retry failed standalone jobs only; never alter Nextcloud-owned jobs."""
         query = select(Job).where(
-            Job.owner_id.is_(None), Job.status.in_(("failed", "cancelled"))
+            Job.owner_id.is_(None), Job.status == JobStatus.FAILED
         ).order_by(Job.created_at.desc()).limit(1001)
         failed = session.scalars(query).all()
         if len(failed) > 1000:
