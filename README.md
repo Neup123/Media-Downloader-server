@@ -2,6 +2,10 @@
 
 Downloader Server is a server-side media downloader with one web interface for established CLI engines. It manages jobs, engine settings, progress, logs, and file delivery. The core product runs as a standalone Docker Compose service. Nextcloud support is an optional integration maintained in a separate repository.
 
+## Documentation
+
+Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. Actual UI screenshots are required after the standalone redesign is exercised in a real browser; illustrative mockups do not count as production screenshots.
+
 ## Repositories
 
 - Core: https://github.com/Neup123/Media-Downloader-server
