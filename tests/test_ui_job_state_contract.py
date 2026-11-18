@@ -22,10 +22,16 @@ def test_frontend_contract_is_generated_and_exact():
     ]
 
 
-def test_ui_generator_adds_new_core_state_without_manual_duplicate(monkeypatch):
+def test_ui_generator_follows_new_canonical_enum_value(monkeypatch):
+    from enum import StrEnum
     from scripts import generate_job_status_ts as gen
-    # Regression: the emitted contract always derives from the canonical enum,
-    # rather than maintaining a handwritten copy of statuses inside the generator.
-    assert "for item in JobStatus" in gen.render.__code__.co_consts or "JOB_STATUSES" in render()
-    assert set(JobStatus) - TERMINAL_STATUSES
-    assert "isKnownJobStatus" in render()
+
+    class ExpandedStates(StrEnum):
+        QUEUED = "queued"
+        NEW_TERMINAL = "new-terminal"
+
+    monkeypatch.setattr(gen, "JobStatus", ExpandedStates)
+    monkeypatch.setattr(gen, "TERMINAL_STATUSES", frozenset({ExpandedStates.NEW_TERMINAL}))
+    output = gen.render()
+    assert '"new-terminal"' in output
+    assert 'new Set(["new-terminal"])' in output
