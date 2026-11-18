@@ -16,7 +16,7 @@ info:
     This key grants full access. Keep it in trusted server-side integrations,
     never in public browser code or URL parameters.
 
-    The informational `/healthz`, `/openapi.yaml` and `/api-reference`
+    The informational `/healthz`, `/readyz`, `/openapi.yaml` and `/api-reference`
     routes are public exceptions and do not require an API key.
 
     ## Getting started
