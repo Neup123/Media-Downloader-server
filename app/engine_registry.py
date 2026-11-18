@@ -16,37 +16,24 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
     }
 
 
-OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
-    "get-sauce": [
-        field("stream_index", "Stream/quality index", "Media", "integer", "0 selects the best stream", minimum=0, maximum=10000),
-        field("amount", "Limit image downloads", "Media", "integer", "0 uses engine default", minimum=0, maximum=100000),
-        field("pages", "Page indices/ranges", "Media", "text", "Comma-separated indices and ranges"),
-        field("workers", "Download workers", "Concurrency", "integer", minimum=1, maximum=32),
-        field("timeout_minutes", "HTTP timeout (minutes)", "Network", "integer", minimum=1, maximum=120),
-        field("merge", "Output merge mode", "Files", "text", "default, none or cbz"),
-        field("subdirectory", "Create media subfolder", "Files", "boolean"),
-    ],
-    "svtplay-dl": [
-        field("quality", "Quality selector", "Media", "text", "svtplay-dl --quality"),
-        field("resolution", "Preferred resolutions", "Media", "text", "Comma-separated values such as 480,720,1080"),
-        field("output_format", "Output container (mp4 or mkv)", "Files", "text"),
-        field("subtitles", "Download subtitles", "Subtitles", "boolean"),
-        field("all_subtitles", "Download all subtitle languages", "Subtitles", "boolean"),
-        field("all_episodes", "Download all episodes", "Series", "boolean"),
-    ],
-    "you-get": [
-        field("format", "Format code", "Media", "text", "you-get --format, e.g. stream identifier"),
-        field("no_proxy", "Disable system proxy", "Network", "boolean"),
-        field("cookies_file", "Cookie file", "Authentication", "text", "Netscape cookie file stored by the service"),
-    ],
-    "generic": [
-        field("filename", "Output filename", "File", "text", "Simple filename, leave blank to derive from URL"),
-        field("follow_redirects", "Follow HTTP redirects", "Network", "boolean", "Disabled by default until trusted egress controls are configured"),
-        field("max_redirects", "Maximum redirects", "Network", "integer", minimum=0, maximum=10),
-        field("retry_count", "Retry attempts", "Network", "integer", minimum=0, maximum=10),
-        field("user_agent", "User-Agent header", "HTTP", "text"),
-    ],
-    "yt-dlp": [
+ENGINE_REGISTRY: dict[str, dict[str, Any]] = {
+    "yt-dlp": {
+        "label": "yt-dlp",
+        "role": "Site extraction and media downloads",
+        "priority": "P0",
+        "available": True,
+        "title": "Video & audio sites",
+        "purpose": "Videos, playlists, subtitles and audio from supported sites",
+        "defaults": {
+        "format": "bv*+ba/b",
+        "subtitles_lang": "",
+        "write_subtitles": False,
+        "embed_subtitles": False,
+        "extra_args": [],
+        "allow_playlist": False,
+        "playlist_items": "",
+    },
+        "fields": [
         field("format", "Format selector", "Quality", "text", "yt-dlp -f selector, e.g. bv*+ba/b"),
         field("allow_playlist", "Allow playlists", "Playlists", "boolean", "Enable playlist downloads"),
         field("playlist_items", "Playlist items", "Playlists", "text", "Comma-separated indices and ranges"),
@@ -55,7 +42,23 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
         field("embed_subtitles", "Embed subtitles", "Subtitles", "boolean"),
         field("cookies_file", "Cookies file", "Authentication", "text"),
     ],
-    "aria2c": [
+    },
+    "aria2c": {
+        "label": "aria2c",
+        "role": "Direct downloads, BitTorrent, and magnet links",
+        "priority": "P0",
+        "available": True,
+        "title": "Large files & torrents",
+        "purpose": "Direct files, magnets, FTP and torrent downloads",
+        "defaults": {
+        "options": {
+            "max-connection-per-server": "4",
+            "split": "4",
+            "max-tries": "5",
+            "retry-wait": "5",
+        },
+    },
+        "fields": [
         field("max-connection-per-server", "Connections per server", "Connections", "integer", minimum=1, maximum=16),
         field("split", "Split download into parts", "Connections", "integer", minimum=1, maximum=64),
         field("min-split-size", "Minimum split size", "Connections", "text", "e.g. 1M"),
@@ -76,7 +79,20 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
         field("bt-max-peers", "Maximum torrent peers", "BitTorrent", "integer", minimum=0, maximum=10000),
         field("bt-stop-timeout", "Stop torrent after idle (seconds)", "BitTorrent", "integer", minimum=0, maximum=86400),
     ],
-    "gallery-dl": [
+    },
+    "gallery-dl": {
+        "label": "gallery-dl",
+        "role": "Image galleries and supported image-board extractors",
+        "priority": "P0",
+        "available": True,
+        "title": "Image galleries",
+        "purpose": "Image collections from supported gallery websites",
+        "defaults": {
+        "options": {},
+        "cookies_file": "",
+        "proxy": "",
+    },
+        "fields": [
         field("extractor.sleep", "Delay before each download", "Rate limits", "text", "Seconds or duration range"),
         field("extractor.sleep-request", "Delay between extractor requests", "Rate limits", "text", "Seconds or duration range"),
         field("extractor.sleep-retries", "Retry backoff", "Retries", "text", "e.g. lin=1 or exp=30"),
@@ -87,6 +103,84 @@ OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
         field("extractor.date-after", "Only items after date", "Filtering", "text", "ISO 8601 date or timestamp"),
         field("extractor.date-before", "Only items before date", "Filtering", "text", "ISO 8601 date or timestamp"),
     ],
+    },
+    "generic": {
+        "label": "generic / curl",
+        "role": "Plain direct HTTP(S) downloads",
+        "priority": "P1",
+        "available": True,
+        "title": "Direct file downloads",
+        "purpose": "Files from public HTTP and HTTPS links",
+        "defaults": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
+        "fields": [
+        field("filename", "Output filename", "File", "text", "Simple filename, leave blank to derive from URL"),
+        field("follow_redirects", "Follow HTTP redirects", "Network", "boolean", "Disabled by default until trusted egress controls are configured"),
+        field("max_redirects", "Maximum redirects", "Network", "integer", minimum=0, maximum=10),
+        field("retry_count", "Retry attempts", "Network", "integer", minimum=0, maximum=10),
+        field("user_agent", "User-Agent header", "HTTP", "text"),
+    ],
+    },
+    "you-get": {
+        "label": "you-get",
+        "role": "Fallback site extractor",
+        "priority": "P1",
+        "available": True,
+        "title": "Alternative video sites",
+        "purpose": "Fallback downloader for supported videos and audio",
+        "defaults": {"format": "", "cookies_file": "", "no_proxy": False},
+        "fields": [
+        field("format", "Format code", "Media", "text", "you-get --format, e.g. stream identifier"),
+        field("no_proxy", "Disable system proxy", "Network", "boolean"),
+        field("cookies_file", "Cookie file", "Authentication", "text", "Netscape cookie file stored by the service"),
+    ],
+    },
+    "svtplay-dl": {
+        "label": "svtplay-dl",
+        "role": "Nordic broadcaster and video services",
+        "priority": "P2",
+        "available": True,
+        "title": "Nordic television",
+        "purpose": "Video and subtitles from Nordic broadcasting sites",
+        "defaults": {"resolution": "", "quality": "", "subtitles": False, "all_subtitles": False, "all_episodes": False, "output_format": "mp4"},
+        "fields": [
+        field("quality", "Quality selector", "Media", "text", "svtplay-dl --quality"),
+        field("resolution", "Preferred resolutions", "Media", "text", "Comma-separated values such as 480,720,1080"),
+        field("output_format", "Output container (mp4 or mkv)", "Files", "text"),
+        field("subtitles", "Download subtitles", "Subtitles", "boolean"),
+        field("all_subtitles", "Download all subtitle languages", "Subtitles", "boolean"),
+        field("all_episodes", "Download all episodes", "Series", "boolean"),
+    ],
+    },
+    "get-sauce": {
+        "label": "get-sauce",
+        "role": "Specialized media and gallery extractor",
+        "priority": "P2",
+        "available": True,
+        "title": "Specialized media",
+        "purpose": "Specialized media and gallery download sources",
+        "defaults": GET_SAUCE_DEFAULTS,
+        "fields": [
+        field("stream_index", "Stream/quality index", "Media", "integer", "0 selects the best stream", minimum=0, maximum=10000),
+        field("amount", "Limit image downloads", "Media", "integer", "0 uses engine default", minimum=0, maximum=100000),
+        field("pages", "Page indices/ranges", "Media", "text", "Comma-separated indices and ranges"),
+        field("workers", "Download workers", "Concurrency", "integer", minimum=1, maximum=32),
+        field("timeout_minutes", "HTTP timeout (minutes)", "Network", "integer", minimum=1, maximum=120),
+        field("merge", "Output merge mode", "Files", "text", "default, none or cbz"),
+        field("subdirectory", "Create media subfolder", "Files", "boolean"),
+    ],
+    },
+}
+
+ENGINE_NAMES = tuple(ENGINE_REGISTRY)
+ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
+    name: row["defaults"] for name, row in ENGINE_REGISTRY.items()
+}
+ENGINE_DESCRIPTIONS = [
+    {"name": name, **{key: row[key] for key in ("label", "role", "priority", "available")}}
+    for name, row in ENGINE_REGISTRY.items()
+]
+OPTION_CATALOG: dict[str, list[dict[str, Any]]] = {
+    name: row["fields"] for name, row in ENGINE_REGISTRY.items()
 }
 
 
@@ -94,74 +188,3 @@ def get_catalog(engine: str) -> list[dict[str, Any]]:
     if engine not in ENGINE_REGISTRY:
         raise ValueError("Unsupported engine")
     return ENGINE_REGISTRY[engine]["fields"]
-
-ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
-    "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
-    "you-get": {"format": "", "cookies_file": "", "no_proxy": False},
-    "svtplay-dl": {"resolution": "", "quality": "", "subtitles": False, "all_subtitles": False, "all_episodes": False, "output_format": "mp4"},
-    "get-sauce": GET_SAUCE_DEFAULTS,
-    "yt-dlp": {
-        "format": "bv*+ba/b",
-        "subtitles_lang": "",
-        "write_subtitles": False,
-        "embed_subtitles": False,
-        "extra_args": [],
-        "allow_playlist": False,
-        "playlist_items": "",
-    },
-    "gallery-dl": {
-        "options": {},
-        "cookies_file": "",
-        "proxy": "",
-    },
-    "aria2c": {
-        "options": {
-            "max-connection-per-server": "4",
-            "split": "4",
-            "max-tries": "5",
-            "retry-wait": "5",
-        },
-    },
-}
-
-ENGINE_DESCRIPTIONS = [
-    {"name": "yt-dlp", "label": "yt-dlp", "role": "Site extraction and media downloads", "priority": "P0", "available": True},
-    {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
-    {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
-    {"name": "generic", "label": "generic / curl", "role": "Plain direct HTTP(S) downloads", "priority": "P1", "available": True},
-    {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
-    {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
-    {"name": "get-sauce", "label": "get-sauce", "role": "Specialized media and gallery extractor", "priority": "P2", "available": True},
-]
-
-
-ENGINE_UI_META = {
-    "yt-dlp": {"title": "Video & audio sites", "purpose": "Videos, playlists, subtitles and audio from supported sites"},
-    "aria2c": {"title": "Large files & torrents", "purpose": "Direct files, magnets, FTP and torrent downloads"},
-    "gallery-dl": {"title": "Image galleries", "purpose": "Image collections from supported gallery websites"},
-    "generic": {"title": "Direct file downloads", "purpose": "Files from public HTTP and HTTPS links"},
-    "you-get": {"title": "Alternative video sites", "purpose": "Fallback downloader for supported videos and audio"},
-    "svtplay-dl": {"title": "Nordic television", "purpose": "Video and subtitles from Nordic broadcasting sites"},
-    "get-sauce": {"title": "Specialized media", "purpose": "Specialized media and gallery download sources"},
-}
-
-def _build_registry() -> dict[str, dict[str, Any]]:
-    names = [description["name"] for description in ENGINE_DESCRIPTIONS]
-    if len(names) != len(set(names)):
-        raise RuntimeError("Duplicate engine identifiers in registry")
-    target = set(names)
-    if target != set(ENGINE_DEFAULTS) or target != set(OPTION_CATALOG) or target != set(ENGINE_UI_META):
-        raise RuntimeError("Engine metadata, defaults, options and descriptions differ")
-    return {
-        entry["name"]: {
-            **entry,
-            **ENGINE_UI_META[entry["name"]],
-            "defaults": ENGINE_DEFAULTS[entry["name"]],
-            "fields": OPTION_CATALOG[entry["name"]],
-        }
-        for entry in ENGINE_DESCRIPTIONS
-    }
-
-
-ENGINE_REGISTRY = _build_registry()
-ENGINE_NAMES = tuple(ENGINE_REGISTRY)
