@@ -195,7 +195,7 @@ class JobWorker:
         return selected
 
     def _task_done(self, job_id: str, task: asyncio.Task) -> None:
-        if not task.cancelled():
+        if task.done() and not task.cancelled():
             failure = task.exception()
             if failure is not None:
                 # Never log raw engine output, URLs or credentials.
