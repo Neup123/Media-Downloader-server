@@ -70,7 +70,9 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Checked-in API contract: [openapi.yaml](openapi.yaml)
 - API contract CI compares paths/methods, success and error statuses, API-key requirements, request-body constraints, and enforced job-response shapes against FastAPI/Pydantic.
 - The browser formats structured Pydantic validation errors as field-specific messages and identifies invalid batch items without echoing submitted URLs; frontend error-format tests run as part of the Docker build. Detailed schema parity remains a separate acceptance gate.
-- Health check: `/healthz`
+- Liveness: `/healthz` checks that the HTTP process responds. Docker Compose uses this endpoint for its container liveness check; it does **not** prove that the dispatcher, database, engines or WebDAV delivery are functional.
+- Readiness: `/readyz` checks a live database query and the scheduler heartbeat. It returns HTTP 503 with a non-sensitive failure category if the database is unavailable, the scheduler is disabled/stopped, there are three consecutive scheduler failures, or the dispatcher heartbeat is stale (>10 seconds). Configure operational readiness monitoring against this endpoint, not merely `/healthz`. The scheduler logs a redacted exception **type** at most once per 60 seconds while failures persist.
+- Readiness scope excludes remote download sites, engine subprocess connectivity, actual delivery destinations and future network-egress policy; separate end-to-end and egress acceptance gates remain required.
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
 - WebDAV directory creation accepts `MKCOL` 201, or a 405 only when a follow-up Depth:0 `PROPFIND` verifies that the exact resource is a `DAV:collection` with a successful property status. This applies to nested output folders. A folder response with multiple successful collection properties for the requested resource is ambiguous and is rejected.
