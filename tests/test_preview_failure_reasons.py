@@ -135,10 +135,8 @@ def test_preview_schema_validation_keeps_fastapi_detail_list(client, auth_header
 
 
 def test_success_response_shape_is_unchanged(client, auth_headers, monkeypatch):
-    expected = {
-        "title": "Example", "kind": "video", "formats": [], "entries": [],
-        "thumbnail": None, "has_more": False,
-    }
+    from app.discovery import summarize_metadata
+    expected = summarize_metadata({"title":"Example", "formats":[]}, 50, 0)
 
     async def fake_preview(_url, *, max_entries, offset):
         return expected

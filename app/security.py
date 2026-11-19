@@ -65,6 +65,15 @@ def _reject_noncanonical_ipv4(host: str) -> None:
         raise UnsafeUrlError("Noncanonical IPv4 address syntax is blocked") from exc
 
 
+# This registry is the single source of truth for URL schemes accepted by Core.
+_COMMON_SOURCE_SCHEMES = frozenset({"http", "https"})
+_EXTRA_SOURCE_SCHEMES = {"aria2c": frozenset({"ftp", "ftps", "magnet"})}
+
+
+def supported_url_schemes(engine: str) -> list[str]:
+    return sorted(_COMMON_SOURCE_SCHEMES | _EXTRA_SOURCE_SCHEMES.get(engine, frozenset()))
+
+
 def validate_target_url(url: str, engine: str, allow_private: bool = False) -> str:
     """Validate URL syntax and reject obvious local/private destinations.
 
@@ -72,9 +81,7 @@ def validate_target_url(url: str, engine: str, allow_private: bool = False) -> s
     This check is deliberately not treated as a replacement for an egress firewall.
     """
     parsed = _validated_urlsplit(url)
-    allowed = {"http", "https"}
-    if engine == "aria2c":
-        allowed |= {"ftp", "ftps", "magnet"}
+    allowed = supported_url_schemes(engine)
     if parsed.scheme.lower() not in allowed:
         raise UnsafeUrlError(f"{engine} does not accept the {parsed.scheme or 'unknown'} URL scheme")
     if parsed.username or parsed.password:

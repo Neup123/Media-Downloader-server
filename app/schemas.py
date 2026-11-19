@@ -6,10 +6,11 @@ import re
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.engine_registry import ENGINE_NAMES
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
+EngineName = Literal[*ENGINE_NAMES]
+EngineSelection = Literal["auto", *ENGINE_NAMES]
 
 
 class MediaPreviewIn(BaseModel):
@@ -32,12 +33,95 @@ class TorrentManifestIn(BaseModel):
 
 
 
+
+class PreviewMetadataOut(BaseModel):
+    """Explicit nullable extractor metadata; absent values remain null."""
+    model_config = ConfigDict(extra="forbid")
+
+    thumbnail: str | None
+    duration: float | int | None
+    timestamp: float | int | None
+    release_timestamp: float | int | None
+    upload_date: str | None
+    live_status: str | None
+    is_live: bool | None
+
+
+class PreviewEntryOut(PreviewMetadataOut):
+    index: int = Field(ge=1)
+    id: str
+    title: str
+    # Optional extensions accepted before upstream flat-playlist metadata is
+    # available. Do not invent bytes when the extractor omits these fields.
+    size_bytes: int | None = Field(default=None, ge=0)
+    size_estimate_bytes: int | None = Field(default=None, ge=0)
+
+
+class PreviewFormatOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    format_id: str
+    ext: str
+    resolution: str
+    vcodec: str
+    acodec: str
+    filesize: int | None
+
+
+class MediaPreviewOut(PreviewMetadataOut):
+    """Success contract shared by Core UI and the Nextcloud plugin."""
+    title: str
+    id: str
+    extractor: str
+    kind: Literal["playlist", "video"]
+    entry_count: int | None = Field(ge=0)
+    entries: list[PreviewEntryOut]
+    formats: list[PreviewFormatOut]
+    subtitle_languages: list[str]
+    offset: int = Field(ge=0)
+    max_entries: int = Field(ge=1, le=100)
+    ordering: Literal["source"]
+    has_more: bool
+    next_offset: int | None = Field(ge=0)
+    # Some extractors provide size estimates at the preview root, not per entry.
+    size_bytes: int | None = Field(default=None, ge=0)
+    size_estimate_bytes: int | None = Field(default=None, ge=0)
+
+
+class TorrentManifestFileOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=1)
+    path: str
+    name: str
+    size_bytes: int = Field(ge=0)
+
+
+class TorrentManifestOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file_count: int = Field(ge=0)
+    files: list[TorrentManifestFileOut]
+
+    @model_validator(mode="after")
+    def count_matches_entries(self):
+        if self.file_count != len(self.files):
+            raise ValueError("Torrent manifest file_count must match files")
+        return self
+
+
+
 class JobCreate(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     engine: EngineSelection = "auto"
     preset_id: str | None = Field(default=None, max_length=36)
     overrides: dict[str, Any] = Field(default_factory=dict)
     owner_id: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^/\\\\\x00-\x1f]+$")
+    # Optional signed-gateway retry identity, never included in JobOut.
+    submission_id: str | None = Field(
+        default=None, min_length=36, max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
     # One-off destination choice is constrained to one folder below the
     # administrator-configured target; it cannot set a URL or credentials.
     delivery_subfolder: str | None = Field(default=None, max_length=100)
@@ -159,6 +243,7 @@ class EngineStatusOut(BaseModel):
     installed: bool
     version: str | None
     defaults: dict[str, Any]
+    url_schemes: list[str]
 
 
 class EngineOptionFieldOut(BaseModel):
@@ -167,6 +252,7 @@ class EngineOptionFieldOut(BaseModel):
     category: str
     type: str
     description: str
+    choices: list[str] | None = None
     minimum: int | None = None
     maximum: int | None = None
 

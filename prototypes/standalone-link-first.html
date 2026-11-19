@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Downloader · Link-first prototype</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+:root{font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#182635;background:#f5f7fa}
+*{box-sizing:border-box}body{margin:0}button,input,select{font:inherit}
+button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.5}
+:focus-visible{outline:3px solid #146dd0;outline-offset:3px}
+.shell{max-width:1250px;margin:auto;padding:0 22px 46px}.top{height:72px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e3e7ec}
+.brand{display:flex;align-items:center;gap:12px;font-weight:780;font-size:21px;letter-spacing:-.03em}
+.mark{display:grid;place-items:center;background:#1e5bb8;color:white;border-radius:12px;width:40px;height:40px}
+.tag{font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#516478;padding:7px 9px;background:#e6effb;border-radius:5px;font-weight:700}
+.nav{display:flex;gap:8px;margin:28px 0 24px;border-bottom:1px solid #dfe4e9}
+.nav button{background:transparent;border:0;border-bottom:3px solid transparent;color:#617080;padding:12px 16px;font-weight:650}
+.nav button[aria-selected=true]{border-color:#1558aa;color:#164b8b}
+.view{display:none}.view.active{display:block}
+.columns{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,.75fr);gap:24px;align-items:start}
+.panel{background:#fff;border:1px solid #dfe6ee;border-radius:18px;padding:26px;box-shadow:0 7px 20px rgba(16,37,67,.035)}
+.eyebrow{font-size:11px;text-transform:uppercase;letter-spacing:.17em;font-weight:750;color:#2866b4}
+h1,h2,h3{margin:7px 0 10px;line-height:1.2;letter-spacing:-.027em}h1{font-size:29px}h2{font-size:20px}h3{font-size:17px}
+.note{color:#66768a;font-size:14px;line-height:1.5}
+.lbl{font-weight:650;font-size:14px;display:block;margin:19px 0 8px}
+input[type=url],input[type=search],select{width:100%;min-width:0;border:1px solid #b9c5d4;border-radius:11px;padding:13px 14px;background:#fff;min-height:48px;color:#172b40}
+.input-row{display:flex;align-items:stretch;gap:8px}.input-row input{flex:1}
+.btn{border-radius:10px;border:1px solid #b8c8d7;padding:11px 15px;background:#fff;color:#224061;font-weight:700;min-height:45px}
+.btn.primary{border-color:#165db9;background:#155db5;color:#fff}
+.btn.danger{border-color:#c94848;color:#a42020}
+.btn.quiet{border-color:transparent;background:#e9f0f9}
+.btn.small{min-height:37px;padding:7px 10px;font-size:13px}
+.actions{display:flex;flex-wrap:wrap;gap:8px;margin-top:19px}
+.callout{background:#eef5ff;color:#315475;border-radius:9px;padding:12px 14px;margin-top:13px;font-size:13px}
+.alert{color:#ae2929;background:#fff3f0;border-radius:9px;padding:11px 13px;margin-top:10px}
+.detected{border:1px solid #d8e3ef;border-radius:14px;padding:18px;margin-top:22px}
+.detected-head{display:flex;align-items:center;gap:13px}
+.media-symbol{display:grid;place-items:center;border-radius:12px;background:#edf4fe;color:#1c5baa;width:53px;height:53px;font-size:26px}
+.options{display:grid;grid-template-columns:1fr 1fr;gap:15px;margin-top:14px}
+.options label{font-weight:650;font-size:13px}.options select{display:block;margin-top:7px}
+details{margin-top:18px}summary{cursor:pointer;font-weight:600;color:#47617b;font-size:13px}
+.mini-item{display:flex;align-items:center;gap:10px;border-bottom:1px solid #ebeff4;padding:14px 0}
+.mini-item:last-child{border:0}
+.mini-text{flex:1;min-width:0}.mini-text strong{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.mini-text p{font-size:12px;color:#748095;margin:4px 0 0}
+.stat{font-size:12px;font-weight:750;color:#275b9d}
+.progress{height:6px;width:100%;background:#e6ecf3;border-radius:30px;overflow:hidden;margin:9px 0}
+.progress>div{height:100%;width:0;background:#2976ca;transition:width .4s}
+.toolbar{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:18px 0}
+.toolbar input{flex:1;min-width:170px}.toolbar select{width:auto}
+.empty{color:#66768a;text-align:center;padding:40px 10px;border:1px dashed #b7c6d4;border-radius:14px}
+.muted{font-size:12px;color:#748095}
+.job-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
+.list-job{background:#fff;border:1px solid #dde5ef;padding:19px;border-radius:13px;margin:12px 0}
+.status{font-size:12px;font-weight:700;color:#225d9d}
+.help-row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.checkline{display:flex;gap:9px;align-items:center;font-size:14px;padding:8px 0}
+.checkline input{accent-color:#155db5;width:18px;height:18px}
+.picker{background:#f9fbfd;border-radius:12px;margin-top:12px;padding:14px}
+.hidden{display:none!important}
+.demo-banner{font-size:12px;color:#5c6f80;background:#eaf0f6;padding:8px 12px;border-radius:0 0 8px 8px;text-align:center}
+@media(max-width:800px){.columns{grid-template-columns:1fr}.shell{padding:0 14px 30px}.panel{padding:19px}.top{height:62px}.nav{margin:16px 0}.input-row{flex-wrap:wrap}.input-row input{min-width:100%}.input-row button{flex:1}.options{grid-template-columns:1fr}.tag{display:none}}
+@media(prefers-reduced-motion:reduce){.progress>div{transition:none}}
+</style>
+</head>
+<body>
+<div class="demo-banner" role="note">Interactive design prototype — simulated links, jobs and progress only. No real downloads.</div>
+<div class="shell">
+<header class="top"><div class="brand"><div class="mark" aria-hidden="true">↓</div>Downloader</div><div class="tag">A simpler way to download</div></header>
+<nav class="nav" role="tablist" aria-label="Main navigation">
+<button type="button" role="tab" id="nav-download" aria-controls="view-download" aria-selected="true">New download</button>
+<button type="button" role="tab" id="nav-library" aria-controls="view-library" aria-selected="false">My downloads <span id="job-count"></span></button>
+<button type="button" role="tab" id="nav-settings" aria-controls="view-settings" aria-selected="false">Settings</button>
+</nav>
+<main>
+<div class="view active" id="view-download" role="tabpanel" aria-labelledby="nav-download">
+<div class="columns">
+<section class="panel">
+<div class="eyebrow">Get started</div>
+<h1>What would you like to download?</h1>
+<p class="note">Paste a link. We'll check what it contains before starting.</p>
+<form id="inspect-form">
+<label class="lbl" for="url">Link to the file, video or collection</label>
+<div class="input-row"><input type="url" id="url" name="url" placeholder="https://example.com/video" required autocomplete="url"><button type="button" class="btn" id="paste">Paste</button><button class="btn primary" type="submit" id="inspect">Check link</button></div>
+<div id="link-message" role="status" aria-live="polite"></div>
+</form>
+<div id="preview" class="detected hidden" aria-live="polite">
+<div class="detected-head"><div class="media-symbol" id="media-symbol" aria-hidden="true">▶</div><div><div class="eyebrow" id="media-kind">VIDEO FOUND</div><h3 id="media-title">A video ready to download</h3><div class="muted" id="media-source"></div></div></div>
+<div class="options">
+<label for="quality">Quality<select id="quality"><option>Best available</option><option>1080p</option><option>720p</option><option>480p</option></select></label>
+<label for="save-folder">Save to<select id="save-folder"><option>Downloads</option><option>Videos</option><option>Music</option><option>Pictures</option></select></label>
+</div>
+<div class="picker hidden" id="playlist-picker">
+<div class="help-row"><strong>Select items</strong><span class="muted" id="selection-summary">0 selected</span></div>
+<label class="checkline"><input type="checkbox" class="pick-item" data-size="15000000" checked> Item 1 — 15 MB</label>
+<label class="checkline"><input type="checkbox" class="pick-item" data-size="" checked> Item 2 — size unknown</label>
+<label class="checkline"><input type="checkbox" class="pick-item" data-size="30000000" checked> Item 3 — 30 MB</label>
+</div>
+<details><summary>Advanced options</summary><p class="note">Engine settings, automation and routing live in Administration; most users do not need them.</p></details>
+<div class="actions"><button type="button" id="queue" class="btn primary">Download</button><button type="button" class="btn" id="change-link">Use a different link</button></div>
+</div>
+</section>
+<aside class="panel" aria-label="Recent activity">
+<div class="eyebrow">Right now</div><h2>Recent downloads</h2>
+<div id="recent-list"><div class="empty">Your next download will appear here.</div></div>
+<button class="btn quiet small" type="button" id="show-library">See all downloads</button>
+</aside>
+</div></div>
+<div class="view" id="view-library" role="tabpanel" aria-labelledby="nav-library">
+<section class="panel">
+<div class="help-row"><div><div class="eyebrow">Library</div><h1>My downloads</h1><p class="note">Follow progress, open verified files and retry failed jobs.</p></div><button class="btn primary" type="button" id="library-new">+ New download</button></div>
+<div class="toolbar"><input type="search" id="library-search" placeholder="Search downloads" aria-label="Search downloads"><select id="library-filter" aria-label="Filter downloads"><option value="all">All statuses</option><option value="active">In progress</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option></select><button type="button" class="btn small" id="retry-failed">Retry failed</button></div>
+<div id="library-list"></div>
+</section></div>
+<div class="view" id="view-settings" role="tabpanel" aria-labelledby="nav-settings">
+<section class="panel" style="max-width:650px"><div class="eyebrow">Preferences</div><h1>My download settings</h1><p class="note">Keep everyday choices simple. Server access, engines and routing belong in a separate administrator area.</p>
+<label class="lbl" for="default-folder">Default save location</label><select id="default-folder"><option>Downloads</option><option>Videos</option><option>Music</option><option>Pictures</option></select>
+<label class="checkline" style="margin-top:18px"><input type="checkbox" id="confirm-replace"> Ask before replacing existing files</label>
+<div class="callout">Demo preferences apply to this preview only. They are not saved to a server.</div>
+</section></div>
+</main>
+</div>
+<script>
+(function(){
+  'use strict';
+  const byId=id=>document.getElementById(id);
+  const jobs=[];let detected=null;let counter=0;
+  const views=['download','library','settings'];
+  function navigate(name){
+    for(const n of views){
+      byId('nav-'+n).setAttribute('aria-selected',String(n===name));
+      byId('view-'+n).classList.toggle('active',n===name);
+    }
+    if(name==='library')renderLibrary();
+    if(name==='download')byId('url').focus();
+  }
+  for(const n of views)byId('nav-'+n).addEventListener('click',()=>navigate(n));
+  byId('show-library').onclick=()=>navigate('library');
+  byId('library-new').onclick=()=>navigate('download');
+  byId('change-link').onclick=()=>{byId('preview').classList.add('hidden');detected=null;byId('url').focus();};
+  byId('paste').onclick=async()=>{
+    try{const text=await navigator.clipboard.readText();byId('url').value=text;byId('url').focus();}
+    catch{announce('Paste with Ctrl+V / your device paste menu.','alert');}
+  };
+  const announce=(text,cls='callout')=>{
+    byId('link-message').textContent=text;
+    byId('link-message').className=text?cls:'';
+  };
+  const bytes=n=>n>=1000000?(n/1000000).toFixed(0)+' MB':n+' B';
+  function selection(){
+    const selected=[...document.querySelectorAll('.pick-item:checked')];
+    const known=selected.reduce((sum,node)=>sum+(Number(node.dataset.size)||0),0);
+    const unknown=selected.filter(node=>!node.dataset.size).length;
+    byId('selection-summary').textContent=selected.length+' selected · '+(known?bytes(known)+' known':'size unknown')+(unknown?' · '+unknown+' size unknown':'');
+    byId('queue').disabled=detected?.kind==='Playlist' && selected.length===0;
+  }
+  document.querySelectorAll('.pick-item').forEach(e=>e.addEventListener('change',selection));
+  byId('inspect-form').onsubmit=event=>{
+    event.preventDefault();
+    const value=byId('url').value.trim();
+    let parsed;
+    try{parsed=new URL(value);}catch{announce('Enter a full link such as https://example.com/video.','alert');return;}
+    if(!['http:','https:'].includes(parsed.protocol)){announce('This prototype accepts web links only. Please paste an http or https link.','alert');return;}
+    byId('inspect').disabled=true;announce('Checking the link…');
+    window.setTimeout(()=>{
+      const path=parsed.pathname.toLowerCase();
+      const kind=/playlist|album|gallery|collection/.test(path)?'Playlist':/\.(zip|pdf|exe|csv|iso)$/.test(path)?'File':/\.(jpg|png|webp)$/.test(path)?'Image':'Video';
+      detected={url:value,kind,source:parsed.hostname,title:decodeURIComponent(parsed.pathname.split('/').filter(Boolean).pop()||'Media from '+parsed.hostname)};
+      byId('media-kind').textContent=kind.toUpperCase()+' FOUND';
+      byId('media-title').textContent=detected.title.replace(/[-_]/g,' ').slice(0,80);
+      byId('media-source').textContent=parsed.hostname;
+      byId('media-symbol').textContent=kind==='Image'?'▧':kind==='Playlist'?'☷':kind==='File'?'▣':'▶';
+      byId('playlist-picker').classList.toggle('hidden',kind!=='Playlist');
+      byId('quality').disabled=kind==='File'||kind==='Image';
+      byId('preview').classList.remove('hidden');
+      byId('inspect').disabled=false;announce('Ready. Review your choices and start downloading.');
+      selection();
+    },400);
+  };
+  byId('queue').onclick=()=>{
+    if(!detected)return;
+    const selectionCount=detected.kind==='Playlist'?document.querySelectorAll('.pick-item:checked').length:null;
+    const item={id:++counter,title:detected.title,kind:detected.kind,url:detected.url,status:'queued',percent:0,folder:byId('save-folder').value,selectionCount};
+    jobs.unshift(item);detected=null;byId('preview').classList.add('hidden');
+    announce('Download queued — it is not saved to Files yet. View progress in My downloads.');
+    render();navigate('library');
+    const timer=setInterval(()=>{
+      if(item.status==='cancelled'||item.status==='failed'){clearInterval(timer);return;}
+      item.status='active';item.percent=Math.min(100,item.percent+12);
+      if(item.percent>=100){item.status='done';clearInterval(timer);}
+      render();
+    },950);
+  };
+  function jobMarkup(job){
+    const action=job.status==='done'?'<span class="status">Verified in Downloads (demo)</span>':job.status==='active'||job.status==='queued'?'<button class="btn small" data-op="cancel" data-id="'+job.id+'">Cancel</button>':job.status==='failed'?'<button class="btn small" data-op="retry" data-id="'+job.id+'">Try again</button>':'<span class="muted">Cancelled by you</span>';
+    const state={done:'Completed',active:'Downloading',queued:'Queued',failed:'Failed',cancelled:'Cancelled'}[job.status];
+    const progress=(job.status==='active'||job.status==='queued')?'<div class="progress" role="progressbar" aria-label="Download progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="'+job.percent+'"><div style="width:'+job.percent+'%"></div></div>':'';
+    const node=document.createElement('article');node.className='list-job';
+    node.innerHTML='<div class="job-head"><strong class="mini-text"></strong><span class="status">'+state+'</span></div>'+progress+'<div class="help-row"><span class="muted">'+job.folder+' · '+job.kind+'</span>'+action+'</div>';
+    node.querySelector('strong').textContent=job.title;
+    node.querySelectorAll('[data-op]').forEach(b=>b.addEventListener('click',()=>{
+      const selected=jobs.find(j=>j.id===Number(b.dataset.id));
+      if(!selected)return;
+      if(b.dataset.op==='cancel'){selected.status='cancelled';}
+      if(b.dataset.op==='retry'&&selected.status==='failed'){selected.status='queued';selected.percent=0;}
+      render();
+    }));
+    return node;
+  }
+  function renderRecent(){
+    const root=byId('recent-list');root.replaceChildren();
+    if(!jobs.length){root.innerHTML='<div class="empty">Your next download will appear here.</div>';return;}
+    jobs.slice(0,3).forEach(job=>{const n=document.createElement('div');n.className='mini-item';const el=document.createElement('div');el.className='mini-text';const title=document.createElement('strong');title.textContent=job.title;const p=document.createElement('p');p.textContent=job.status==='done'?'Saved and verified (demo)':job.status;n.append(el);el.append(title,p);root.append(n);});
+  }
+  function renderLibrary(){
+    const q=byId('library-search').value.trim().toLowerCase(),status=byId('library-filter').value;
+    const matches=jobs.filter(j=>(status==='all'||j.status===status||(status==='active'&&j.status==='queued'))&&(!q||j.title.toLowerCase().includes(q)||j.url.toLowerCase().includes(q)));
+    const root=byId('library-list');root.replaceChildren();
+    if(!matches.length){root.innerHTML='<div class="empty">Nothing matches yet. Add a new download or change your filters.</div>';return;}
+    matches.forEach(j=>root.append(jobMarkup(j)));
+  }
+  function render(){byId('job-count').textContent=jobs.length?'('+jobs.length+')':'';renderRecent();renderLibrary();}
+  byId('library-search').addEventListener('input',renderLibrary);
+  byId('library-filter').addEventListener('change',renderLibrary);
+  byId('retry-failed').onclick=()=>{
+    const failed=jobs.filter(j=>j.status==='failed');failed.forEach(j=>{j.status='queued';j.percent=0;});
+    render();
+    if(!failed.length)window.alert('No failed downloads to retry. Cancelled downloads stay cancelled.');
+  };
+  byId('default-folder').addEventListener('change',e=>{byId('save-folder').value=e.target.value;});
+  selection();render();
+})();
+</script>
+</body>
+</html>

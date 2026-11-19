@@ -137,6 +137,35 @@ def run_browser_acceptance() -> None:
                 and r.request.method == "GET", timeout=30000
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
+            # Verify the actual browser credential lifecycle. A successful
+            # connection must not silently persist an administrator key.
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") is None
+            remember = page.get_by_role(
+                "checkbox",
+                name="Remember this browser after the session ends (less secure on shared devices)",
+            )
+            remember.check()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") == "yes"
+            page.reload(wait_until="domcontentloaded")
+            remember = page.get_by_role(
+                "checkbox",
+                name="Remember this browser after the session ends (less secure on shared devices)",
+            )
+            assert remember.is_checked()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") == API_TOKEN
+            remember.uncheck()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") is None
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            page.reload(wait_until="domcontentloaded")
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            print("Real Chromium: administrator key session/default/opt-in/reload lifecycle PASS", flush=True)
+
             # The download hero is the first main content after navigation.
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="Download", exact=True
@@ -248,7 +277,7 @@ def run_browser_acceptance() -> None:
             # Native wrapped <label><select> fields can have an accessible name
             # expanded by the option list; target the real form structure.
             form.locator("select").first.select_option("yt-dlp")
-            form.locator('input[type="url"]').fill(SOURCE_URL)
+            form.locator('input[inputmode="url"]').fill(SOURCE_URL)
             form.locator(".quality-control summary").click()
             form.get_by_label("Format selector", exact=True).fill(YTDLP_OVERRIDE)
             yt_job = submitted_job(page, api, "yt-dlp", {"format": YTDLP_OVERRIDE})
@@ -256,7 +285,7 @@ def run_browser_acceptance() -> None:
             print("Real Chromium: yt-dlp global + per-job settings + WebDAV PASS", flush=True)
 
             form.locator("select").first.select_option("aria2c")
-            form.locator('input[type="url"]').fill(SOURCE_URL)
+            form.locator('input[inputmode="url"]').fill(SOURCE_URL)
             form.locator(".common-options input[type='number']").first.fill(ARIA_OVERRIDE)
             aria_job = submitted_job(
                 page, api, "aria2c",
@@ -268,7 +297,7 @@ def run_browser_acceptance() -> None:
             # Standalone one-off destination uses the SAVED WebDAV connection,
             # never a user-supplied host or password. Real Chromium submits it
             # and the downloader writes bytes into the requested subfolder.
-            form.locator('input[type="url"]').fill(SOURCE_URL)
+            form.locator('input[inputmode="url"]').fill(SOURCE_URL)
             form.get_by_label("Folder for this download (optional)").fill("Research")
             research_job = submitted_job(
                 page, api, "aria2c",
@@ -316,7 +345,7 @@ def run_browser_acceptance() -> None:
             ), "Administration engine editor overflows the 360px viewport"
             nav.get_by_role("button", name="Download", exact=True).click()
             mobile_form = page.locator("section.submit-panel form")
-            url_input = mobile_form.locator('input[type="url"]')
+            url_input = mobile_form.locator('input[inputmode="url"]')
             url_input.focus()
             page.keyboard.type(SOURCE_URL)
             assert url_input.input_value() == SOURCE_URL

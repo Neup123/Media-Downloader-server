@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { translate, type Locale } from './i18n';
+import { isTerminalStatus } from './job-statuses.generated';
 
 export type JobCardData = {
   id: string;
@@ -15,7 +16,6 @@ export type JobCardData = {
 type Operation = 'cancel' | 'retry' | 'redeliver';
 type Props = { job: JobCardData; expanded: boolean; onToggle: () => void; onAction: (action: Operation) => void; locale?: Locale };
 
-const TERMINAL = new Set(['completed', 'failed', 'cancelled']);
 function amount(input: unknown): string {
   const n = Number(input);
   if (!Number.isFinite(n) || n < 0) return '—';
@@ -82,17 +82,17 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
           aria-expanded={expanded} aria-label={t('Details for ') + jobTitle(job)}>{t(jobTitle(job))}</button>
         <div className="job-card-state" role="status" aria-live="polite" aria-atomic="true">{progressText}</div>
         <div className="job-card-meta">{job.engine}
-          {!TERMINAL.has(job.status) && job.progress?.downloaded_bytes !== undefined &&
+          {!isTerminalStatus(job.status) && job.progress?.downloaded_bytes !== undefined &&
             <span> · {amount(job.progress.downloaded_bytes)} {t('downloaded')}</span>}
         </div>
       </div>
     </div>
-    {!TERMINAL.has(job.status) && <div className="progress-track" role="progressbar"
+    {!isTerminalStatus(job.status) && <div className="progress-track" role="progressbar"
       aria-label={t('Download progress for ') + jobTitle(job)}
       aria-valuenow={percent ?? undefined} aria-valuemin={0} aria-valuemax={100}>
       <div className="progress-fill" style={{width: (percent ?? 0) + '%'}} /></div>}
     <div className="job-actions">
-      {!TERMINAL.has(job.status) && actionButton('Cancel', 'cancel', 'danger')}
+      {!isTerminalStatus(job.status) && actionButton('Cancel', 'cancel', 'danger')}
       {(job.status === 'failed' || job.status === 'cancelled') && actionButton('Try again', 'retry')}
       {job.status === 'completed' && actionButton('Re-deliver', 'redeliver')}
       {fileLink && <a className="small secondary job-card-file-link" href={fileLink}

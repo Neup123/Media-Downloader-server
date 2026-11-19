@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
+import {ENGINE_REGISTRY, ENGINE_DESCRIPTIONS, ENGINE_ORDER, type Engine, type EngineSelection} from './engine-registry.generated';
+import { setOptionOrDefault } from './engine-option-default';
 import { JobCard } from './JobCard';
+import type { MediaPreviewOut } from './preview-contract.generated';
+import { previewSelectionSummary } from './preview-selection-size';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
 import { moveRule, stepRule, isReordered } from './rule-order';
 import { normalizeLocale, isRtl, translate, type Locale } from './i18n';
 
-type Engine = 'yt-dlp' | 'aria2c' | 'gallery-dl' | 'generic' | 'you-get' | 'svtplay-dl' | 'get-sauce';
-type EngineSelection = 'auto' | Engine;
 type View = 'download' | 'library' | 'my-settings' | 'administration';
 type AdminArea = 'connection' | 'delivery' | 'engines' | 'automation' | 'access';
 const LEGACY_NAVIGATION: Record<string, {view: View; area?: AdminArea}> = {
@@ -47,30 +49,15 @@ type YtSettings = {
   format: string; subtitles_lang: string; write_subtitles: boolean; embed_subtitles: boolean;
   extra_args: string[]; cookies_file?: string; allow_playlist: boolean; playlist_items: string;
 };
-type MediaPreview = {
-  title: string; kind: 'video' | 'playlist'; entry_count: number;
-  entries: { index: number; title: string; id: string; duration: number | null }[];
-  formats: { format_id: string; ext: string; resolution: string; filesize: number | null }[];
-};
+type MediaPreview = MediaPreviewOut;
 type AriaSettings = { options: Record<string, string> };
 type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
 type GenericSettings = { filename: string; follow_redirects: boolean; max_redirects: number; retry_count: number; user_agent: string };
 type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean };
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
-type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
-type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
-
-const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
-  'yt-dlp': {title: 'Video & audio sites', purpose: 'Videos, playlists, subtitles and audio from supported sites'},
-  aria2c: {title: 'Large files & torrents', purpose: 'Direct files, magnets, FTP and torrent downloads'},
-  'gallery-dl': {title: 'Image galleries', purpose: 'Image collections from supported gallery websites'},
-  generic: {title: 'Direct file downloads', purpose: 'Files from public HTTP and HTTPS links'},
-  'you-get': {title: 'Alternative video sites', purpose: 'Fallback downloader for supported videos and audio'},
-  'svtplay-dl': {title: 'Nordic television', purpose: 'Video and subtitles from Nordic broadcasting sites'},
-  'get-sauce': {title: 'Specialized media', purpose: 'Specialized media and gallery download sources'},
-};
-const ENGINE_ORDER = Object.keys(ENGINE_DESCRIPTIONS) as Engine[];
+type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number; choices?: string[] | null };
+type EngineStatus = { name: Engine; installed: boolean; version?: string | null; url_schemes: string[] };
 
 function CommonOptionFields({ fields, values, onChange }: {
   fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
@@ -85,6 +72,12 @@ function CommonOptionFields({ fields, values, onChange }: {
           ? <select value={values[field.key] ?? ''} onChange={event => onChange(field.key, event.target.value)}>
               <option value="">Engine default</option><option value="true">Enabled</option><option value="false">Disabled</option>
             </select>
+          : field.type === 'enum' && field.choices?.length
+          ? <select aria-label={field.label} value={values[field.key] ?? ''}
+              onChange={event => onChange(field.key, event.target.value)}>
+              <option value="">Engine default</option>
+              {field.choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
+            </select>
           : <input type={field.type === 'integer' ? 'number' : 'text'}
               min={field.minimum} max={field.maximum}
               value={values[field.key] ?? ''}
@@ -97,18 +90,13 @@ function CommonOptionFields({ fields, values, onChange }: {
 }
 
 const API = '/api/v1';
-const ytDefaults: YtSettings = {
-  format: 'bv*+ba/b', subtitles_lang: '', write_subtitles: false,
-  embed_subtitles: false, extra_args: [], allow_playlist: false, playlist_items: '',
-};
-const ariaDefaults: AriaSettings = {
-  options: { 'max-connection-per-server': '4', split: '4', 'max-tries': '5', 'retry-wait': '5' },
-};
-const galleryDefaults: GallerySettings = { options: {}, cookies_file: '', proxy: '' };
-const genericDefaults: GenericSettings = { filename: '', follow_redirects: false, max_redirects: 5, retry_count: 2, user_agent: '' };
-const youGetDefaults: YouGetSettings = { format: '', cookies_file: '', no_proxy: false };
-const svtDefaults: SvtSettings = { resolution: '', quality: '', subtitles: false, all_subtitles: false, all_episodes: false, output_format: 'mp4' };
-const getSauceDefaults: GetSauceSettings = { stream_index: 0, amount: 0, workers: 4, merge: 'default', pages: '', subdirectory: false, timeout_minutes: 15 };
+const ytDefaults: YtSettings = {...ENGINE_REGISTRY['yt-dlp'].defaults, extra_args: [...ENGINE_REGISTRY['yt-dlp'].defaults.extra_args]};
+const ariaDefaults: AriaSettings = {options: {...ENGINE_REGISTRY.aria2c.defaults.options}};
+const galleryDefaults: GallerySettings = {...ENGINE_REGISTRY['gallery-dl'].defaults, options: {...ENGINE_REGISTRY['gallery-dl'].defaults.options}};
+const genericDefaults: GenericSettings = {...ENGINE_REGISTRY.generic.defaults};
+const youGetDefaults: YouGetSettings = {...ENGINE_REGISTRY['you-get'].defaults};
+const svtDefaults: SvtSettings = {...ENGINE_REGISTRY['svtplay-dl'].defaults};
+const getSauceDefaults: GetSauceSettings = {...ENGINE_REGISTRY['get-sauce'].defaults};
 
 function parseOptionsJson(value: string): Record<string, string> {
   const parsed = parseJsonObject(value);
@@ -136,6 +124,30 @@ function label(value: string): string {
   return value.replaceAll('-', ' ').replace(/^./, character => character.toUpperCase());
 }
 
+// The administrator key is tab-session scoped unless persistence is explicitly enabled.
+const ADMIN_KEY_STORAGE = 'downloader-api-key';
+const REMEMBER_KEY_STORAGE = 'downloader-remember-browser';
+function savedAdminKey(): string {
+  if (localStorage.getItem(REMEMBER_KEY_STORAGE) === 'yes') {
+    return localStorage.getItem(ADMIN_KEY_STORAGE) ?? '';
+  }
+  // Drop legacy indefinitely persisted keys; older versions had no opt-in.
+  localStorage.removeItem(ADMIN_KEY_STORAGE);
+  return sessionStorage.getItem(ADMIN_KEY_STORAGE) ?? '';
+}
+function storeAdminKey(key: string, remember: boolean) {
+  if (remember && key) {
+    localStorage.setItem(REMEMBER_KEY_STORAGE, 'yes');
+    localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+  } else {
+    localStorage.removeItem(REMEMBER_KEY_STORAGE);
+    localStorage.removeItem(ADMIN_KEY_STORAGE);
+    if (key) sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
+    else sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+  }
+}
+
 export default function App() {
   const [locale, setLocale] = useState<Locale>(() => normalizeLocale(localStorage.getItem('downloader-locale') || 'en'));
   const t = (english: string) => translate(locale, english);
@@ -144,7 +156,7 @@ export default function App() {
     document.documentElement.dir = isRtl(locale) ? 'rtl' : 'ltr';
     localStorage.setItem('downloader-locale', locale);
   }, [locale]);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
+  const [apiKey, setApiKey] = useState(savedAdminKey);
   const [tab, setTab] = useState<View>(initialView);
   const [adminArea, setAdminArea] = useState<AdminArea>(() => initialNavigation().area ?? 'connection');
   useEffect(() => {
@@ -162,7 +174,10 @@ export default function App() {
     syncLocation();
     return () => window.removeEventListener('hashchange', syncLocation);
   }, []);
-  const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
+  const [connectionDraft, setConnectionDraft] = useState(savedAdminKey);
+  const [rememberBrowser, setRememberBrowser] = useState(
+    () => localStorage.getItem(REMEMBER_KEY_STORAGE) === 'yes',
+  );
   const [connected, setConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [deliveryVerified, setDeliveryVerified] = useState(false);
@@ -185,7 +200,7 @@ export default function App() {
       if (!response.ok) throw new Error('Could not connect. Check the API key and server availability.');
       const result = await response.json() as EngineStatus[];
       if (!Array.isArray(result)) throw new Error('Unexpected service response.');
-      localStorage.setItem('downloader-api-key', key);
+      storeAdminKey(key, rememberBrowser);
       setEngineStatus(result); setApiKey(key); setConnected(true);
       setHistoryChecked(false); setDeliveryVerified(false);
       setMessage('Connected ✓');
@@ -194,7 +209,8 @@ export default function App() {
     } finally { setCheckingConnection(false); }
   }
   function disconnect() {
-    localStorage.removeItem('downloader-api-key');
+    storeAdminKey('', false);
+    setRememberBrowser(false);
     setApiKey(''); setConnectionDraft(''); setConnected(false); setJobs([]);
     setHistoryChecked(false); setDeliveryVerified(false);
     setMessage('Disconnected. Reconnect to download.');
@@ -394,7 +410,6 @@ export default function App() {
 
   useEffect(() => {
     if (!apiKey) return;
-    localStorage.setItem('downloader-api-key', apiKey);
     void refresh();
     const interval = window.setInterval(() => void refresh(), 2000);
     return () => window.clearInterval(interval);
@@ -636,11 +651,9 @@ export default function App() {
 
   function updateGetSauceOption(key: string, value: string, global: boolean) {
     const setValue = global ? setGetSauce : setGetSauceOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: key === 'subdirectory' ? value === 'true' :
-        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      key === 'subdirectory' ? value === 'true' :
+        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value));
   }
 
   function getSauceOptionValues(value: GetSauceSettings): Record<string, string> {
@@ -649,10 +662,8 @@ export default function App() {
 
   function updateSvtOption(key: string, value: string, global: boolean) {
     const setValue = global ? setSvt : setSvtOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value));
   }
 
   function svtOptionValues(value: SvtSettings): Record<string, string> {
@@ -1078,19 +1089,30 @@ export default function App() {
 
   const verifiedDownload = firstCompletedVerified || jobs.some(job => job.status === 'completed'
     && job.output_files?.length && job.output_files.every(file => file.verified));
+  // Core advertises the schemes accepted by each engine; avoid a second hand-written whitelist.
+  const selectedEngine = selectedPresetId
+    ? presets.find(p => p.id === selectedPresetId)?.engine || engine
+    : engine;
+  const advertisedSchemes = new Set(
+    engineStatus
+      .filter(item => item.installed && (selectedEngine === 'auto' || item.name === selectedEngine))
+      .flatMap(item => item.url_schemes ?? []),
+  );
   let sourceHint = '';
   if (url.trim()) {
     try {
       const parsed = new URL(url.trim());
-      if (['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol) && parsed.hostname) {
-        sourceHint = '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
-      } else if (parsed.protocol === 'magnet:') {
-        sourceHint = '✓ Magnet link detected';
+      const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
+      const validAuthority = scheme === 'magnet' ? Boolean(parsed.search) : Boolean(parsed.hostname);
+      if (advertisedSchemes.has(scheme) && validAuthority) {
+        sourceHint = scheme === 'magnet'
+          ? '✓ Magnet link detected'
+          : '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
       } else {
-        sourceHint = 'Enter a public HTTP(S), FTP, SFTP or magnet link.';
+        sourceHint = 'This link type is not available with the selected download engine.';
       }
     } catch {
-      sourceHint = 'Enter a full link beginning with https:// or another supported protocol.';
+      sourceHint = 'Enter a complete public link, such as https://example.com/video.';
     }
   }
   const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
@@ -1148,12 +1170,18 @@ export default function App() {
     </section>}
     {tab === 'my-settings' && <section className="panel connection-settings">
       <h2>Service connection</h2>
-      <p className="muted">Connect this standalone browser with the administrator API key. Your key stays in this browser.</p>
+      <p className="muted">Connect with the administrator API key. By default, this tab remembers the key only for this browsing session.</p>
       <div className="keyrow">
         <label>API key<input type="password" value={connectionDraft} onChange={e => setConnectionDraft(e.target.value)} autoComplete="current-password" /></label>
         <button type="button" className="primary" disabled={checkingConnection} onClick={() => void checkConnection()}>{checkingConnection ? 'Checking…' : connected ? 'Check connection' : 'Connect'}</button>
         {connected && <button type="button" className="secondary" onClick={disconnect}>Disconnect</button>}
-      </div><p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
+      </div>
+      <label><input type="checkbox" checked={rememberBrowser} onChange={event => {
+        const remember = event.target.checked;
+        setRememberBrowser(remember);
+        if (apiKey) storeAdminKey(apiKey, remember);
+      }} /> Remember this browser after the session ends (less secure on shared devices)</label>
+      <p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
     </section>}
     {tab === 'my-settings' && <section className="panel language-settings">
       <h2>{t('Language')}</h2>
@@ -1196,7 +1224,7 @@ export default function App() {
           </div>
           {linkMode === 'one' ? <div>
             <label>{t('Link to download')}<div className="url-entry">
-              <input type="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
+              <input type="text" inputMode="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
               <button className="secondary" type="button" onClick={() => void navigator.clipboard.readText().then(setUrl).catch(() =>
                 setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>{t('Paste')}</button>
             </div></label>
@@ -1241,7 +1269,7 @@ export default function App() {
                     <option value={ytOverride.format}>Current: {ytOverride.format}</option>
                     {mediaPreview.formats.map(format => <option key={format.format_id} value={format.format_id}>{format.format_id} · {format.ext} · {format.resolution}</option>)}
                   </select></label>
-                : <div><p className="muted">Select entries to download ({mediaPreview.entries.length} previewed).</p>
+                : <div><p className="muted" role="status" aria-live="polite">{previewSelectionSummary(mediaPreview.entries, selectedPlaylistEntries)}</p>
                     <div className="preview-list">{mediaPreview.entries.map(entry =>
                       <label className="check" key={entry.index}><input type="checkbox" checked={selectedPlaylistEntries.includes(entry.index)} onChange={event => togglePreviewEntry(entry.index, event.target.checked)} /> {entry.index}. {entry.title}</label>
                     )}</div>
@@ -1321,7 +1349,7 @@ export default function App() {
             <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)}
               placeholder="Title, URL or filename" maxLength={128} /></label>
             <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
-              <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
+              <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed or cancelled</option>
             </select></label>
           </div>
           <div className="library-bulk-actions">

@@ -71,7 +71,7 @@ def test_playlist_selector_rejects_unbounded_or_invalid_indices(client, auth_hea
 
 def test_preview_api_requires_auth_and_sanitizes_output(client, auth_headers, monkeypatch):
     async def fake_preview(url, *, max_entries, offset=0):
-        return {"title": "Test", "kind": "video", "entries": [], "formats": []}
+        return summarize_metadata({"title":"Test", "id":"test", "formats":[]}, max_entries, offset)
 
     monkeypatch.setattr("app.main.inspect_ytdlp", fake_preview)
     monkeypatch.setattr("app.main.preflight_source_dns", lambda url: None)
@@ -175,7 +175,7 @@ def test_preview_api_validates_offset(client, auth_headers, monkeypatch):
 
     async def fake_preview(url, *, max_entries, offset):
         seen.append((max_entries, offset))
-        return {"kind": "playlist", "entries": [], "formats": [], "has_more": False}
+        return summarize_metadata({"title": "List", "entries": []}, max_entries, offset)
 
     monkeypatch.setattr("app.main.inspect_ytdlp", fake_preview)
     monkeypatch.setattr("app.main.preflight_source_dns", lambda url: None)
@@ -188,3 +188,24 @@ def test_preview_api_validates_offset(client, auth_headers, monkeypatch):
         "url": "https://example.com/list", "offset": -1,
     })
     assert bad.status_code == 422
+
+
+def test_playlist_size_fields_preserve_only_safe_exact_or_approximate_metadata():
+    data = summarize_metadata({
+        "entries": [
+            {"id": "exact", "filesize": 1048576, "filesize_approx": 2000000},
+            {"id": "estimate", "filesize_approx": 2097152},
+            {"id": "unknown"},
+            {"id": "invalid", "filesize": True, "filesize_approx": -10},
+            {"id": "large", "filesize": 2**60},
+        ],
+    }, 10)
+    first, second, third, invalid, large = data["entries"]
+    assert first["size_bytes"] == 1048576
+    assert first["size_estimate_bytes"] == 2000000
+    assert second["size_bytes"] is None
+    assert second["size_estimate_bytes"] == 2097152
+    for item in (third, invalid, large):
+        assert item["size_bytes"] is None
+    for item in (third, invalid):
+        assert item["size_estimate_bytes"] is None
