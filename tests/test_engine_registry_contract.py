@@ -2,15 +2,17 @@
 from __future__ import annotations
 
 from pathlib import Path
+import pytest
 from typing import get_args
 
 import yaml
 
 from app.engine_registry import (
-    ENGINE_NAMES, ENGINE_REGISTRY, ENGINE_DEFAULTS,
+    ENGINE_NAMES, ENGINE_REGISTRY, ENGINE_DEFAULTS, ENGINE_SETTING_KEYS,
     ENGINE_DESCRIPTIONS, OPTION_CATALOG, get_catalog,
 )
 from app.schemas import EngineName, EngineSelection
+from app.main import validate_engine_settings
 from app.worker import ENGINE_DEFAULTS as WORKER_DEFAULTS
 from scripts.generate_engine_registry_ts import OUTPUT, render
 
@@ -65,3 +67,29 @@ def test_every_engine_catalog_is_served_by_same_api_contract(client, auth_header
         opts = client.get(f"/api/v1/engines/{name}/options", headers=auth_headers)
         assert opts.status_code == 200, (name, opts.text)
         assert opts.json()["fields"] == get_catalog(name)
+
+def test_every_engine_has_one_registered_setting_key_boundary():
+    # The same registry owns defaults and accepted top-level setting names.
+    # A newly advertised engine must fail CI until its validator is implemented.
+    assert set(ENGINE_SETTING_KEYS) == set(ENGINE_NAMES)
+    for name in ENGINE_NAMES:
+        row = ENGINE_REGISTRY[name]
+        accepted = set(row["defaults"]) | set(row.get("additional_settings", ()))
+        assert ENGINE_SETTING_KEYS[name] == accepted
+        assert validate_engine_settings(name, {}) == {}
+        with pytest.raises(ValueError, match="Unknown"):
+            validate_engine_settings(name, {"__unregistered__": "ignored"})
+    with pytest.raises(ValueError, match="Unsupported engine"):
+        validate_engine_settings("future-engine", {})
+    assert ENGINE_SETTING_KEYS["yt-dlp"] - set(ENGINE_DEFAULTS["yt-dlp"]) == {"cookies_file"}
+    assert ENGINE_SETTING_KEYS["aria2c"] == {"options"}
+
+
+def test_registry_is_the_only_source_of_key_allowlists_for_api_validation():
+    code = (ROOT / "app/main.py").read_text(encoding="utf-8")
+    section = code.split("def validate_engine_settings(", 1)[1].split(
+        "def validate_shared_preset_settings(", 1
+    )[0]
+    assert "ENGINE_SETTING_KEYS[engine]" in section
+    assert "allowed = {" not in section
+    assert 'set(values) - {"options"}' not in section
