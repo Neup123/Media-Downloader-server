@@ -175,7 +175,7 @@ def test_preview_api_validates_offset(client, auth_headers, monkeypatch):
 
     async def fake_preview(url, *, max_entries, offset):
         seen.append((max_entries, offset))
-        return {"kind": "playlist", "entries": [], "formats": [], "has_more": False}
+        return summarize_metadata({"title": "List", "entries": []}, max_entries, offset)
 
     monkeypatch.setattr("app.main.inspect_ytdlp", fake_preview)
     monkeypatch.setattr("app.main.preflight_source_dns", lambda url: None)
