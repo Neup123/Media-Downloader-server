@@ -37,6 +37,8 @@ const he: Record<string, string> = {
   'Failed — ': 'נכשל — ',
   'Check the log and try again': 'בדקו את יומן הפעולות ונסו שוב',
   'Cancelled': 'בוטל',
+  'Skipped': 'דולג',
+  'A file already exists at the destination. The existing file was kept.': 'הקובץ כבר קיים ביעד. הקובץ הקיים נשמר ללא שינוי',
   'Downloading': 'מוריד',
   'Delivering to your destination': 'מעביר אל יעד הקבצים',
   'Queued': 'ממתין בתור',
