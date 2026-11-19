@@ -113,6 +113,11 @@ class JobCreate(BaseModel):
     preset_id: str | None = Field(default=None, max_length=36)
     overrides: dict[str, Any] = Field(default_factory=dict)
     owner_id: str | None = Field(default=None, min_length=1, max_length=255, pattern=r"^[^/\\\\\x00-\x1f]+$")
+    # Optional signed-gateway retry identity, never included in JobOut.
+    submission_id: str | None = Field(
+        default=None, min_length=36, max_length=36,
+        pattern=r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    )
     # One-off destination choice is constrained to one folder below the
     # administrator-configured target; it cannot set a URL or credentials.
     delivery_subfolder: str | None = Field(default=None, max_length=100)
@@ -243,6 +248,7 @@ class EngineOptionFieldOut(BaseModel):
     category: str
     type: str
     description: str
+    choices: list[str] | None = None
     minimum: int | None = None
     maximum: int | None = None
 

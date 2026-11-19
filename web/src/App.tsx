@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
+import { setOptionOrDefault } from './engine-option-default';
 import { JobCard } from './JobCard';
 import type { MediaPreviewOut } from './preview-contract.generated';
+import { previewSelectionSummary } from './preview-selection-size';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
@@ -55,7 +57,7 @@ type GenericSettings = { filename: string; follow_redirects: boolean; max_redire
 type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean };
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
-type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
+type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number; choices?: string[] | null };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null; url_schemes: string[] };
 
 const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
@@ -81,6 +83,12 @@ function CommonOptionFields({ fields, values, onChange }: {
         {field.type === 'boolean'
           ? <select value={values[field.key] ?? ''} onChange={event => onChange(field.key, event.target.value)}>
               <option value="">Engine default</option><option value="true">Enabled</option><option value="false">Disabled</option>
+            </select>
+          : field.type === 'enum' && field.choices?.length
+          ? <select aria-label={field.label} value={values[field.key] ?? ''}
+              onChange={event => onChange(field.key, event.target.value)}>
+              <option value="">Engine default</option>
+              {field.choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
             </select>
           : <input type={field.type === 'integer' ? 'number' : 'text'}
               min={field.minimum} max={field.maximum}
@@ -633,11 +641,9 @@ export default function App() {
 
   function updateGetSauceOption(key: string, value: string, global: boolean) {
     const setValue = global ? setGetSauce : setGetSauceOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: key === 'subdirectory' ? value === 'true' :
-        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      key === 'subdirectory' ? value === 'true' :
+        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value));
   }
 
   function getSauceOptionValues(value: GetSauceSettings): Record<string, string> {
@@ -646,10 +652,8 @@ export default function App() {
 
   function updateSvtOption(key: string, value: string, global: boolean) {
     const setValue = global ? setSvt : setSvtOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value));
   }
 
   function svtOptionValues(value: SvtSettings): Record<string, string> {
@@ -1249,7 +1253,7 @@ export default function App() {
                     <option value={ytOverride.format}>Current: {ytOverride.format}</option>
                     {mediaPreview.formats.map(format => <option key={format.format_id} value={format.format_id}>{format.format_id} · {format.ext} · {format.resolution}</option>)}
                   </select></label>
-                : <div><p className="muted">Select entries to download ({mediaPreview.entries.length} previewed).</p>
+                : <div><p className="muted" role="status" aria-live="polite">{previewSelectionSummary(mediaPreview.entries, selectedPlaylistEntries)}</p>
                     <div className="preview-list">{mediaPreview.entries.map(entry =>
                       <label className="check" key={entry.index}><input type="checkbox" checked={selectedPlaylistEntries.includes(entry.index)} onChange={event => togglePreviewEntry(entry.index, event.target.checked)} /> {entry.index}. {entry.title}</label>
                     )}</div>

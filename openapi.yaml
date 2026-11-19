@@ -16,7 +16,7 @@ info:
     This key grants full access. Keep it in trusted server-side integrations,
     never in public browser code or URL parameters.
 
-    The informational `/healthz`, `/openapi.yaml` and `/api-reference`
+    The informational `/healthz`, `/readyz`, `/openapi.yaml` and `/api-reference`
     routes are public exceptions and do not require an API key.
 
     ## Getting started
@@ -494,6 +494,14 @@ paths:
           in: query
           description: Exclude Nextcloud-owned jobs from the standalone Library
           schema: { type: boolean, default: false }
+        - name: owner_id
+          in: query
+          description: Owner filter for server-authorized Nextcloud requests
+          schema: { type: [string, 'null'], maxLength: 255 }
+        - name: submission_id
+          in: query
+          description: Lookup a single owner's signed submission intent; owner_id is required
+          schema: { type: [string, 'null'], minLength: 36, maxLength: 36 }
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
@@ -961,6 +969,7 @@ components:
         description: { type: string }
         minimum: { type: [integer, 'null'], default: null }
         maximum: { type: [integer, 'null'], default: null }
+        choices: { type: [array, 'null'], items: { type: string }, default: null }
     EngineOptionsOut:
       type: object
       required: [engine, fields]
@@ -1046,6 +1055,13 @@ components:
         delivery_subfolder: { type: [string, 'null'], maxLength: 100, default: null, description: Standalone jobs only; one safe folder name inside the administrator-configured delivery target. }
         owner_id: { type: [string, 'null'], minLength: 1, maxLength: 255, pattern: '^[^/\\\\\x00-\x1f]+$', default: null }
         delivery: { type: [object, 'null'], additionalProperties: true, default: null }
+        submission_id:
+          type: [string, 'null']
+          minLength: 36
+          maxLength: 36
+          pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'
+          default: null
+          description: Owner-scoped idempotency key, only for signed Nextcloud submissions.
     JobBatchCreate:
       type: object
       required: [items]
