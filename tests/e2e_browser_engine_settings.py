@@ -407,6 +407,32 @@ def run_browser_acceptance() -> None:
             assert rows[0]["priority"] > rows[1]["priority"]
             second_id = rows[0]["id"]
 
+            # Accessible icon toolbar remains touch-sized but never expands to
+            # full-width text rows on narrow screens.
+            page.set_viewport_size({"width": 390, "height": 844})
+            rule_toolbar = page.locator('.rule-card[data-rule-id="' + second_id + '"] .rule-actions')
+            icons = rule_toolbar.locator('button.rule-icon')
+            assert icons.count() == 4
+            for index in range(icons.count()):
+                button = icons.nth(index)
+                dimensions = button.bounding_box()
+                assert dimensions and 42 <= dimensions["width"] <= 48
+                assert dimensions["height"] >= 44
+                assert button.get_attribute("title")
+                assert button.get_attribute("aria-label")
+                assert button.locator('[aria-hidden="true"]').count() == 1
+            edit_rule = rule_toolbar.get_by_role(
+                "button", name="Edit routing.example.org"
+            )
+            edit_rule.focus()
+            assert edit_rule.evaluate("(element) => element === document.activeElement")
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"), (
+                "Routing actions overflow on mobile"
+            )
+            page.set_viewport_size({"width": 1440, "height": 1000})
+            print("Real Chromium: compact rule actions, labels, keyboard and 390px layout PASS", flush=True)
+
+
             with page.expect_response(
                 lambda r: r.url.endswith("/api/v1/engine-rules/order")
                 and r.request.method == "PUT", timeout=30000
@@ -450,7 +476,7 @@ def run_browser_acceptance() -> None:
             assert next(row for row in rows if row["id"] == second_id)["enabled"] is False
             # Editing a saved routing rule must never require a Save click.
             page.locator('.rule-card[data-rule-id="' + second_id + '"]').get_by_role(
-                "button", name="Edit", exact=True
+                "button", name="Edit routing.example.org", exact=True
             ).click()
             assert routing_form.get_by_role("button", name="Update site rule").count() == 0
             rule_puts = []
