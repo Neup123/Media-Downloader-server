@@ -32,6 +32,81 @@ class TorrentManifestIn(BaseModel):
 
 
 
+
+class PreviewMetadataOut(BaseModel):
+    """Explicit nullable extractor metadata; absent values remain null."""
+    model_config = ConfigDict(extra="forbid")
+
+    thumbnail: str | None
+    duration: float | int | None
+    timestamp: float | int | None
+    release_timestamp: float | int | None
+    upload_date: str | None
+    live_status: str | None
+    is_live: bool | None
+
+
+class PreviewEntryOut(PreviewMetadataOut):
+    index: int = Field(ge=1)
+    id: str
+    title: str
+    # Optional extensions accepted before upstream flat-playlist metadata is
+    # available. Do not invent bytes when the extractor omits these fields.
+    size_bytes: int | None = Field(default=None, ge=0)
+    size_estimate_bytes: int | None = Field(default=None, ge=0)
+
+
+class PreviewFormatOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    format_id: str
+    ext: str
+    resolution: str
+    vcodec: str
+    acodec: str
+    filesize: int | None
+
+
+class MediaPreviewOut(PreviewMetadataOut):
+    """Success contract shared by Core UI and the Nextcloud plugin."""
+    title: str
+    id: str
+    extractor: str
+    kind: Literal["playlist", "video"]
+    entry_count: int | None = Field(ge=0)
+    entries: list[PreviewEntryOut]
+    formats: list[PreviewFormatOut]
+    subtitle_languages: list[str]
+    offset: int = Field(ge=0)
+    max_entries: int = Field(ge=1, le=100)
+    ordering: Literal["source"]
+    has_more: bool
+    next_offset: int | None = Field(ge=0)
+
+
+class TorrentManifestFileOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    index: int = Field(ge=1)
+    path: str
+    name: str
+    size_bytes: int = Field(ge=0)
+
+
+class TorrentManifestOut(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    file_count: int = Field(ge=0)
+    files: list[TorrentManifestFileOut]
+
+    @model_validator(mode="after")
+    def count_matches_entries(self):
+        if self.file_count != len(self.files):
+            raise ValueError("Torrent manifest file_count must match files")
+        return self
+
+
+
 class JobCreate(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     engine: EngineSelection = "auto"
