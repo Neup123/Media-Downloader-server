@@ -18,7 +18,7 @@ def test_frontend_contract_is_generated_and_exact():
     assert "isTerminalStatus(job.status)" in source
     assert "const TERMINAL = new Set(" not in source
     assert sorted(status.value for status in TERMINAL_STATUSES) == [
-        "cancelled", "completed", "failed"
+        "cancelled", "completed", "failed", "skipped"
     ]
 
 
