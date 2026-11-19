@@ -137,6 +137,35 @@ def run_browser_acceptance() -> None:
                 and r.request.method == "GET", timeout=30000
             ):
                 page.get_by_role("button", name="Connect", exact=True).click()
+            # Verify the actual browser credential lifecycle. A successful
+            # connection must not silently persist an administrator key.
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") is None
+            remember = page.get_by_role(
+                "checkbox",
+                name="Remember this browser after the session ends (less secure on shared devices)",
+            )
+            remember.check()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") == "yes"
+            page.reload(wait_until="domcontentloaded")
+            remember = page.get_by_role(
+                "checkbox",
+                name="Remember this browser after the session ends (less secure on shared devices)",
+            )
+            assert remember.is_checked()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") == API_TOKEN
+            remember.uncheck()
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            assert page.evaluate("localStorage.getItem('downloader-remember-browser')") is None
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            page.reload(wait_until="domcontentloaded")
+            assert page.evaluate("sessionStorage.getItem('downloader-api-key')") == API_TOKEN
+            assert page.evaluate("localStorage.getItem('downloader-api-key')") is None
+            print("Real Chromium: administrator key session/default/opt-in/reload lifecycle PASS", flush=True)
+
             # The download hero is the first main content after navigation.
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="Download", exact=True

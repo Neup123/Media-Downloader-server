@@ -124,6 +124,30 @@ function label(value: string): string {
   return value.replaceAll('-', ' ').replace(/^./, character => character.toUpperCase());
 }
 
+// The administrator key is tab-session scoped unless persistence is explicitly enabled.
+const ADMIN_KEY_STORAGE = 'downloader-api-key';
+const REMEMBER_KEY_STORAGE = 'downloader-remember-browser';
+function savedAdminKey(): string {
+  if (localStorage.getItem(REMEMBER_KEY_STORAGE) === 'yes') {
+    return localStorage.getItem(ADMIN_KEY_STORAGE) ?? '';
+  }
+  // Drop legacy indefinitely persisted keys; older versions had no opt-in.
+  localStorage.removeItem(ADMIN_KEY_STORAGE);
+  return sessionStorage.getItem(ADMIN_KEY_STORAGE) ?? '';
+}
+function storeAdminKey(key: string, remember: boolean) {
+  if (remember && key) {
+    localStorage.setItem(REMEMBER_KEY_STORAGE, 'yes');
+    localStorage.setItem(ADMIN_KEY_STORAGE, key);
+    sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+  } else {
+    localStorage.removeItem(REMEMBER_KEY_STORAGE);
+    localStorage.removeItem(ADMIN_KEY_STORAGE);
+    if (key) sessionStorage.setItem(ADMIN_KEY_STORAGE, key);
+    else sessionStorage.removeItem(ADMIN_KEY_STORAGE);
+  }
+}
+
 export default function App() {
   const [locale, setLocale] = useState<Locale>(() => normalizeLocale(localStorage.getItem('downloader-locale') || 'en'));
   const t = (english: string) => translate(locale, english);
@@ -132,7 +156,7 @@ export default function App() {
     document.documentElement.dir = isRtl(locale) ? 'rtl' : 'ltr';
     localStorage.setItem('downloader-locale', locale);
   }, [locale]);
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
+  const [apiKey, setApiKey] = useState(savedAdminKey);
   const [tab, setTab] = useState<View>(initialView);
   const [adminArea, setAdminArea] = useState<AdminArea>(() => initialNavigation().area ?? 'connection');
   useEffect(() => {
@@ -150,7 +174,10 @@ export default function App() {
     syncLocation();
     return () => window.removeEventListener('hashchange', syncLocation);
   }, []);
-  const [connectionDraft, setConnectionDraft] = useState(() => localStorage.getItem('downloader-api-key') ?? '');
+  const [connectionDraft, setConnectionDraft] = useState(savedAdminKey);
+  const [rememberBrowser, setRememberBrowser] = useState(
+    () => localStorage.getItem(REMEMBER_KEY_STORAGE) === 'yes',
+  );
   const [connected, setConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(false);
   const [deliveryVerified, setDeliveryVerified] = useState(false);
@@ -173,7 +200,7 @@ export default function App() {
       if (!response.ok) throw new Error('Could not connect. Check the API key and server availability.');
       const result = await response.json() as EngineStatus[];
       if (!Array.isArray(result)) throw new Error('Unexpected service response.');
-      localStorage.setItem('downloader-api-key', key);
+      storeAdminKey(key, rememberBrowser);
       setEngineStatus(result); setApiKey(key); setConnected(true);
       setHistoryChecked(false); setDeliveryVerified(false);
       setMessage('Connected ✓');
@@ -182,7 +209,8 @@ export default function App() {
     } finally { setCheckingConnection(false); }
   }
   function disconnect() {
-    localStorage.removeItem('downloader-api-key');
+    storeAdminKey('', false);
+    setRememberBrowser(false);
     setApiKey(''); setConnectionDraft(''); setConnected(false); setJobs([]);
     setHistoryChecked(false); setDeliveryVerified(false);
     setMessage('Disconnected. Reconnect to download.');
@@ -382,7 +410,6 @@ export default function App() {
 
   useEffect(() => {
     if (!apiKey) return;
-    localStorage.setItem('downloader-api-key', apiKey);
     void refresh();
     const interval = window.setInterval(() => void refresh(), 2000);
     return () => window.clearInterval(interval);
@@ -1143,12 +1170,18 @@ export default function App() {
     </section>}
     {tab === 'my-settings' && <section className="panel connection-settings">
       <h2>Service connection</h2>
-      <p className="muted">Connect this standalone browser with the administrator API key. Your key stays in this browser.</p>
+      <p className="muted">Connect with the administrator API key. By default, this tab remembers the key only for this browsing session.</p>
       <div className="keyrow">
         <label>API key<input type="password" value={connectionDraft} onChange={e => setConnectionDraft(e.target.value)} autoComplete="current-password" /></label>
         <button type="button" className="primary" disabled={checkingConnection} onClick={() => void checkConnection()}>{checkingConnection ? 'Checking…' : connected ? 'Check connection' : 'Connect'}</button>
         {connected && <button type="button" className="secondary" onClick={disconnect}>Disconnect</button>}
-      </div><p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
+      </div>
+      <label><input type="checkbox" checked={rememberBrowser} onChange={event => {
+        const remember = event.target.checked;
+        setRememberBrowser(remember);
+        if (apiKey) storeAdminKey(apiKey, remember);
+      }} /> Remember this browser after the session ends (less secure on shared devices)</label>
+      <p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
     </section>}
     {tab === 'my-settings' && <section className="panel language-settings">
       <h2>{t('Language')}</h2>
