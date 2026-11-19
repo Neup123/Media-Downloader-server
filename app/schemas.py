@@ -173,6 +173,7 @@ class EngineOptionFieldOut(BaseModel):
     category: str
     type: str
     description: str
+    choices: list[str] | None = None
     minimum: int | None = None
     maximum: int | None = None
 
