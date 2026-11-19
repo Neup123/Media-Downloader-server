@@ -560,7 +560,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if state == "active":
             query = query.where(Job.status.not_in(tuple(TERMINAL_STATUSES)))
         elif state == "delivered":
-            query = query.where(Job.status == "completed")
+            query = query.where(Job.status.in_((JobStatus.COMPLETED, JobStatus.SKIPPED)))
         elif state == "failed":
             query = query.where(Job.status.in_((JobStatus.FAILED, JobStatus.CANCELLED)))
         if owner_id is not None:
@@ -627,7 +627,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if not owner_id or len(owner_id) > 255 or not file_id.isdecimal() or len(file_id) > 32:
             raise HTTPException(status_code=422, detail="Invalid file identity")
         jobs = session.scalars(
-            select(Job).where(Job.owner_id == owner_id, Job.status == "completed")
+            select(Job).where(Job.owner_id == owner_id, Job.status.in_((JobStatus.COMPLETED, JobStatus.SKIPPED)))
             .order_by(Job.created_at.desc())
         ).all()
         for job in jobs:
@@ -732,8 +732,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        if job.status != "completed":
-            raise HTTPException(status_code=409, detail="Only completed jobs can be re-delivered")
+        if job.status not in {JobStatus.COMPLETED, JobStatus.SKIPPED}:
+            raise HTTPException(status_code=409, detail="Only completed or skipped jobs can be re-delivered")
 
         # The durable manifest proves the engine finished successfully and
         # that the original files have not changed since that success.
