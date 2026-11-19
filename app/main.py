@@ -4,6 +4,7 @@ import asyncio
 import base64
 import binascii
 import json
+import hashlib
 import httpx
 import os
 import re
@@ -21,6 +22,7 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from sqlalchemy import select, cast, or_, Text, delete
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.adapters.aria2 import Aria2Rpc
@@ -454,14 +456,50 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
     @app.post("/api/v1/jobs", status_code=202, response_model=JobOut, tags=["jobs"])
     def submit_job(payload: JobCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        """Idempotent per signed owner action; never expose the private request fingerprint."""
+        request_id = payload.submission_id
+        if request_id is not None and not payload.owner_id:
+            raise HTTPException(status_code=422, detail="A request ID requires a signed job owner")
+        fingerprint = (
+            hashlib.sha256(json.dumps(payload.model_dump(mode="json", exclude_none=True),
+                                      sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+            if request_id else None
+        )
+        def prior_submission() -> Job | None:
+            if request_id is None:
+                return None
+            row = session.scalar(select(Job).where(
+                Job.owner_id == payload.owner_id, Job.submission_id == request_id
+            ))
+            if row is not None and row.submission_fingerprint != fingerprint:
+                raise HTTPException(status_code=409, detail="Submission ID reused with changed request")
+            return row
+        existing = prior_submission()
+        if existing is not None:
+            return job_to_dict(existing)
         job = build_job(payload, session, config)
+        job.submission_id = request_id
+        job.submission_fingerprint = fingerprint
         session.add(job)
-        session.commit()
+        try:
+            session.commit()
+        except IntegrityError:
+            session.rollback()
+            # Another request can commit the same idempotency key concurrently.
+            # Re-read the durable winner instead of creating a second job.
+            if request_id is None:
+                raise
+            existing = prior_submission()
+            if existing is None:
+                raise
+            return job_to_dict(existing)
         session.refresh(job)
         return job_to_dict(job)
 
     @app.post("/api/v1/jobs/batch", status_code=202, response_model=JobBatchOut, tags=["jobs"])
     def submit_batch(payload: JobBatchCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        if any(item.submission_id is not None for item in payload.items):
+            raise HTTPException(status_code=422, detail="Idempotency applies to single submissions only")
         jobs = []
         for index, item in enumerate(payload.items):
             try:
@@ -482,7 +520,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         _: bool = Depends(authenticate), session: Session = Depends(db_session),
         limit: int = 50, status: str | None = None, owner_id: str | None = None,
         state: str = "all", q: str | None = None, offset: int = 0,
-        standalone_only: bool = False,
+        standalone_only: bool = False, submission_id: str | None = None,
     ):
         if not 0 <= offset <= 10000 or not 1 <= limit <= 200:
             raise HTTPException(status_code=422, detail="Limit must be 1–200 and offset 0–10000")
@@ -501,6 +539,12 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             query = query.where(Job.status.in_((JobStatus.FAILED, JobStatus.CANCELLED)))
         if owner_id is not None:
             query = query.where(Job.owner_id == owner_id)
+        if submission_id is not None:
+            if owner_id is None or not re.fullmatch(
+                r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}", submission_id
+            ):
+                raise HTTPException(status_code=422, detail="Submission lookup requires valid owner and request ID")
+            query = query.where(Job.submission_id == submission_id)
         if standalone_only:
             query = query.where(Job.owner_id.is_(None))
         if q is not None:

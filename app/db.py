@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, create_engine, inspect, select, text
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, Index, create_engine, inspect, select, text
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 from sqlalchemy.types import JSON
 
@@ -20,11 +20,14 @@ class Base(DeclarativeBase):
 
 class Job(Base):
     __tablename__ = "jobs"
+    __table_args__ = (Index("uq_jobs_owner_submission", "owner_id", "submission_id", unique=True),)
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
     url: Mapped[str] = mapped_column(Text, nullable=False)
     # Trusted gateway-only fields. The encrypted token is NEVER included in JobOut.
     owner_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    submission_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    submission_fingerprint: Mapped[str | None] = mapped_column(String(64), nullable=True)
     delivery_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_subfolder: Mapped[str | None] = mapped_column(String(100), nullable=True)
     engine: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -118,6 +121,14 @@ def initialize_database(engine) -> None:
         if "owner_id" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN owner_id VARCHAR(255)"))
             connection.execute(text("CREATE INDEX IF NOT EXISTS ix_jobs_owner_id ON jobs (owner_id)"))
+        if "submission_id" not in columns:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN submission_id VARCHAR(36)"))
+        if "submission_fingerprint" not in columns:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN submission_fingerprint VARCHAR(64)"))
+        connection.execute(text(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_owner_submission "
+            "ON jobs (owner_id, submission_id)"
+        ))
         if "delivery_token" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN delivery_token TEXT"))
         if "delivery_subfolder" not in columns:
