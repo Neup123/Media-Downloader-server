@@ -12,6 +12,7 @@ on:
       - "Dockerfile"
       - "requirements.txt"
       - "app/**"
+      - "web/**"
       - "tests/e2e_live_webdav.py"
       - "tests/e2e_standalone_compose.py"
       - "tests/e2e_browser_engine_settings.py"

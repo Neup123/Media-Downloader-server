@@ -19,18 +19,27 @@ ARIA2_OPTION_ALLOWLIST = {
     "max-connection-per-server", "split", "min-split-size", "max-tries", "retry-wait",
     "connect-timeout", "timeout", "lowest-speed-limit", "max-download-limit",
     "user-agent", "referer", "header", "allow-overwrite", "auto-file-renaming",
-    "check-integrity", "seed-time", "seed-ratio", "bt-max-peers", "bt-stop-timeout",
+    "bt-max-peers", "bt-stop-timeout",
     "select-file",
 }
+
+# Service policy: these settings never affect execution, and cannot be edited.
+ARIA2_FIXED_OPTIONS = frozenset({"check-integrity", "seed-time", "seed-ratio"})
 
 
 def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]) -> dict[str, str]:
     values = {"max-connection-per-server": "4", "split": "4", "continue": "true", "max-tries": "5", "retry-wait": "5"}
-    for source in (global_options or {}, overrides or {}):
+    for source, is_stored_default in ((global_options or {}, True), (overrides or {}, False)):
         options = source.get("options", {}) if isinstance(source, dict) else {}
         if not isinstance(options, dict):
             raise ValueError("aria2 options must be an object")
         for key, value in options.items():
+            if key in ARIA2_FIXED_OPTIONS and is_stored_default:
+                # Preserve downloads created before policy keys were removed from the editor.
+                # Persisted legacy values are ignored; future writes are rejected by API validation.
+                continue
+            if key in ARIA2_FIXED_OPTIONS:
+                raise ValueError(f"aria2 option {key} is managed by the service")
             if key not in ARIA2_OPTION_ALLOWLIST:
                 raise ValueError(f"aria2 option is not allowed through the settings API: {key}")
             text = str(value)

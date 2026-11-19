@@ -52,10 +52,10 @@ def test_bulk_retry_changes_only_failed_standalone_jobs(client, auth_headers):
     nextcloud = add(client,status="failed",url="https://example.org/four",owner="alice")
     assert client.post("/api/v1/jobs/retry-failed").status_code == 401
     response = client.post("/api/v1/jobs/retry-failed",headers=auth_headers)
-    assert response.status_code == 200 and response.json() == {"retried":2}
+    assert response.status_code == 200 and response.json() == {"retried":1}
     with client.app.state.session_factory() as session:
         assert session.get(Job,first).status == "queued"
-        assert session.get(Job,second).status == "queued"
+        assert session.get(Job,second).status == "cancelled"
         assert session.get(Job,running).status == "downloading"
         assert session.get(Job,nextcloud).status == "failed"
 

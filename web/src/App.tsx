@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
 import {ENGINE_REGISTRY, ENGINE_DESCRIPTIONS, ENGINE_ORDER, type Engine, type EngineSelection} from './engine-registry.generated';
+import { setOptionOrDefault } from './engine-option-default';
 import { JobCard } from './JobCard';
+import type { MediaPreviewOut } from './preview-contract.generated';
+import { previewSelectionSummary } from './preview-selection-size';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
 import { EngineAutosaveQueue, type SaveState } from './engine-autosave';
@@ -46,19 +49,15 @@ type YtSettings = {
   format: string; subtitles_lang: string; write_subtitles: boolean; embed_subtitles: boolean;
   extra_args: string[]; cookies_file?: string; allow_playlist: boolean; playlist_items: string;
 };
-type MediaPreview = {
-  title: string; kind: 'video' | 'playlist'; entry_count: number;
-  entries: { index: number; title: string; id: string; duration: number | null }[];
-  formats: { format_id: string; ext: string; resolution: string; filesize: number | null }[];
-};
+type MediaPreview = MediaPreviewOut;
 type AriaSettings = { options: Record<string, string> };
 type GallerySettings = { options: Record<string, string>; cookies_file?: string; proxy?: string };
 type GenericSettings = { filename: string; follow_redirects: boolean; max_redirects: number; retry_count: number; user_agent: string };
 type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean };
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
-type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
-type EngineStatus = { name: Engine; installed: boolean; version?: string | null };
+type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number; choices?: string[] | null };
+type EngineStatus = { name: Engine; installed: boolean; version?: string | null; url_schemes: string[] };
 
 function CommonOptionFields({ fields, values, onChange }: {
   fields: OptionField[]; values: Record<string, string>; onChange: (key: string, value: string) => void;
@@ -72,6 +71,12 @@ function CommonOptionFields({ fields, values, onChange }: {
         {field.type === 'boolean'
           ? <select value={values[field.key] ?? ''} onChange={event => onChange(field.key, event.target.value)}>
               <option value="">Engine default</option><option value="true">Enabled</option><option value="false">Disabled</option>
+            </select>
+          : field.type === 'enum' && field.choices?.length
+          ? <select aria-label={field.label} value={values[field.key] ?? ''}
+              onChange={event => onChange(field.key, event.target.value)}>
+              <option value="">Engine default</option>
+              {field.choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
             </select>
           : <input type={field.type === 'integer' ? 'number' : 'text'}
               min={field.minimum} max={field.maximum}
@@ -619,11 +624,9 @@ export default function App() {
 
   function updateGetSauceOption(key: string, value: string, global: boolean) {
     const setValue = global ? setGetSauce : setGetSauceOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: key === 'subdirectory' ? value === 'true' :
-        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      key === 'subdirectory' ? value === 'true' :
+        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value));
   }
 
   function getSauceOptionValues(value: GetSauceSettings): Record<string, string> {
@@ -632,10 +635,8 @@ export default function App() {
 
   function updateSvtOption(key: string, value: string, global: boolean) {
     const setValue = global ? setSvt : setSvtOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value));
   }
 
   function svtOptionValues(value: SvtSettings): Record<string, string> {
@@ -1061,19 +1062,30 @@ export default function App() {
 
   const verifiedDownload = firstCompletedVerified || jobs.some(job => job.status === 'completed'
     && job.output_files?.length && job.output_files.every(file => file.verified));
+  // Core advertises the schemes accepted by each engine; avoid a second hand-written whitelist.
+  const selectedEngine = selectedPresetId
+    ? presets.find(p => p.id === selectedPresetId)?.engine || engine
+    : engine;
+  const advertisedSchemes = new Set(
+    engineStatus
+      .filter(item => item.installed && (selectedEngine === 'auto' || item.name === selectedEngine))
+      .flatMap(item => item.url_schemes ?? []),
+  );
   let sourceHint = '';
   if (url.trim()) {
     try {
       const parsed = new URL(url.trim());
-      if (['http:', 'https:', 'ftp:', 'sftp:'].includes(parsed.protocol) && parsed.hostname) {
-        sourceHint = '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
-      } else if (parsed.protocol === 'magnet:') {
-        sourceHint = '✓ Magnet link detected';
+      const scheme = parsed.protocol.replace(/:$/, '').toLowerCase();
+      const validAuthority = scheme === 'magnet' ? Boolean(parsed.search) : Boolean(parsed.hostname);
+      if (advertisedSchemes.has(scheme) && validAuthority) {
+        sourceHint = scheme === 'magnet'
+          ? '✓ Magnet link detected'
+          : '✓ Link detected: ' + parsed.hostname.replace(/^www\./, '');
       } else {
-        sourceHint = 'Enter a public HTTP(S), FTP, SFTP or magnet link.';
+        sourceHint = 'This link type is not available with the selected download engine.';
       }
     } catch {
-      sourceHint = 'Enter a full link beginning with https:// or another supported protocol.';
+      sourceHint = 'Enter a complete public link, such as https://example.com/video.';
     }
   }
   const shownJobs = tab === 'library' ? libraryJobs : jobs.slice(0, 10);
@@ -1179,7 +1191,7 @@ export default function App() {
           </div>
           {linkMode === 'one' ? <div>
             <label>{t('Link to download')}<div className="url-entry">
-              <input type="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
+              <input type="text" inputMode="url" className={sourceHint.startsWith('✓') ? 'valid-link' : ''} value={url} onChange={event => setUrl(event.target.value)} placeholder="https://example.com/video" required />
               <button className="secondary" type="button" onClick={() => void navigator.clipboard.readText().then(setUrl).catch(() =>
                 setMessage('Clipboard access was blocked. Paste the link into the field instead.'))}>{t('Paste')}</button>
             </div></label>
@@ -1224,7 +1236,7 @@ export default function App() {
                     <option value={ytOverride.format}>Current: {ytOverride.format}</option>
                     {mediaPreview.formats.map(format => <option key={format.format_id} value={format.format_id}>{format.format_id} · {format.ext} · {format.resolution}</option>)}
                   </select></label>
-                : <div><p className="muted">Select entries to download ({mediaPreview.entries.length} previewed).</p>
+                : <div><p className="muted" role="status" aria-live="polite">{previewSelectionSummary(mediaPreview.entries, selectedPlaylistEntries)}</p>
                     <div className="preview-list">{mediaPreview.entries.map(entry =>
                       <label className="check" key={entry.index}><input type="checkbox" checked={selectedPlaylistEntries.includes(entry.index)} onChange={event => togglePreviewEntry(entry.index, event.target.checked)} /> {entry.index}. {entry.title}</label>
                     )}</div>
@@ -1304,7 +1316,7 @@ export default function App() {
             <label>Search downloads<input type="search" value={libraryQuery} onChange={e => setLibraryQuery(e.target.value)}
               placeholder="Title, URL or filename" maxLength={128} /></label>
             <label>Show<select value={libraryFilter} onChange={e => setLibraryFilter(e.target.value as typeof libraryFilter)}>
-              <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed</option>
+              <option value="all">All</option><option value="active">Active</option><option value="delivered">Delivered</option><option value="failed">Failed or cancelled</option>
             </select></label>
           </div>
           <div className="library-bulk-actions">
