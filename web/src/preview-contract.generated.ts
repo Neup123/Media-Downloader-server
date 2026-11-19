@@ -56,6 +56,8 @@ export interface MediaPreviewOut {
   ordering: 'source';
   has_more: boolean;
   next_offset: number | null;
+  size_bytes?: number | null;
+  size_estimate_bytes?: number | null;
 }
 
 export interface TorrentManifestFileOut {
