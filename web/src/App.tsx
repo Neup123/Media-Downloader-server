@@ -1184,7 +1184,7 @@ export default function App() {
       <label><input type="checkbox" checked={rememberBrowser} onChange={event => {
         const remember = event.target.checked;
         setRememberBrowser(remember);
-        if (connected) storeAdminKey(apiKey, remember);
+        if (apiKey) storeAdminKey(apiKey, remember);
       }} /> Remember this browser after the session ends (less secure on shared devices)</label>
       <p role="status">{connected ? 'Connected ✓' : 'Not connected — enter your API key.'}</p>
     </section>}
