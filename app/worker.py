@@ -14,7 +14,7 @@ from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
 from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
-from app.adapters.get_sauce import run_get_sauce, DEFAULTS as GET_SAUCE_DEFAULTS
+from app.adapters.get_sauce import run_get_sauce
 from app.adapters.yt_dlp import run_ytdlp
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
@@ -22,50 +22,12 @@ from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
 from app.redaction import _redact
+from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS
 from app.user_failures import user_failure_message
 from app.security import preflight_source_dns
 
 
 LOGGER = logging.getLogger(__name__)
-
-ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
-    "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
-    "you-get": {"format": "", "cookies_file": "", "no_proxy": False},
-    "svtplay-dl": {"resolution": "", "quality": "", "subtitles": False, "all_subtitles": False, "all_episodes": False, "output_format": "mp4"},
-    "get-sauce": GET_SAUCE_DEFAULTS,
-    "yt-dlp": {
-        "format": "bv*+ba/b",
-        "subtitles_lang": "",
-        "write_subtitles": False,
-        "embed_subtitles": False,
-        "extra_args": [],
-        "allow_playlist": False,
-        "playlist_items": "",
-    },
-    "gallery-dl": {
-        "options": {},
-        "cookies_file": "",
-        "proxy": "",
-    },
-    "aria2c": {
-        "options": {
-            "max-connection-per-server": "4",
-            "split": "4",
-            "max-tries": "5",
-            "retry-wait": "5",
-        },
-    },
-}
-
-ENGINE_DESCRIPTIONS = [
-    {"name": "yt-dlp", "label": "yt-dlp", "role": "Site extraction and media downloads", "priority": "P0", "available": True},
-    {"name": "aria2c", "label": "aria2c", "role": "Direct downloads, BitTorrent, and magnet links", "priority": "P0", "available": True},
-    {"name": "gallery-dl", "label": "gallery-dl", "role": "Image galleries and supported image-board extractors", "priority": "P0", "available": True},
-    {"name": "generic", "label": "generic / curl", "role": "Plain direct HTTP(S) downloads", "priority": "P1", "available": True},
-    {"name": "you-get", "label": "you-get", "role": "Fallback site extractor", "priority": "P1", "available": True},
-    {"name": "svtplay-dl", "label": "svtplay-dl", "role": "Nordic broadcaster and video services", "priority": "P2", "available": True},
-    {"name": "get-sauce", "label": "get-sauce", "role": "Specialized media and gallery extractor", "priority": "P2", "available": True},
-]
 
 
 class JobWorker:

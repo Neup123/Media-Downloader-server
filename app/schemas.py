@@ -6,10 +6,11 @@ import re
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from app.engine_registry import ENGINE_NAMES
 
 
-EngineName = Literal["yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
-EngineSelection = Literal["auto", "yt-dlp", "aria2c", "gallery-dl", "generic", "you-get", "svtplay-dl", "get-sauce"]
+EngineName = Literal[*ENGINE_NAMES]
+EngineSelection = Literal["auto", *ENGINE_NAMES]
 
 
 class MediaPreviewIn(BaseModel):
