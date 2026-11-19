@@ -18,6 +18,9 @@ def field(key: str, label: str, category: str, kind: str = "text", description: 
 
 ENGINE_REGISTRY: dict[str, dict[str, Any]] = {
     "yt-dlp": {
+        # Per-user cookie selection is valid but must not be an administrator
+        # default. Keep its allowed setting name here, not in the API adapter.
+        "additional_settings": ("cookies_file",),
         "label": "yt-dlp",
         "role": "Site extraction and media downloads",
         "priority": "P0",
@@ -169,6 +172,14 @@ ENGINE_REGISTRY: dict[str, dict[str, Any]] = {
 }
 
 ENGINE_NAMES = tuple(ENGINE_REGISTRY)
+ENGINE_SETTING_KEYS: dict[str, frozenset[str]] = {
+    name: frozenset(row["defaults"]) | frozenset(row.get("additional_settings", ()))
+    for name, row in ENGINE_REGISTRY.items()
+}
+# Every engine must have a concrete server-side validator; an added registry
+# entry that lacks a validated adapter is rejected by contract tests.
+ENGINE_VALIDATOR_IDS = frozenset(ENGINE_NAMES)
+
 ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     name: row["defaults"] for name, row in ENGINE_REGISTRY.items()
 }
