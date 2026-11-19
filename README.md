@@ -6,6 +6,8 @@ Downloader Server is a server-side media downloader with one web interface for e
 
 Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. Actual UI screenshots are required after the standalone redesign is exercised in a real browser; illustrative mockups do not count as production screenshots.
 
+For a maintained map of the current code, flows and trust boundaries, read [architecture orientation](docs/orientation.md). The [blueprint](BLUEPRINT.md) is historical; the [acceptance ledger](ACCEPTANCE_STATUS.md) records what is and is not verified.
+
 ## Repositories
 
 - Core: https://github.com/Neup123/Media-Downloader-server
