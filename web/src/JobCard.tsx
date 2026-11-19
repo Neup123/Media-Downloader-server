@@ -8,7 +8,7 @@ export type JobCardData = {
   engine: string;
   status: string;
   progress?: Record<string, unknown>;
-  output_files?: { filename: string; size_bytes: number; verified: boolean; path?: string }[];
+  output_files?: { filename: string; size_bytes: number; verified: boolean; skipped?: boolean; skip_reason?: string; path?: string }[];
   log_text?: string;
   error?: string | null;
   created_at?: string;
@@ -66,6 +66,7 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
     <button type="button" className={'small ' + style} onClick={() => onAction(action)}>{t(label)}</button>;
   const progressText = job.status === 'completed'
     ? verified ? t('Delivered ✓ Verified') : t('Completed — checking delivery')
+    : job.status === 'skipped' ? t('Skipped')
     : job.status === 'failed' ? t('Failed — ') + (job.error || t('Check the log and try again'))
     : job.status === 'cancelled' ? t('Cancelled')
     : job.status === 'downloading'
@@ -80,7 +81,7 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
       <div className="job-card-info">
         <button type="button" className="job-card-title" onClick={onToggle}
           aria-expanded={expanded} aria-label={t('Details for ') + jobTitle(job)}>{t(jobTitle(job))}</button>
-        <div className="job-card-state" role="status" aria-live="polite" aria-atomic="true">{progressText}</div>
+        <div className="job-card-state" role="status" aria-live="polite" aria-atomic="true" title={job.status === "skipped" ? t("A file already exists at the destination. The existing file was kept.") : undefined}>{progressText}</div>
         <div className="job-card-meta">{job.engine}
           {!isTerminalStatus(job.status) && job.progress?.downloaded_bytes !== undefined &&
             <span> · {amount(job.progress.downloaded_bytes)} {t('downloaded')}</span>}
@@ -94,7 +95,7 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
     <div className="job-actions">
       {!isTerminalStatus(job.status) && actionButton('Cancel', 'cancel', 'danger')}
       {(job.status === 'failed' || job.status === 'cancelled') && actionButton('Try again', 'retry')}
-      {job.status === 'completed' && actionButton('Re-deliver', 'redeliver')}
+      {(job.status === 'completed' || job.status === 'skipped') && actionButton('Re-deliver', 'redeliver')}
       {fileLink && <a className="small secondary job-card-file-link" href={fileLink}
         target="_blank" rel="noopener noreferrer">{t('Open in Files')}</a>}
       <button type="button" className="small secondary" onClick={onToggle}
