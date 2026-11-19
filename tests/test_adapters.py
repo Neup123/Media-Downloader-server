@@ -132,7 +132,7 @@ def test_gallery_dl_rejects_service_managed_output_options():
 
 
 
-def test_aria2_daemon_and_overrides_force_zero_seed_time(tmp_path: Path, monkeypatch):
+def test_aria2_daemon_enforces_zero_seed_time_and_rejects_overrides(tmp_path: Path, monkeypatch):
     import subprocess
     from app.adapters import aria2 as module
 
@@ -164,7 +164,12 @@ def test_aria2_daemon_and_overrides_force_zero_seed_time(tmp_path: Path, monkeyp
     assert "--seed-time=0" in launched[0][0]
     assert "--rpc-save-upload-metadata=false" in launched[0][0]
     assert launched[0][1]["env"] is not None
-    assert _effective_options({"options": {"seed-time": "120"}}, {"options": {"seed-time": "999"}})["seed-time"] == "0"
+    # Legacy saved settings are ignored for compatibility with old deployments.
+    assert _effective_options({"options": {"seed-time": "120"}}, {})["seed-time"] == "0"
+    import pytest
+    for key, value in (("seed-time", "999"), ("check-integrity", "false"), ("seed-ratio", "2")):
+        with pytest.raises(ValueError, match="managed by the service"):
+            _effective_options({}, {"options": {key: value}})
 
 
 def test_torrent_magnet_manifest_only_reads_metadata_and_cleans_up(tmp_path: Path):
