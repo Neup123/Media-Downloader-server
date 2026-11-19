@@ -207,7 +207,7 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 
 /* Automation / Routing: human cards with mouse and keyboard reordering. */
 .rule-order-list{display:grid;gap:12px;margin-top:16px}
-.rule-card{background:#17293d;border:1px solid #435d7b;border-radius:12px;padding:14px}
+.rule-card{background:#17293d;border:1px solid #435d7b;border-radius:12px;padding:10px 12px}
 .rule-card.drop-target{border-color:#b2d5ff;box-shadow:0 0 0 2px #789fd9}
 .rule-head{display:flex;flex-wrap:wrap;gap:12px;align-items:center;min-width:0}
 .rule-drag{cursor:grab;flex:0 0 42px;min-width:42px;min-height:44px;border:1px dashed #7797b7;
@@ -219,8 +219,10 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 .rule-label small{display:block;margin:6px 0}
 .rule-enabled{display:flex;align-items:center;gap:8px;min-height:44px;font-size:13px;cursor:pointer}
 .rule-enabled input{width:18px;height:18px;accent-color:#8dc6ff}
-.rule-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:14px}
+.rule-actions{display:flex;align-items:center;justify-content:flex-end;gap:6px;flex-wrap:wrap;margin-top:8px}
 .rule-actions button{min-height:44px}
+.rule-actions .rule-icon{flex:0 0 44px;width:44px;min-width:44px;min-height:44px;padding:0;font-size:20px;line-height:1;display:grid;place-items:center}
+.rule-actions .rule-icon:focus-visible{outline:3px solid #b2d5ff;outline-offset:2px}
 .rule-advanced{font-size:11px;flex:1 1 100%;color:#9ebad4}
 .rule-advanced summary{cursor:pointer;width:max-content;padding:6px 4px;min-height:34px}
 .rule-advanced span{display:block;overflow-wrap:anywhere}
@@ -230,7 +232,7 @@ footer { color: #6f8198; border-top: 1px solid #253447; margin-top: 30px; paddin
 #rule-editor .advanced-options{margin:4px 0}
 @media(max-width:600px){.rule-head{align-items:flex-start}
  .rule-enabled{flex:1 1 100%;padding-left:4px}
- .rule-actions button{flex:1 1 calc(50% - 10px)}
+ .rule-actions .rule-icon{flex:0 0 44px}
 }
 
 /* Hebrew locale follows semantic document direction. Keep machine-readable
