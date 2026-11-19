@@ -82,6 +82,9 @@ class MediaPreviewOut(PreviewMetadataOut):
     ordering: Literal["source"]
     has_more: bool
     next_offset: int | None = Field(ge=0)
+    # Some extractors provide size estimates at the preview root, not per entry.
+    size_bytes: int | None = Field(default=None, ge=0)
+    size_estimate_bytes: int | None = Field(default=None, ge=0)
 
 
 class TorrentManifestFileOut(BaseModel):
