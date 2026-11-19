@@ -905,6 +905,7 @@ components:
         description: { type: string }
         minimum: { type: [integer, 'null'], default: null }
         maximum: { type: [integer, 'null'], default: null }
+        choices: { type: [array, 'null'], items: { type: string }, default: null }
     EngineOptionsOut:
       type: object
       required: [engine, fields]
