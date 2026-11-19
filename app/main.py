@@ -33,6 +33,7 @@ from app.cookies import encrypt_cookie
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
 from app.options_catalog import get_catalog
+from app.engine_registry import ENGINE_SETTING_KEYS
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
@@ -841,11 +842,12 @@ def _require_engine(engine_name: str) -> None:
 def validate_engine_settings(engine: str, values: dict, partial: bool = False) -> dict:
     if not isinstance(values, dict):
         raise ValueError("Engine settings must be an object")
+    if engine not in ENGINE_SETTING_KEYS:
+        raise ValueError("Unsupported engine")
+    unknown = set(values) - ENGINE_SETTING_KEYS[engine]
+    if unknown:
+        raise ValueError(f"Unknown {engine} setting(s): {', '.join(sorted(unknown))}")
     if engine == "yt-dlp":
-        allowed = {"format", "subtitles_lang", "write_subtitles", "embed_subtitles", "extra_args", "cookies_file", "allow_playlist", "playlist_items"}
-        unknown = set(values) - allowed
-        if unknown:
-            raise ValueError(f"Unknown yt-dlp setting(s): {', '.join(sorted(unknown))}")
         result = {}
         for key, value in values.items():
             if key in {"format", "subtitles_lang", "cookies_file"}:
@@ -873,35 +875,19 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
         validated = effective_settings(ENGINE_DEFAULTS["get-sauce"], values)
         return {key: validated[key] for key in values}
     if engine == "svtplay-dl":
-        allowed = {"resolution", "quality", "subtitles", "all_subtitles", "all_episodes", "output_format"}
-        unknown = set(values) - allowed
-        if unknown:
-            raise ValueError(f"Unknown svtplay-dl setting(s): {', '.join(sorted(unknown))}")
         from app.adapters.svtplay import effective_settings
         validated = effective_settings(ENGINE_DEFAULTS["svtplay-dl"], values)
         return {key: validated[key] for key in values}
     if engine == "you-get":
-        allowed = {"format", "cookies_file", "no_proxy"}
-        unknown = set(values) - allowed
-        if unknown:
-            raise ValueError(f"Unknown you-get setting(s): {', '.join(sorted(unknown))}")
         from app.adapters.you_get import effective_settings
         validated = effective_settings(ENGINE_DEFAULTS["you-get"], values)
         return {key: validated[key] for key in values}
     if engine == "generic":
-        allowed = {"filename", "follow_redirects", "max_redirects", "retry_count", "user_agent"}
-        unknown = set(values) - allowed
-        if unknown:
-            raise ValueError(f"Unknown generic setting(s): {', '.join(sorted(unknown))}")
         from app.adapters.generic import effective_settings
         defaults = ENGINE_DEFAULTS["generic"]
         validated = effective_settings(defaults, values)
         return {key: validated[key] for key in values}
     if engine == "gallery-dl":
-        allowed = {"options", "cookies_file", "proxy"}
-        unknown = set(values) - allowed
-        if unknown:
-            raise ValueError(f"Unknown gallery-dl setting(s): {', '.join(sorted(unknown))}")
         result = {}
         if "options" in values:
             options = values["options"]
@@ -943,9 +929,6 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                 result[key] = value
         return result
     if engine == "aria2c":
-        unknown = set(values) - {"options"}
-        if unknown:
-            raise ValueError(f"Unknown aria2c setting(s): {', '.join(sorted(unknown))}")
         from app.adapters.aria2 import ARIA2_OPTION_ALLOWLIST
         options = values.get("options", {})
         if not isinstance(options, dict):
