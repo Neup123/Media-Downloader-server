@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiErrorMessage } from './api-errors';
+import { setOptionOrDefault } from './engine-option-default';
 import { JobCard } from './JobCard';
 import { QualityControl } from './QualityControl';
 import { PresetOptionEditor } from './PresetOptionEditor';
@@ -642,11 +643,9 @@ export default function App() {
 
   function updateGetSauceOption(key: string, value: string, global: boolean) {
     const setValue = global ? setGetSauce : setGetSauceOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: key === 'subdirectory' ? value === 'true' :
-        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      key === 'subdirectory' ? value === 'true' :
+        ['stream_index', 'amount', 'workers', 'timeout_minutes'].includes(key) ? Number(value) : value));
   }
 
   function getSauceOptionValues(value: GetSauceSettings): Record<string, string> {
@@ -655,10 +654,8 @@ export default function App() {
 
   function updateSvtOption(key: string, value: string, global: boolean) {
     const setValue = global ? setSvt : setSvtOverride;
-    setValue(previous => ({
-      ...previous,
-      [key]: ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value,
-    }));
+    setValue(previous => setOptionOrDefault(previous, key, value,
+      ['subtitles', 'all_subtitles', 'all_episodes'].includes(key) ? value === 'true' : value));
   }
 
   function svtOptionValues(value: SvtSettings): Record<string, string> {
