@@ -159,6 +159,7 @@ class EngineStatusOut(BaseModel):
     installed: bool
     version: str | None
     defaults: dict[str, Any]
+    url_schemes: list[str]
 
 
 class EngineOptionFieldOut(BaseModel):

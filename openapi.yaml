@@ -883,7 +883,7 @@ components:
           enum: [malformed_link, unsupported_domain, item_not_found, not_media, could_not_check]
     EngineStatusOut:
       type: object
-      required: [name, label, role, priority, available, installed, version, defaults]
+      required: [name, label, role, priority, available, installed, version, defaults, url_schemes]
       properties:
         name: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
         label: { type: string }
@@ -893,6 +893,7 @@ components:
         installed: { type: boolean }
         version: { type: [string, 'null'] }
         defaults: { type: object, additionalProperties: true }
+        url_schemes: { type: array, items: { type: string } }
     EngineOptionFieldOut:
       type: object
       required: [key, label, category, type, description]
