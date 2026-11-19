@@ -110,5 +110,6 @@ def test_invalid_previews_fail_api_response_validation_not_silent_passthrough(cl
 def test_optional_byte_extension_does_not_invent_unknown_size():
     sample = summarize_metadata({"title":"A","entries":[{"id":"a","title":"one"}]}, 10)
     validated = MediaPreviewOut.model_validate(sample).model_dump(exclude_unset=True)
-    assert "size_bytes" not in validated["entries"][0]
-    assert "size_estimate_bytes" not in validated["entries"][0]
+    # The extractor may explicitly report unknown sizes as None; never fabricate bytes.
+    assert validated["entries"][0].get("size_bytes") is None
+    assert validated["entries"][0].get("size_estimate_bytes") is None
