@@ -4,7 +4,7 @@
 export function setOptionOrDefault<T extends object>(
   current: T, key: string, selected: string, parsed: unknown,
 ): T {
-  const updated: Record<string, unknown> = { ...current };
+  const updated = { ...current } as Record<string, unknown>;
   if (selected === '') delete updated[key];
   else updated[key] = parsed;
   return updated as T;
