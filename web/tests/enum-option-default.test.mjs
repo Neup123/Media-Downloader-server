@@ -6,8 +6,8 @@ import {setOptionOrDefault} from '../src/engine-option-default.ts';
 const ui = readFileSync(new URL('../src/App.tsx', import.meta.url), 'utf8');
 
 test('both select updaters use the same omission path for Engine default', () => {
-  assert.match(ui, /function updateGetSauceOption[\\s\\S]*?setOptionOrDefault\\(previous, key, value,/);
-  assert.match(ui, /function updateSvtOption[\\s\\S]*?setOptionOrDefault\\(previous, key, value,/);
+  assert.match(ui, /function updateGetSauceOption[\s\S]*?setOptionOrDefault\(previous, key, value,/);
+  assert.match(ui, /function updateSvtOption[\s\S]*?setOptionOrDefault\(previous, key, value,/);
 });
 
 test('global and override choices round-trip to an omitted key, not an empty string', () => {
