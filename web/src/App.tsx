@@ -58,7 +58,7 @@ type GenericSettings = { filename: string; follow_redirects: boolean; max_redire
 type YouGetSettings = { format: string; cookies_file: string; no_proxy: boolean };
 type SvtSettings = { resolution: string; quality: string; subtitles: boolean; all_subtitles: boolean; all_episodes: boolean; output_format: string };
 type GetSauceSettings = { stream_index: number; amount: number; workers: number; merge: string; pages: string; subdirectory: boolean; timeout_minutes: number };
-type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number };
+type OptionField = { key: string; label: string; category: string; type: string; description?: string; minimum?: number; maximum?: number; choices?: string[] | null };
 type EngineStatus = { name: Engine; installed: boolean; version?: string | null; url_schemes: string[] };
 
 const ENGINE_DESCRIPTIONS: Record<Engine, {title: string; purpose: string}> = {
@@ -84,6 +84,12 @@ function CommonOptionFields({ fields, values, onChange }: {
         {field.type === 'boolean'
           ? <select value={values[field.key] ?? ''} onChange={event => onChange(field.key, event.target.value)}>
               <option value="">Engine default</option><option value="true">Enabled</option><option value="false">Disabled</option>
+            </select>
+          : field.type === 'enum' && field.choices?.length
+          ? <select aria-label={field.label} value={values[field.key] ?? ''}
+              onChange={event => onChange(field.key, event.target.value)}>
+              <option value="">Engine default</option>
+              {field.choices.map(choice => <option key={choice} value={choice}>{choice}</option>)}
             </select>
           : <input type={field.type === 'integer' ? 'number' : 'text'}
               min={field.minimum} max={field.maximum}
