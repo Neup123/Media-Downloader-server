@@ -1636,7 +1636,7 @@ export default function App() {
         </section>
         <section className="panel">
           <div className="eyebrow">ROUTING RULES</div><h2>Which downloader handles each site?</h2>
-          <p className="muted">Drag the handle or use Move up / Move down to change order. The highest enabled matching
+          <p className="muted">Drag a handle or use the arrow buttons to change order. The highest enabled matching
             rule is used for new downloads; existing jobs are not changed.</p>
           {ruleBusy && <p role="status" className="muted">Saving routing settings…</p>}
           {!engineRules.length
@@ -1683,17 +1683,19 @@ export default function App() {
                     onChange={event => void toggleEngineRule(rule, event.target.checked)} />
                     {rule.enabled ? 'Enabled' : 'Disabled'}</label>
                 </div>
-                <div className="rule-actions">
-                  <button className="small secondary" disabled={ruleBusy || index === 0} type="button"
-                    aria-label={'Move ' + rule.host_suffix + ' up'}
-                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, -1))}>Move up</button>
-                  <button className="small secondary" disabled={ruleBusy || index === engineRules.length - 1}
-                    type="button" aria-label={'Move ' + rule.host_suffix + ' down'}
-                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, 1))}>Move down</button>
-                  <button className="small secondary" disabled={ruleBusy} type="button"
-                    onClick={() => editEngineRule(rule)}>Edit</button>
-                  <button className="small danger" disabled={ruleBusy} type="button"
-                    onClick={() => void deleteEngineRule(rule.id)}>Delete</button>
+                <div className="rule-actions" aria-label={'Actions for ' + rule.host_suffix}>
+                  <button className="small secondary rule-icon" disabled={ruleBusy || index === 0} type="button"
+                    title={'Move ' + rule.host_suffix + ' up'} aria-label={'Move ' + rule.host_suffix + ' up'}
+                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, -1))}><span aria-hidden="true">↑</span></button>
+                  <button className="small secondary rule-icon" disabled={ruleBusy || index === engineRules.length - 1}
+                    type="button" title={'Move ' + rule.host_suffix + ' down'} aria-label={'Move ' + rule.host_suffix + ' down'}
+                    onClick={() => void persistRuleOrder(stepRule(engineRules, rule.id, 1))}><span aria-hidden="true">↓</span></button>
+                  <button className="small secondary rule-icon" disabled={ruleBusy} type="button"
+                    title={'Edit ' + rule.host_suffix} aria-label={'Edit ' + rule.host_suffix}
+                    onClick={() => editEngineRule(rule)}><span aria-hidden="true">✎</span></button>
+                  <button className="small danger rule-icon" disabled={ruleBusy} type="button"
+                    title={'Delete ' + rule.host_suffix} aria-label={'Delete ' + rule.host_suffix}
+                    onClick={() => void deleteEngineRule(rule.id)}><span aria-hidden="true">🗑</span></button>
                   <details className="rule-advanced"><summary>Advanced</summary>
                     <span>Priority {rule.priority} · ID {rule.id}</span>
                   </details>
