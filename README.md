@@ -2,6 +2,10 @@
 
 Downloader Server is a server-side media downloader with one web interface for established CLI engines. It manages jobs, engine settings, progress, logs, and file delivery. The core product runs as a standalone Docker Compose service. Nextcloud support is an optional integration maintained in a separate repository.
 
+## Documentation
+
+Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. Actual UI screenshots are required after the standalone redesign is exercised in a real browser; illustrative mockups do not count as production screenshots.
+
 For a maintained map of the current code, flows and trust boundaries, read [architecture orientation](docs/orientation.md). The [blueprint](BLUEPRINT.md) is historical; the [acceptance ledger](ACCEPTANCE_STATUS.md) records what is and is not verified.
 
 ## Repositories
@@ -72,7 +76,9 @@ The scheduler excludes engines that are already at their concurrency cap before 
 - Checked-in API contract: [openapi.yaml](openapi.yaml)
 - API contract CI compares paths/methods, success and error statuses, API-key requirements, request-body constraints, and enforced job-response shapes against FastAPI/Pydantic.
 - The browser formats structured Pydantic validation errors as field-specific messages and identifies invalid batch items without echoing submitted URLs; frontend error-format tests run as part of the Docker build. Detailed schema parity remains a separate acceptance gate.
-- Health check: `/healthz`
+- Liveness: `/healthz` checks that the HTTP process responds. Docker Compose uses this endpoint for its container liveness check; it does **not** prove that the dispatcher, database, engines or WebDAV delivery are functional.
+- Readiness: `/readyz` checks a live database query and the scheduler heartbeat. It returns HTTP 503 with a non-sensitive failure category if the database is unavailable, the scheduler is disabled/stopped, there are three consecutive scheduler failures, or the dispatcher heartbeat is stale (>10 seconds). Configure operational readiness monitoring against this endpoint, not merely `/healthz`. The scheduler logs a redacted exception **type** at most once per 60 seconds while failures persist.
+- Readiness scope excludes remote download sites, engine subprocess connectivity, actual delivery destinations and future network-egress policy; separate end-to-end and egress acceptance gates remain required.
 - Persistent database, job work directories, cookies, and local output: `/data`
 - Delivered local files: `/data/downloads/<job-id>/`
 - WebDAV directory creation accepts `MKCOL` 201, or a 405 only when a follow-up Depth:0 `PROPFIND` verifies that the exact resource is a `DAV:collection` with a successful property status. This applies to nested output folders. A folder response with multiple successful collection properties for the requested resource is ambiguous and is rejected.

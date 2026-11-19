@@ -14,6 +14,9 @@ def test_option_catalog_exposes_typed_fields_for_all_p0_engines(client, auth_hea
 
     aria_keys = {field["key"] for field in get_catalog("aria2c")}
     assert {"max-connection-per-server", "split", "retry-wait"}.issubset(aria_keys)
+    from app.adapters.aria2 import ARIA2_FIXED_OPTIONS, ARIA2_OPTION_ALLOWLIST
+    assert not aria_keys.intersection(ARIA2_FIXED_OPTIONS)
+    assert aria_keys.issubset(ARIA2_OPTION_ALLOWLIST)
     gallery_keys = {field["key"] for field in get_catalog("gallery-dl")}
     assert {"extractor.sleep", "extractor.sleep-request", "extractor.skip"}.issubset(gallery_keys)
 
@@ -33,3 +36,11 @@ def test_list_engines_reports_installation_status(client, auth_headers):
     for item in result.json():
         assert isinstance(item["installed"], bool)
         assert "version" in item
+
+
+def test_aria2_policy_options_are_rejected_by_settings_api(client, auth_headers):
+    from app.adapters.aria2 import ARIA2_FIXED_OPTIONS
+    for key in ARIA2_FIXED_OPTIONS:
+        response = client.put("/api/v1/engines/aria2c/settings", headers=auth_headers,
+                              json={"settings": {"options": {key: "false"}}})
+        assert response.status_code == 422, (key, response.text)

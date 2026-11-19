@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import shutil
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,8 +22,11 @@ from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
 from app.redaction import _redact
+from app.user_failures import user_failure_message
 from app.security import preflight_source_dns
 
+
+LOGGER = logging.getLogger(__name__)
 
 ENGINE_DEFAULTS: dict[str, dict[str, Any]] = {
     "generic": {"filename": "", "follow_redirects": False, "max_redirects": 5, "retry_count": 2, "user_agent": ""},
@@ -77,6 +82,25 @@ class JobWorker:
         self._engine_deadlines: dict[str, asyncio.Timeout] = {}
         self._paused_remaining: dict[str, float] = {}
         self._stopping = False
+        self._scheduler_consecutive_errors = 0
+        self._last_scheduler_success: float | None = None
+        self._last_scheduler_warning: float | None = None
+
+    def readiness(self) -> tuple[bool, str]:
+        """Dispatcher readiness (does not prove individual engine or destination health)."""
+        if self._scheduler_consecutive_errors >= 3:
+            return False, "scheduler_errors"
+        if self._stopping:
+            return False, "scheduler_stopping"
+        if self._task is None:
+            return False, "scheduler_not_started"
+        if self._task.done():
+            return False, "scheduler_stopped"
+        if self._last_scheduler_success is None:
+            return False, "scheduler_starting"
+        if time.monotonic() - self._last_scheduler_success > 10.0:
+            return False, "scheduler_stalled"
+        return True, "ready"
 
     def get_aria2(self) -> Aria2Rpc:
         """Use one daemon for manifests and downloads, not competing RPC ports."""
@@ -106,6 +130,9 @@ class JobWorker:
         self.settings.prepare_directories()
         self._recover_jobs()
         self._stopping = False
+        self._scheduler_consecutive_errors = 0
+        self._last_scheduler_success = None
+        self._last_scheduler_warning = None
         self._task = asyncio.create_task(self._run_loop(), name="downloader-job-worker")
 
     async def stop(self) -> None:
@@ -169,6 +196,12 @@ class JobWorker:
         return selected
 
     def _task_done(self, job_id: str, task: asyncio.Task) -> None:
+        if task.done() and not task.cancelled():
+            failure = task.exception()
+            if failure is not None:
+                # Never log raw engine output, URLs or credentials.
+                LOGGER.error("download_job_task_unhandled exception_type=%s",
+                             type(failure).__name__)
         self._active.discard(task)
         # A delayed callback must not erase a newer attempt with the same ID.
         if self._active_jobs.get(job_id) is task:
@@ -202,10 +235,20 @@ class JobWorker:
                         task.add_done_callback(
                             lambda done, identifier=job_id: self._task_done(identifier, done)
                         )
+                self._last_scheduler_success = time.monotonic()
+                self._scheduler_consecutive_errors = 0
                 await asyncio.sleep(0.5)
             except asyncio.CancelledError:
                 raise
-            except Exception:
+            except Exception as exc:
+                self._scheduler_consecutive_errors += 1
+                now = time.monotonic()
+                if self._last_scheduler_warning is None or now - self._last_scheduler_warning >= 60:
+                    LOGGER.warning(
+                        "download_scheduler_failure consecutive=%d exception_type=%s",
+                        self._scheduler_consecutive_errors, type(exc).__name__,
+                    )
+                    self._last_scheduler_warning = now
                 await asyncio.sleep(1.0)
 
     async def _execute(self, job_id: str) -> None:
@@ -223,9 +266,6 @@ class JobWorker:
             engine_row = session.get(EngineSetting, engine)
             global_settings = {**ENGINE_DEFAULTS.get(engine, {}), **(engine_row.settings if engine_row else {})}
             session.commit()
-
-        workdir = (self.settings.data_dir / "jobs" / job_id).resolve()
-        workdir.mkdir(parents=True, exist_ok=True)
 
         async def on_log(message: str) -> None:
             with self.session_factory() as session:
@@ -274,6 +314,9 @@ class JobWorker:
                     session.commit()
 
         try:
+            # A workspace error must pass through the normal FAILED transition.
+            workdir = (self.settings.data_dir / "jobs" / job_id).resolve()
+            workdir.mkdir(parents=True, exist_ok=True)
             recovery = inspect_workspace_recovery(workdir)
             existing_files = list(recovery.files)
             if recovery.state != WorkspaceRecoveryState.VERIFIED_COMPLETION:
@@ -417,7 +460,7 @@ class JobWorker:
                         current.progress = {**(current.progress or {}),
                                             "partial_delivery": True,
                                             "verified_file_count": len(current.output_files)}
-                    current.error = message[:2000]
+                    current.error = user_failure_message(exc, during_delivery=was_delivering)
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")
                     session.commit()
