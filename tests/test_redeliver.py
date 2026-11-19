@@ -94,7 +94,7 @@ def test_redelivery_rejects_modified_original_file(client, auth_headers, setting
         assert session.get(Job, job_id).status == "completed"
 
 
-def test_redelivery_rejects_jobs_not_in_completed_state(client, auth_headers, settings):
+def test_redelivery_rejects_jobs_not_in_completed_or_skipped_state(client, auth_headers, settings):
     sessions = client.app.state.session_factory
     with sessions() as session:
         job = Job(url="https://example.com/media", engine="yt-dlp", status="queued")
@@ -103,7 +103,7 @@ def test_redelivery_rejects_jobs_not_in_completed_state(client, auth_headers, se
         job_id = job.id
     response = client.post(f"/api/v1/jobs/{job_id}/redeliver", headers=auth_headers)
     assert response.status_code == 409
-    assert "Only completed jobs" in response.text
+    assert "Only completed or skipped jobs" in response.text
     missing = client.post("/api/v1/jobs/no-such-job/redeliver", headers=auth_headers)
     assert missing.status_code == 404
 

@@ -8,7 +8,7 @@ test('standalone job status vocabulary is exact and unknown states fail closed',
     assert.equal(isKnownJobStatus(state),true);
     assert.equal(isTerminalStatus(state),TERMINAL_JOB_STATUSES.has(state));
   }
-  for(const invalid of ['skipped','COMPLETED','done','',null,undefined,0,{}]) {
+  for(const invalid of ['SKIPPED','COMPLETED','done','',null,undefined,0,{}]) {
     assert.equal(isTerminalStatus(invalid),false);
     assert.equal(isKnownJobStatus(invalid),false);
   }

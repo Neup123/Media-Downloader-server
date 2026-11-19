@@ -101,3 +101,47 @@ def test_paused_job_lifecycle_is_reversible_but_not_terminal():
     transition_job(job, JobStatus.DOWNLOADING)
     assert job.status == "downloading"
     assert job.progress["percent"] == 42
+
+
+def test_skipped_job_is_terminal_and_kept_after_database_recovery(settings):
+    from app.db import make_engine, make_session_factory, initialize_database
+    from app.worker import JobWorker
+
+    assert JobStatus.SKIPPED in TERMINAL_STATUSES
+    assert JobStatus.SKIPPED not in ENGINE_PROGRESS_STATUSES
+    assert TRANSITIONS[JobStatus.SKIPPED] == {JobStatus.QUEUED}
+    engine = make_engine(settings.database_url)
+    initialize_database(engine)
+    sessions = make_session_factory(engine)
+    try:
+        with sessions() as session:
+            job = make_job("delivering")
+            job.id = "skipped-restart-test"
+            job.output_files = [{
+                "filename": "existing.mp4", "verified": False,
+                "skipped": True, "skip_reason": "exists",
+            }]
+            transition_job(job, JobStatus.SKIPPED)
+            session.add(job)
+            session.commit()
+        with sessions() as session:
+            saved = session.get(Job, "skipped-restart-test")
+            assert saved.status == "skipped"
+            assert saved.progress["state"] == "skipped"
+            assert saved.finished_at is not None
+            assert saved.output_files[0]["skipped"] is True
+        JobWorker(sessions, settings)._recover_jobs()
+        with sessions() as session:
+            assert session.get(Job, "skipped-restart-test").status == "skipped"
+    finally:
+        engine.dispose()
+
+
+def test_skipped_retry_must_be_explicit():
+    job = make_job("delivering")
+    transition_job(job, JobStatus.SKIPPED)
+    with pytest.raises(InvalidJobTransition):
+        transition_job(job, JobStatus.QUEUED)
+    requeue_job(job, reason="retry")
+    assert job.status == "queued"
+    assert job.finished_at is None

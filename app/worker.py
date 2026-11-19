@@ -30,6 +30,12 @@ from app.security import preflight_source_dns
 LOGGER = logging.getLogger(__name__)
 
 
+def delivery_completion_status(delivered: list[dict[str, Any]]) -> JobStatus:
+    """One derived final outcome: an existing Files collision is not delivery."""
+    return (JobStatus.SKIPPED if any(item.get("skipped") is True for item in delivered)
+            else JobStatus.COMPLETED)
+
+
 class JobWorker:
     def __init__(self, session_factory, settings: Settings) -> None:
         self.session_factory = session_factory
@@ -381,11 +387,15 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
-                    transition_job(current, JobStatus.COMPLETED)
+                    outcome = delivery_completion_status(delivered)
+                    transition_job(current, outcome)
                     current.output_files = delivered
-                    current.progress = {**(current.progress or {}), "state": "completed", "percent": 100}
+                    current.progress = {**(current.progress or {}), "state": outcome.value, "percent": 100}
                     current.finished_at = utcnow()
-                    append_log(current, f"Delivery verified for {len(delivered)} file(s)")
+                    if outcome == JobStatus.SKIPPED:
+                        append_log(current, "Delivery skipped: existing destination item kept")
+                    else:
+                        append_log(current, f"Delivery verified for {len(delivered)} file(s)")
                     session.commit()
         except asyncio.CancelledError:
             with self.session_factory() as session:
