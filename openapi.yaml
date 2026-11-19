@@ -67,6 +67,7 @@ paths:
             playlists can omit metadata even when a detail extractor has it.
           content:
             application/json:
+              schema: { $ref: '#/components/schemas/MediaPreviewOut' }
               example:
                 title: Example clip
                 id: example-clip
@@ -138,21 +139,7 @@ paths:
           description: Actual torrent file indices, relative paths and sizes
           content:
             application/json:
-              schema:
-                type: object
-                required: [file_count, files]
-                properties:
-                  file_count: { type: integer, minimum: 0 }
-                  files:
-                    type: array
-                    items:
-                      type: object
-                      required: [index, path, name, size_bytes]
-                      properties:
-                        index: { type: integer, minimum: 1 }
-                        path: { type: string }
-                        name: { type: string }
-                        size_bytes: { type: integer, minimum: 0 }
+              schema: { $ref: '#/components/schemas/TorrentManifestOut' }
               example:
                 file_count: 1
                 files:
@@ -869,6 +856,75 @@ components:
       in: header
       name: X-API-Key
   schemas:
+    PreviewEntryOut:
+      type: object
+      additionalProperties: false
+      required: [thumbnail, duration, timestamp, release_timestamp, upload_date, live_status, is_live, index, id, title]
+      properties:
+        thumbnail: { type: [string, 'null'] }
+        duration: { type: [number, 'null'] }
+        timestamp: { type: [number, 'null'] }
+        release_timestamp: { type: [number, 'null'] }
+        upload_date: { type: [string, 'null'] }
+        live_status: { type: [string, 'null'] }
+        is_live: { type: [boolean, 'null'] }
+        index: { type: integer, minimum: 1 }
+        id: { type: string }
+        title: { type: string }
+        size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
+        size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
+    PreviewFormatOut:
+      type: object
+      additionalProperties: false
+      required: [format_id, ext, resolution, vcodec, acodec, filesize]
+      properties:
+        format_id: { type: string }
+        ext: { type: string }
+        resolution: { type: string }
+        vcodec: { type: string }
+        acodec: { type: string }
+        filesize: { type: [integer, 'null'] }
+    MediaPreviewOut:
+      type: object
+      additionalProperties: false
+      required: [thumbnail, duration, timestamp, release_timestamp, upload_date, live_status, is_live, title, id, extractor, kind, entry_count, entries, formats, subtitle_languages, offset, max_entries, ordering, has_more, next_offset]
+      properties:
+        thumbnail: { type: [string, 'null'] }
+        duration: { type: [number, 'null'] }
+        timestamp: { type: [number, 'null'] }
+        release_timestamp: { type: [number, 'null'] }
+        upload_date: { type: [string, 'null'] }
+        live_status: { type: [string, 'null'] }
+        is_live: { type: [boolean, 'null'] }
+        title: { type: string }
+        id: { type: string }
+        extractor: { type: string }
+        kind: { type: string, enum: [playlist, video] }
+        entry_count: { type: [integer, 'null'], minimum: 0 }
+        entries: { type: array, items: { $ref: '#/components/schemas/PreviewEntryOut' } }
+        formats: { type: array, items: { $ref: '#/components/schemas/PreviewFormatOut' } }
+        subtitle_languages: { type: array, items: { type: string } }
+        offset: { type: integer, minimum: 0 }
+        max_entries: { type: integer, minimum: 1, maximum: 100 }
+        ordering: { type: string, enum: [source] }
+        has_more: { type: boolean }
+        next_offset: { type: [integer, 'null'], minimum: 0 }
+    TorrentManifestFileOut:
+      type: object
+      additionalProperties: false
+      required: [index, path, name, size_bytes]
+      properties:
+        index: { type: integer, minimum: 1 }
+        path: { type: string }
+        name: { type: string }
+        size_bytes: { type: integer, minimum: 0 }
+    TorrentManifestOut:
+      type: object
+      additionalProperties: false
+      required: [file_count, files]
+      properties:
+        file_count: { type: integer, minimum: 0 }
+        files: { type: array, items: { $ref: '#/components/schemas/TorrentManifestFileOut' } }
     PreviewFailure:
       type: object
       required: [detail, reason_code]
