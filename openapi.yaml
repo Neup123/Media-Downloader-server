@@ -917,6 +917,8 @@ components:
         ordering: { type: string, enum: [source] }
         has_more: { type: boolean }
         next_offset: { type: [integer, 'null'], minimum: 0 }
+        size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
+        size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
     TorrentManifestFileOut:
       type: object
       additionalProperties: false
