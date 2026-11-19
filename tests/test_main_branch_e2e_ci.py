@@ -11,6 +11,7 @@ def test_live_webdav_ci_gates_main_pr_and_merged_default_branch():
     assert "main" in triggers["pull_request"]["branches"]
     assert "main" in triggers["push"]["branches"]
     assert "app/**" in triggers["push"]["paths"]
+    assert "web/**" in triggers["push"]["paths"]  # UI changes require real browser acceptance.
     assert ".github/workflows/live-nextcloud-e2e.yml" in triggers["push"]["paths"]
     assert workflow["jobs"]["live-webdav"]["steps"]
     assert "tests/e2e_live_webdav.py" in source
