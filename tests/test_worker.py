@@ -152,3 +152,16 @@ def test_queue_fetch_does_not_starve_eligible_engines_behind_busy_engine(setting
         selected = worker._select_queued_jobs(eligible, slots=1)
         assert [job.engine for job in selected] == ["aria2c"]
     engine.dispose()
+
+
+def test_delivery_completion_status_distinguishes_existing_collision():
+    from app.worker import delivery_completion_status
+    from app.job_states import JobStatus
+
+    skipped = [{"filename": "movie.mp4", "verified": False, "skipped": True, "skip_reason": "exists"}]
+    renamed = [{"filename": "movie (1).mp4", "verified": True}]
+    verified = [{"filename": "movie.mp4", "verified": True}]
+    assert delivery_completion_status(skipped) == JobStatus.SKIPPED
+    assert delivery_completion_status(renamed) == JobStatus.COMPLETED
+    assert delivery_completion_status(verified) == JobStatus.COMPLETED
+    assert delivery_completion_status([verified[0], skipped[0]]) == JobStatus.SKIPPED
