@@ -1,12 +1,12 @@
 # Download sources catalog
 
-Every source this system can download from, catalogued **by what the user must provide** — not by engine. The engine that handles a source is named in its entry, but the categories below are about the user's side of the bargain: nothing, an optional account, cookies, an account, a premium account, or a connected identity.
+A source-planning catalog organized **by what the user must provide** — not by engine. An entry is not proof that a given engine is installed, enabled, or currently able to download that source. Check the running Core engine inventory and perform a real authorized file-delivery test before marking support as verified. The engine that handles a source is named in its entry, but the categories below are about the user's side of the bargain: nothing, an optional account, cookies, an account, a premium account, or a connected identity.
 
 ## How to read this catalog
 
 - **One entry per source.** If a source works for free and an account merely unlocks more, it appears once, in the "account adds more" category, with the additions in parentheses after its name — never as two entries in two categories.
 - **Cookies** live in the cookie vault (user settings → Advanced), once per site, and are reused by every engine. "Cookies required" means the source will not download without them.
-- **"To verify at integration"** marks entries whose engine support or exact requirements are not certain yet. Nothing in this catalog claims a source works until its engine integration has verified it.
+- **"To verify at integration"** marks entries whose engine support or exact requirements are not certain yet. Engines in unmerged development PRs (such as pyLoad, Streamlink, N_m3u8DL-RE, BBDown, musicdl, cobalt and Telegram) are planned rather than deployed capabilities. Nothing in this catalog claims a source works until its engine integration has verified it.
 - **Background services:** sources served by pyLoad or cobalt additionally need that service enabled by an administrator (opt-in, "Enable with caution" in Advanced settings).
 - Adult-only sources are not catalogued.
 
@@ -14,8 +14,6 @@ Every source this system can download from, catalogued **by what the user must p
 
 ## 1. Free — nothing to provide
 
-- [YouTube](https://www.youtube.com/) — yt-dlp. Public videos, playlists and channels.
-- [Vimeo](https://vimeo.com/) — yt-dlp. Public videos.
 - [Dailymotion](https://www.dailymotion.com/) — yt-dlp. Public videos.
 - [Twitch](https://www.twitch.tv/) — yt-dlp (VODs), Streamlink (live). Past broadcasts and live streams.
 - [Kick](https://kick.com/) — Streamlink. Live streams (plugin support to verify at integration).
@@ -98,9 +96,9 @@ Nothing downloads from these sources until the site's cookies are in the vault (
 
 ---
 
-## 7. Cannot be downloaded at all — known services with no download path
+## 7. DRM-protected catalogs — no supported playback-stream download path
 
-Some well-known services deliver their media only as DRM-encrypted streams (Widevine / PlayReady / FairPlay). The media is encrypted and the decryption keys are handed only to approved player apps, so no download engine — including every engine in this system — can download from them. This is not a missing feature and not a matter of accounts: a subscription changes nothing, because subscribers receive exactly the same encrypted streams. Links to these services are answered as unsupported.
+These services generally deliver their main catalog through DRM-protected streams (such as Widevine, PlayReady or FairPlay). The engines in this project do not bypass DRM, and an account or subscription does not remove it. This classification applies to DRM-protected playback streams, not necessarily to every public trailer, thumbnail or unprotected file on a service. Confirm current engine and source behavior before returning an unsupported verdict.
 
 - [Netflix](https://www.netflix.com/) — DRM-encrypted streaming.
 - [Disney+](https://www.disneyplus.com/) — DRM-encrypted streaming.
@@ -111,6 +109,5 @@ Some well-known services deliver their media only as DRM-encrypted streams (Wide
 - [Paramount+](https://www.paramountplus.com/) — DRM-encrypted streaming.
 - [Peacock](https://www.peacocktv.com/) — DRM-encrypted streaming.
 - [DAZN](https://www.dazn.com/) — DRM-encrypted streaming (sports).
-- [Crunchyroll](https://www.crunchyroll.com/) — DRM-encrypted streaming for most of the catalogue.
 - [Spotify](https://open.spotify.com/) — the audio itself is DRM-encrypted. Tools that claim to "download from Spotify" actually match the tracks on YouTube — and YouTube is downloadable directly (category 1).
 - [Apple Music](https://music.apple.com/) — DRM-encrypted audio (FairPlay).
