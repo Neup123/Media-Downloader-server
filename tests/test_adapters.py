@@ -77,12 +77,30 @@ def test_aria2_settings_allowlist_rejects_rpc_exposure():
         raise AssertionError("RPC exposure option must not be user-overridable")
 
 
-def test_aria2_select_file_passes_settings_validation():
+def test_aria2_select_file_accepts_one_based_indices_and_ranges():
     from app.main import validate_engine_settings
 
-    overrides = {"options": {"select-file": "0-5"}}
-    assert validate_engine_settings("aria2c", overrides, partial=True) == overrides
-    assert _effective_options({}, overrides)["select-file"] == "0-5"
+    for selection in ("1", "3,6", "1-5", "1-5,8,9", "003"):
+        overrides = {"options": {"select-file": selection}}
+        assert validate_engine_settings("aria2c", overrides, partial=True) == overrides
+        assert _effective_options({}, overrides)["select-file"] == selection
+
+
+def test_aria2_select_file_rejects_zero_reversed_and_malformed_selection():
+    import pytest
+    from app.main import validate_engine_settings
+
+    invalid = (
+        "", "0", "0-5", "1,0", "2-1", "1-0", "1,,2", "1-",
+        "-2", "1, 2", "1-3-5", "1-1048577", "not-an-index",
+        True, None, 3, ["1", "2"],
+    )
+    for selection in invalid:
+        overrides = {"options": {"select-file": selection}}
+        with pytest.raises(ValueError, match="one-based indexes or ranges"):
+            validate_engine_settings("aria2c", overrides, partial=True)
+        with pytest.raises(ValueError, match="one-based indexes or ranges"):
+            _effective_options({}, overrides)
 
 
 def test_gallery_dl_adapter_uses_managed_output_and_discovers_downloads(tmp_path: Path):
