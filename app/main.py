@@ -929,13 +929,15 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                 result[key] = value
         return result
     if engine == "aria2c":
-        from app.adapters.aria2 import ARIA2_OPTION_ALLOWLIST
+        from app.adapters.aria2 import ARIA2_OPTION_ALLOWLIST, validate_select_file
         options = values.get("options", {})
         if not isinstance(options, dict):
             raise ValueError("aria2c options must be an object")
         for key, value in options.items():
             if key not in ARIA2_OPTION_ALLOWLIST:
                 raise ValueError(f"aria2c option is not allowed: {key}")
+            if key == "select-file":
+                validate_select_file(value)
             if len(str(value)) > 1024:
                 raise ValueError(f"aria2c option value is too long: {key}")
         return {"options": {str(k): str(v) for k, v in options.items()}} if "options" in values else {}

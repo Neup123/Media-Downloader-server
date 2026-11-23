@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import secrets
 import subprocess
 import tempfile
@@ -23,6 +24,26 @@ ARIA2_OPTION_ALLOWLIST = {
     "select-file",
 }
 
+def validate_select_file(value: Any) -> str:
+    """Validate aria2's one-based comma-separated file indexes and ranges.
+
+    aria2 accepts 3,6 and 1-5,8,9, but never file index zero. Do not
+    silently stringify JSON numbers, booleans, lists or empty selections.
+    """
+    error = "aria2c select-file must contain positive one-based indexes or ranges, e.g. 1-5,8,9"
+    if not isinstance(value, str) or len(value) > 1024 or not re.fullmatch(
+        r"[0-9]+(?:-[0-9]+)?(?:,[0-9]+(?:-[0-9]+)?)*", value
+    ):
+        raise ValueError(error)
+    for segment in value.split(","):
+        indices = segment.split("-")
+        start = int(indices[0])
+        end = int(indices[-1])
+        if start < 1 or end < start or end > 1048576:
+            raise ValueError(error)
+    return value
+
+
 # Service policy: these settings never affect execution, and cannot be edited.
 ARIA2_FIXED_OPTIONS = frozenset({"check-integrity", "seed-time", "seed-ratio"})
 
@@ -42,6 +63,8 @@ def _effective_options(global_options: dict[str, Any], overrides: dict[str, Any]
                 raise ValueError(f"aria2 option {key} is managed by the service")
             if key not in ARIA2_OPTION_ALLOWLIST:
                 raise ValueError(f"aria2 option is not allowed through the settings API: {key}")
+            if key == "select-file":
+                validate_select_file(value)
             text = str(value)
             if len(text) > 1024 or "\x00" in text:
                 raise ValueError(f"Invalid value for aria2 option {key}")
