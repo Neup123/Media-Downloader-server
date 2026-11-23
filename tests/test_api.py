@@ -48,6 +48,28 @@ def test_aria2_accepts_magnet_and_rejects_invalid_engine_option(client, auth_hea
     assert invalid.status_code == 422
 
 
+def test_aria2_select_file_validation_is_shared_by_settings_and_job_overrides(client, auth_headers):
+    magnet = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+    for selection in ("1", "3,6", "1-5", "1-5,8,9"):
+        settings = client.put("/api/v1/engines/aria2c/settings", headers=auth_headers,
+            json={"settings": {"options": {"select-file": selection}}})
+        assert settings.status_code == 200, (selection, settings.text)
+        job = client.post("/api/v1/jobs", headers=auth_headers, json={
+            "url": magnet, "engine": "aria2c",
+            "overrides": {"options": {"select-file": selection}},
+        })
+        assert job.status_code == 202, (selection, job.text)
+    for selection in ("0", "0-5", "2-1", "1,,2", "1, 3", None, True, 2):
+        settings = client.put("/api/v1/engines/aria2c/settings", headers=auth_headers,
+            json={"settings": {"options": {"select-file": selection}}})
+        assert settings.status_code == 422, (selection, settings.text)
+        job = client.post("/api/v1/jobs", headers=auth_headers, json={
+            "url": magnet, "engine": "aria2c",
+            "overrides": {"options": {"select-file": selection}},
+        })
+        assert job.status_code == 422, (selection, job.text)
+
+
 def test_cancel_queued_job_and_retry(client, auth_headers):
     submitted = client.post("/api/v1/jobs", headers=auth_headers, json={"url": "https://example.com/file"}).json()
     cancelled = client.post(f"/api/v1/jobs/{submitted['id']}/cancel", headers=auth_headers)
