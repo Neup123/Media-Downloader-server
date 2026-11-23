@@ -43,4 +43,54 @@ jobs:
         with:
           context: .
           push: false
+          load: true
           tags: downloader-server:test
+      - name: Smoke-test the actual disposable container and API boundary
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import secrets
+          import subprocess
+          import time
+          from urllib.error import HTTPError, URLError
+          from urllib.request import Request, urlopen
+
+          name = "downloader-container-smoke"
+          env = os.environ.copy()
+          env["APP_API_TOKEN"] = secrets.token_urlsafe(48)
+          base = "http://127.0.0.1:18080"
+          try:
+              subprocess.run(
+                  ["docker", "run", "--detach", "--name", name,
+                   "--publish", "127.0.0.1:18080:8080", "--env", "APP_API_TOKEN",
+                   "downloader-server:test"],
+                  check=True, env=env, stdout=subprocess.DEVNULL,
+              )
+              for attempt in range(90):
+                  try:
+                      with urlopen(base + "/healthz", timeout=3) as response:
+                          assert response.status == 200
+                          assert json.load(response)["status"] == "ok"
+                      break
+                  except (URLError, TimeoutError, ConnectionError):
+                      time.sleep(1)
+              else:
+                  raise AssertionError("Disposable runtime did not pass /healthz")
+              try:
+                  urlopen(base + "/api/v1/engines", timeout=5)
+              except HTTPError as error:
+                  assert error.code == 401, "Unauthenticated engine inventory leaked"
+              else:
+                  raise AssertionError("Unauthenticated engine inventory was allowed")
+              with urlopen(Request(base + "/api/v1/engines",
+                                   headers={"X-API-Key": env["APP_API_TOKEN"]}),timeout=15) as response:
+                  assert response.status == 200
+                  inventory = json.load(response)
+                  assert isinstance(inventory, list) and inventory
+              print("Disposable image: healthy, anonymous access denied, authenticated engines listed.")
+          finally:
+              subprocess.run(["docker", "rm", "--force", name],
+                             check=False, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+          PY
