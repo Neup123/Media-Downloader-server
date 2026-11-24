@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
@@ -22,6 +23,17 @@ YTDLP_GLOBAL = "best[height<=360]/best"
 YTDLP_OVERRIDE = "best[height<=240]/best"
 ARIA_GLOBAL = "3"
 ARIA_OVERRIDE = "2"
+
+
+def capture_ui_evidence(page, name: str) -> None:
+    """Only disposable test data; mask every editable text value defensively."""
+    root = Path("standalone-ui-evidence")
+    root.mkdir(exist_ok=True)
+    page.screenshot(
+        path=str(root / name), full_page=True, animations="disabled",
+        mask=[page.locator("input:not([type=checkbox]):not([type=radio]):visible, textarea:visible, [contenteditable=true]:visible")],
+        mask_color="#767676",
+    )
 
 
 def fetch_settings(client: httpx.Client, name: str) -> dict:
@@ -327,6 +339,12 @@ def run_browser_acceptance() -> None:
             page.get_by_role("navigation", name="Main navigation").get_by_role(
                 "button", name="Download", exact=True
             ).click()
+            capture_ui_evidence(page, "01-download-desktop.png")
+            page.get_by_role("navigation", name="Main navigation").get_by_role(
+                "button", name="Library", exact=True
+            ).click()
+            page.get_by_text("Delivered ✓ Verified", exact=True).first.wait_for(timeout=20000)
+            capture_ui_evidence(page, "02-library-desktop.png")
             # Phase #106: exercise the real built UI at narrow mobile width.
             # A document that silently scrolls sideways cannot be used at 360px.
             page.set_viewport_size({"width": 360, "height": 780})
@@ -370,6 +388,7 @@ def run_browser_acceptance() -> None:
                 "() => document.documentElement.scrollWidth <= window.innerWidth + 1"
             ), "Library overflows at 360px after delivered file"
             page.get_by_text("Delivered ✓ Verified", exact=True).first.wait_for(timeout=20000)
+            capture_ui_evidence(page, "03-library-mobile.png")
             page.set_viewport_size({"width": 1440, "height": 1000})
             print("Real Chromium: 360px Download/Library/Administration + keyboard submission/WebDAV PASS", flush=True)
 
