@@ -11,7 +11,7 @@ def release(version):
 
 def test_watch_covers_every_planned_engine_and_component():
     assert set(SOURCES) == {"pyLoad", "Streamlink", "N_m3u8DL-RE", "cobalt",
-                            "BBDown", "musicdl", "ddddocr"}
+                            "BBDown", "musicdl", "ddddocr", "Telegram"}
     rows = plan("", "", lambda _: pytest.fail("unintegrated engine contacted upstream"))
     assert all(r["outcome"] == "not_integrated" for r in rows)
 
@@ -50,3 +50,10 @@ def test_dedup_even_closed_review_and_never_promote():
     assert len(calls) == 2 and calls[1][:3] == ["gh", "issue", "create"]
     assert "license/activation" in calls[1][-1]
     assert "Never merge or release" in calls[1][-1]
+
+
+def test_pyload_prerelease_only_is_not_a_downgrade_or_discovery_failure():
+    row = check_engine("pyLoad", "pyload-ng==0.5.0b3.dev102", "",
+                       lambda _: release("0.5.0b4"))
+    assert row["outcome"] == "no_eligible_stable_artifact"
+    assert not row["review_required"]

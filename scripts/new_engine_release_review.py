@@ -25,6 +25,7 @@ SOURCES = {
     "BBDown": ("github", "BBDOWN_VERSION", "nilaoda/BBDown"),
     "musicdl": ("pypi", "musicdl", "CharlesPikachu/musicdl"),
     "ddddocr": ("pypi", "ddddocr", "sml2h3/ddddocr"),
+    "Telegram": ("pypi", "telethon", "LonamiWebs/Telethon"),
 }
 VERSION_TEXT = re.compile(r"[vV]?[0-9][0-9A-Za-z.+-]{0,79}\Z")
 SHA256 = re.compile(r"[a-fA-F0-9]{64}\Z")
@@ -71,7 +72,12 @@ def check_engine(engine: str, requirements: str, dockerfile: str, reader=fetch_j
         return {**result, "outcome": "not_integrated"}
     data = reader(source_url)
     if kind == "pypi":
-        latest, digest = select_stable_release(data)
+        try:
+            latest, digest = select_stable_release(data)
+        except ValueError as exc:
+            if str(exc) != "No stable, non-yanked release with a verified artifact digest":
+                raise
+            return {**result, "outcome": "no_eligible_stable_artifact"}
         if not SHA256.fullmatch(digest):
             raise ValueError("Missing valid distribution artifact digest")
         result["artifact_sha256"] = digest
@@ -123,7 +129,8 @@ def record_reviews(rows: list[dict], run_url: str, gh=subprocess.check_output) -
                 "Review license/activation and CLI/API compatibility before preparing a candidate PR. "
                 "Require engine-specific legal download and WebDAV integrity acceptance, then the existing "
                 "candidate gate. Never merge or release merely because a version was discovered.")
-        gh(["gh", "issue", "create", "--title", title, "--body", body], text=True)
+        gh(["gh", "issue", "create", "--title", title, "--label", "engine-update-blocked",
+            "--body", body], text=True)
 
 
 def main() -> None:
