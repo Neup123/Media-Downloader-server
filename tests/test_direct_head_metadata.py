@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from app.direct_metadata import parse_head_response, inspect_direct_head
+from app.direct_metadata import MAX_HEADERS, _read_bounded_headers, parse_head_response, inspect_direct_head
 
 
 def test_explicit_head_headers_are_sanitized_without_derived_values():
@@ -71,7 +71,7 @@ def test_metadata_endpoint_is_signed_and_does_not_leak_upstream_details(client, 
 
 def test_actual_curl_probe_has_dns_pin_without_redirect_or_proxies(monkeypatch):
     class Pipe:
-        values = [b"HTTP/1.1 200 OK\r\nContent-Type: application/pdf\r\n\r\n", b""]
+        values = [b"HTTP/1.1 200 OK\r\n", b"Content-Type: application/pdf\r\n", b"\r\n", b""]
         async def read(self, _size):
             return self.values.pop(0)
     class FakeProc:
@@ -146,3 +146,19 @@ def test_actual_local_http_head_never_reads_payload_or_follows_redirects():
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_bounded_header_reader_accepts_exact_limit_and_rejects_oversize():
+    async def verify():
+        exact = asyncio.StreamReader()
+        exact.feed_data(b"x" * MAX_HEADERS)
+        exact.feed_eof()
+        assert await _read_bounded_headers(exact) == b"x" * MAX_HEADERS
+
+        oversized = asyncio.StreamReader()
+        oversized.feed_data(b"x" * (MAX_HEADERS + 1))
+        oversized.feed_eof()
+        with pytest.raises(ValueError, match="size limit"):
+            await _read_bounded_headers(oversized)
+
+    asyncio.run(verify())

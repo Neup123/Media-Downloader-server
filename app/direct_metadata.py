@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import asyncio
 import re
-from urllib.parse import unquote, urlsplit
 
 from app.adapters.process_env import downloader_environment
 from app.security import resolve_http_target, validate_target_url
@@ -63,6 +62,17 @@ def parse_head_response(raw: bytes) -> dict[str, object]:
     return {"filename": filename, "mime": mime or None, "size": size}
 
 
+async def _read_bounded_headers(stream: asyncio.StreamReader) -> bytes:
+    data = bytearray()
+    while True:
+        chunk = await stream.read(MAX_HEADERS + 1 - len(data))
+        if not chunk:
+            return bytes(data)
+        data.extend(chunk)
+        if len(data) > MAX_HEADERS:
+            raise ValueError("Direct-file HEAD headers exceed the size limit")
+
+
 async def inspect_direct_head(url: str, allow_private_targets: bool = False) -> dict[str, object]:
     """Inspect only headers; fail if redirects, DNS policy or sizes are unsafe."""
     clean_url = validate_target_url(url, "generic", allow_private_targets)
@@ -83,11 +93,10 @@ async def inspect_direct_head(url: str, allow_private_targets: bool = False) -> 
     try:
         assert proc.stdout is not None
         # A malicious origin cannot force unbounded header buffering.
-        raw = await asyncio.wait_for(proc.stdout.read(MAX_HEADERS + 1), timeout=15)
-        if len(raw) > MAX_HEADERS:
-            raise ValueError("Direct-file HEAD headers exceed the size limit")
-        if await asyncio.wait_for(proc.stdout.read(1), timeout=2):
-            raise ValueError("Direct-file HEAD headers exceed the size limit")
+        # StreamReader.read(n) may return fewer than n bytes before EOF.
+        # Accumulate bounded chunks under ONE deadline, rather than treating
+        # a second chunk as an oversized response.
+        raw = await asyncio.wait_for(_read_bounded_headers(proc.stdout), timeout=15)
         result = await asyncio.wait_for(proc.wait(), timeout=3)
         if result != 0:
             raise ValueError("Could not check direct-file headers")
