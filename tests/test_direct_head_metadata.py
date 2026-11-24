@@ -99,3 +99,50 @@ def test_openapi_describes_exact_direct_head_route():
     assert route["responses"]["200"]["content"]["application/json"]["schema"]["required"] == [
         "filename", "mime", "size"
     ]
+
+
+def test_actual_local_http_head_never_reads_payload_or_follows_redirects():
+    """Real curl+HTTP localhost integration; no public site, cookies or downloads."""
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    counters = {"head": 0, "get": 0}
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *_args):
+            pass
+
+        def do_HEAD(self):
+            counters["head"] += 1
+            if self.path == "/redirect":
+                self.send_response(302)
+                self.send_header("Location", "http://127.0.0.1:1/internal")
+                self.send_header("Content-Length", "0")
+            else:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/pdf")
+                self.send_header("Content-Length", "42")
+                self.send_header("Content-Disposition", 'attachment; filename="sample.pdf"')
+            self.end_headers()
+
+        def do_GET(self):
+            counters["get"] += 1
+            self.send_response(500)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        base = f"http://127.0.0.1:{server.server_address[1]}"
+        result = asyncio.run(inspect_direct_head(base + "/sample.pdf", True))
+        assert result == {"filename":"sample.pdf", "mime":"application/pdf", "size":42}
+        with pytest.raises(ValueError, match="successful direct-file response"):
+            asyncio.run(inspect_direct_head(base + "/redirect", True))
+        assert counters == {"head":2,"get":0}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
