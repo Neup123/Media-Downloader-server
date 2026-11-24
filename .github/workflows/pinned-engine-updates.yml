@@ -87,6 +87,14 @@ jobs:
           fi
 
           } 2>&1 | tee engine-update-detect-gate.log
+      - name: Preserve exact proposed pin patch before acceptance
+        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff -- requirements.txt Dockerfile > engine-candidate.patch
+          test -s engine-candidate.patch
+          git rev-parse HEAD > engine-candidate-source.txt
       - name: Require a real smoke test and reviewed source provenance for every updated engine
         if: steps.detect.outputs.changed == 'true'
         shell: bash
