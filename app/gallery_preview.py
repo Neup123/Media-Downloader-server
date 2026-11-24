@@ -16,7 +16,7 @@ from gallery_dl.extractor.message import Message
 from app.adapters.process_env import downloader_environment
 from app.discovery import (
     PREVIEW_TIMEOUT_SECONDS, PreviewError, _optional_bytes, _optional_text,
-    read_bounded_preview, summarize_metadata,
+    read_bounded_preview, summarize_metadata, terminate_preview_process,
 )
 
 # Offset scans may require visiting earlier source pages. Keep this stricter
@@ -132,6 +132,4 @@ async def inspect_gallery_dl(
             raise PreviewError("Gallery engine returned invalid metadata") from exc
         return summarize_gallery_messages(messages, max_entries, offset)
     finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
+        await terminate_preview_process(process)

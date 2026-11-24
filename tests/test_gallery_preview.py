@@ -76,3 +76,16 @@ def test_gallery_cli_rejects_private_source_and_unbounded_offset():
         asyncio.run(inspect_gallery_dl("https://example.org/album", offset=1001))
     with pytest.raises(ValueError):
         asyncio.run(inspect_gallery_dl("http://127.0.0.1/private"))
+
+
+def test_gallery_output_limit_terminates_child_without_waiting_on_full_pipe(tmp_path):
+    executable = tmp_path / "noisy-gallery-dl"
+    executable.write_text("#!/usr/bin/env python3\nimport sys\nsys.stdout.write('x' * 4000000)\nsys.stdout.flush()\n")
+    executable.chmod(0o755)
+
+    async def bounded():
+        return await asyncio.wait_for(inspect_gallery_dl(
+            "https://example.org/album", executable=str(executable)), timeout=8)
+
+    with pytest.raises(PreviewError, match="output limit"):
+        asyncio.run(bounded())

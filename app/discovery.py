@@ -148,6 +148,20 @@ async def read_bounded_preview(process: asyncio.subprocess.Process, timeout_seco
     return b"".join(chunks)
 
 
+async def terminate_preview_process(process: asyncio.subprocess.Process) -> None:
+    if process.returncode is None:
+        try:
+            process.kill()
+        except ProcessLookupError:
+            pass
+        # A killed child can leave a full paused stdout pipe. Waiting without
+        # draining it can deadlock asyncio's process transport.
+        try:
+            await asyncio.wait_for(process.communicate(), timeout=3)
+        except asyncio.TimeoutError:
+            pass
+
+
 async def inspect_ytdlp(
     url: str,
     *,
@@ -180,7 +194,6 @@ async def inspect_ytdlp(
     )
     assert process.stdout is not None
 
-
     try:
         raw = await read_bounded_preview(process, timeout_seconds)
         code = await asyncio.wait_for(process.wait(), timeout=3)
@@ -204,6 +217,4 @@ async def inspect_ytdlp(
             raise PreviewError("yt-dlp returned invalid metadata JSON") from exc
         return summarize_metadata(metadata, max_entries, offset)
     finally:
-        if process.returncode is None:
-            process.kill()
-            await process.wait()
+        await terminate_preview_process(process)
