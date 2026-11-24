@@ -3,7 +3,7 @@ name: Opt-in Wikimedia Commons single-file diagnostic
 on:
   workflow_dispatch:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]
     paths:
       - ".github/workflows/manual-commons-webdav.yml"
 
@@ -16,8 +16,8 @@ concurrency:
 
 jobs:
   commons-smoke:
-    # One first-party topic PR run to obtain evidence; all later runs are
-    # explicit manual dispatches. Never probe external sites on ordinary CI.
+    # Only the explicitly scoped diagnostic topic may run on PR updates.
+    # Ordinary CI never probes this external site; after merge use dispatch.
     if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'test/commons-single-file-diagnostic')
     runs-on: ubuntu-latest
     timeout-minutes: 30

@@ -39,6 +39,23 @@ def safe_failure_category(job: dict) -> str:
     return "download_or_delivery_failed"
 
 
+def fixture_output_summary(manifest: list[dict]) -> dict:
+    # Fixed aggregate fields only. Never expose source names, paths or URLs.
+    return {
+        "output_count": len(manifest),
+        "jpeg_named_count": sum(
+            item["relative"].lower().endswith((".jpg", ".jpeg")) for item in manifest
+        ),
+        "media_signature_checked_count": sum(
+            item["media_verified"] is True for item in manifest
+        ),
+        "total_output_bytes": sum(item["size"] for item in manifest),
+        "all_outputs_within_fixture_size_limit": all(
+            0 < item["size"] <= 1024 * 1024 for item in manifest
+        ),
+    }
+
+
 def report(category: str, **details) -> None:
     RESULT.write_text(json.dumps({
         "schema_version": 1,
@@ -50,6 +67,8 @@ def report(category: str, **details) -> None:
         **details,
     }, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("Commons single-file diagnostic: " + category, flush=True)
+    if category == "unexpected_fixture_output":
+        print("Safe fixture output counts: " + json.dumps(details, sort_keys=True), flush=True)
 
 
 def main() -> None:
@@ -89,7 +108,7 @@ def main() -> None:
         or manifest[0]["media_verified"] is not True
         or not 0 < manifest[0]["size"] <= 1024 * 1024
     ):
-        report("unexpected_fixture_output")
+        report("unexpected_fixture_output", **fixture_output_summary(manifest))
         raise RuntimeError("Expected one small JPEG")
     verify_remote_files(job, manifest)
     report("verified", file_count=1, size_bytes=manifest[0]["size"],

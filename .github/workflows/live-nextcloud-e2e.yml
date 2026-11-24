@@ -184,6 +184,15 @@ jobs:
             mcr.microsoft.com/playwright/python:v1.56.0-noble \
             bash -lc 'python -m pip install --no-cache-dir playwright==1.56.0 httpx==0.28.1 && python tests/e2e_browser_engine_settings.py'
 
+      - name: Preserve actual running UI screenshots
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: standalone-running-ui-${{ github.run_id }}
+          path: standalone-ui-evidence/*.png
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload browser failure screenshot
         if: failure()
         uses: actions/upload-artifact@v4
