@@ -8,6 +8,7 @@ from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
 from app.cookies import materialize_cookie_file
+from app.gallery_selection import validate_gallery_selection_settings
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
@@ -114,6 +115,7 @@ async def run_gallery_dl(
     encryption_key: str | None = None,
 ) -> list[Path]:
     effective = _effective_settings(global_settings, overrides)
+    selection = validate_gallery_selection_settings(effective)
     workdir.mkdir(parents=True, exist_ok=True)
 
     argv = [
@@ -148,8 +150,13 @@ async def run_gallery_dl(
             argv.extend(["--cookies", str(decrypted)])
         for key, value in effective["options"].items():
             argv.extend(["-o", f"{key}={value}"])
+        if selection is not None:
+            argv.extend(["--range", selection[0], "--"])
         argv.append(url)
-        return await _execute_gallery_dl(argv, workdir, on_progress, on_log, is_cancelled)
+        files = await _execute_gallery_dl(argv, workdir, on_progress, on_log, is_cancelled)
+        if selection is not None and len(files) != selection[1]:
+            raise RuntimeError("Gallery selection changed or incomplete; no files will be delivered")
+        return files
 
 
 async def _execute_gallery_dl(

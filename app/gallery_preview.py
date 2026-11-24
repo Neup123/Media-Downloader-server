@@ -19,16 +19,14 @@ from app.discovery import (
     read_bounded_preview, summarize_metadata, terminate_preview_process,
 )
 
-# Offset scans may require visiting earlier source pages. Keep this stricter
-# than the yt-dlp contract until gallery-dl provides stable server cursors.
-MAX_GALLERY_OFFSET = 1000
+from app.gallery_selection import MAX_GALLERY_OFFSET, MAX_GALLERY_PAGE
 
 
 def _validate_window(max_entries: int, offset: int) -> None:
-    if type(max_entries) is not int or not 1 <= max_entries <= 100:
-        raise ValueError("max_entries must be between 1 and 100")
+    if type(max_entries) is not int or not 1 <= max_entries <= MAX_GALLERY_PAGE:
+        raise ValueError(f"max_entries must be between 1 and {MAX_GALLERY_PAGE}")
     if type(offset) is not int or not 0 <= offset <= MAX_GALLERY_OFFSET:
-        raise ValueError("gallery preview offset must be between 0 and 1000")
+        raise ValueError(f"gallery preview offset must be between 0 and {MAX_GALLERY_OFFSET}")
 
 
 def _safe_title(value: object, limit: int = 500) -> str | None:

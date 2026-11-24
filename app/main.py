@@ -1057,8 +1057,24 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
     try:
         url = validate_target_url(payload.url, engine, config.allow_private_targets)
         preset_settings = validate_engine_settings(engine, preset.settings, partial=True) if preset else {}
-        job_overrides = validate_engine_settings(engine, payload.overrides, partial=True)
+        raw_overrides = dict(payload.overrides)
+        # Selection belongs only to this job, never an engine default or preset.
+        has_gallery_items = engine == "gallery-dl" and "gallery_items" in raw_overrides
+        gallery_items = raw_overrides.pop("gallery_items") if has_gallery_items else None
+        job_overrides = validate_engine_settings(engine, raw_overrides, partial=True)
         overrides = _merge_settings(preset_settings, job_overrides)
+        if has_gallery_items:
+            from app.adapters.gallery_dl import _effective_settings
+            from app.gallery_selection import validate_gallery_selection_settings
+            overrides["gallery_items"] = gallery_items
+            saved = session.get(EngineSetting, "gallery-dl")
+            effective = _effective_settings(
+                {**ENGINE_DEFAULTS["gallery-dl"], **(saved.settings if saved else {})},
+                overrides,
+            )
+            selection = validate_gallery_selection_settings(effective)
+            assert selection is not None
+            overrides["gallery_items"] = selection[0]
         if engine == "yt-dlp":
             allow_playlist = overrides.get("allow_playlist")
             if allow_playlist is None:
