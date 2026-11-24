@@ -16,7 +16,10 @@ SOURCE = "https://commons.wikimedia.org/wiki/File:Example.jpg"
 # Wikimedia User-Agent policy: identify the automated client and its project.
 USER_AGENT = "DownloaderServerDiagnosticBot/1.0 (https://github.com/Neup123/Media-Downloader-server)"
 OPTIONS = {
-    "extractor.wikimedia.user-agent": USER_AGENT,
+    "extractor.wikimedia.useragent": USER_AGENT,
+    # The upstream extractor may enumerate image revisions; explicitly request
+    # the first file rather than assuming a File: page yields exactly one.
+    "extractor.file-range": "1",
     "extractor.retries": "0",
     "extractor.wikimedia.retries": "0",
     "downloader.http.retries": "0",

@@ -30,6 +30,8 @@ def test_commons_workflow_is_opt_in_and_has_fixed_source():
     assert 'https://commons.wikimedia.org/wiki/File:Example.jpg' in source
     assert '"extractor.wikimedia.retries": "0"' in source
     assert '"downloader.http.retries": "0"' in source
+    assert '"extractor.file-range": "1"' in source
+    assert '"extractor.wikimedia.useragent": USER_AGENT' in source
     assert 'verify_remote_files(job, manifest)' in source
     assert "workflow_dispatch:" in workflow
     assert "types: [opened, synchronize]" in workflow
