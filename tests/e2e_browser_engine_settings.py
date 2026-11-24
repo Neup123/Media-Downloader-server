@@ -31,7 +31,8 @@ def capture_ui_evidence(page, name: str) -> None:
     root.mkdir(exist_ok=True)
     page.screenshot(
         path=str(root / name), full_page=True, animations="disabled",
-        mask=[page.locator("input:not([type=checkbox]):not([type=radio]), textarea")],
+        mask=[page.locator("input:not([type=checkbox]):not([type=radio]):visible, textarea:visible, [contenteditable=true]:visible")],
+        mask_color="#767676",
     )
 
 
