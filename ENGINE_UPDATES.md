@@ -308,3 +308,22 @@ Creating this workflow does not by itself close those acceptance requirements.
 - PyPI JSON API: https://docs.pypi.org/api/json/
 - GitHub Actions token behavior: https://docs.github.com/en/actions/concepts/security/github_token
 - GitHub CLI pull-request merge: https://cli.github.com/manual/gh_pr_merge
+
+
+## New engines and local solver: review-only enrollment
+
+Core #153: `new-engine-release-review.yml` uses the actual checked-in Python
+pins for pyLoad, Streamlink, musicdl and ddddocr. For N_m3u8DL-RE, cobalt and
+BBDown, the installer must use the corresponding Dockerfile ARG
+`N_M3U8DL_RE_VERSION`, `COBALT_VERSION`, or `BBDOWN_VERSION` as its actual
+version source, with independently verified immutable artifacts. There is no
+separate watch-only version. A missing pin is reported as not integrated.
+The weekly/manual main-only job records stable upstream candidates and one
+review issue per engine/version across open and closed issues. No runtime
+activation, pin changes, candidate PR creation or promotion is performed.
+A review must establish licensing/activation/CLI/API compatibility, then
+prepare the engine-specific candidate and run its legal site/fixture and
+existing full acceptance gate. GitHub latest-release semantics are documented
+at https://docs.github.com/en/rest/releases/releases#get-the-latest-release.
+The current integration stack must still wire real binary/image pins; this
+watch alone does not complete #153.
