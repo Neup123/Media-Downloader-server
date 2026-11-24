@@ -4,7 +4,7 @@ Downloader Server is a server-side media downloader with one web interface for e
 
 ## Documentation
 
-Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. Actual UI screenshots are required after the standalone redesign is exercised in a real browser; illustrative mockups do not count as production screenshots.
+Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. The [live browser acceptance workflow](.github/workflows/live-nextcloud-e2e.yml) retains masked screenshots of the running standalone Download and Library screens, including a narrow mobile view, in its `standalone-running-ui-*` artifact after successful disposable acceptance. These show the actual tested build, not the separate HTML redesign prototype. Review and refresh permanent README screenshot assets after material UI changes; target-host production acceptance remains separate.
 
 For a maintained map of the current code, flows and trust boundaries, read [architecture orientation](docs/orientation.md). The [blueprint](BLUEPRINT.md) is historical; the [acceptance ledger](ACCEPTANCE_STATUS.md) records what is and is not verified.
 
