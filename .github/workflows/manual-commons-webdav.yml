@@ -1,0 +1,77 @@
+name: Opt-in Wikimedia Commons single-file diagnostic
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened]
+    paths:
+      - ".github/workflows/manual-commons-webdav.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: commons-single-file-diagnostic
+  cancel-in-progress: false
+
+jobs:
+  commons-smoke:
+    # One first-party topic PR run to obtain evidence; all later runs are
+    # explicit manual dispatches. Never probe external sites on ordinary CI.
+    if: github.event_name == 'workflow_dispatch' || (github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'test/commons-single-file-diagnostic')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install pinned client dependencies
+        run: python -m pip install -r requirements.txt
+      - name: Prepare ephemeral credentials and public-source-only override
+        shell: bash
+        run: |
+          python - <<'PY'
+          import os
+          import secrets
+          from cryptography.fernet import Fernet
+          values = {
+              "APP_API_TOKEN": secrets.token_urlsafe(48),
+              "APP_ENCRYPTION_KEY": Fernet.generate_key().decode(),
+              "NEXTCLOUD_ADMIN_PASSWORD": "nc-" + secrets.token_urlsafe(24),
+          }
+          with open(".env.e2e", "w", encoding="utf-8") as stream:
+              for key, value in values.items():
+                  print(f"::add-mask::{value}")
+                  stream.write(f"{key}={value}\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              for key in ("APP_API_TOKEN", "NEXTCLOUD_ADMIN_PASSWORD"):
+                  stream.write(f"{key}={values[key]}\n")
+          PY
+          cat > compose.commons-ci.yaml <<'YAML'
+          services:
+            downloader-server:
+              environment:
+                ALLOW_PRIVATE_TARGETS: "false"
+          YAML
+      - name: Start disposable Core and Nextcloud only
+        run: docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml -f compose.commons-ci.yaml up -d --build downloader-server nextcloud
+      - name: Download a single authorized small JPEG and verify WebDAV readback
+        run: python tests/e2e_commons_webdav.py
+      - name: Preserve bounded diagnostic without raw logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: commons-single-file-diagnostic
+          path: commons-smoke-attestation.json
+          if-no-files-found: ignore
+          retention-days: 30
+      - name: Remove disposable services and temporary credentials
+        if: always()
+        run: |
+          if test -f .env.e2e && test -f compose.commons-ci.yaml; then
+            docker compose --env-file .env.e2e -f compose.yaml -f compose.integration.yaml -f compose.commons-ci.yaml down --volumes --remove-orphans
+          fi
+          rm -f .env.e2e compose.commons-ci.yaml
