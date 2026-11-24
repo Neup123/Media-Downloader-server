@@ -55,9 +55,13 @@ The update workflows use the built-in `GITHUB_TOKEN` to open candidate pull
 requests. In **Settings > Actions > General > Workflow permissions**, a repository
 owner must enable **Allow GitHub Actions to create and approve pull requests**.
 Without this repository-level switch (`can_approve_pull_request_reviews=false`),
-`gh pr create` fails with the GraphQL `createPullRequest` permission error
-**after** the candidate branch may already have been pushed; the smoke/provenance,
-Python, Docker and WebDAV acceptance gates are then **not run**. Top-level
+`gh pr create` fails with the GraphQL `createPullRequest` permission error.
+The candidate smoke/provenance, Python, Docker and disposable Nextcloud/WebDAV
+acceptance now run **before** the PR-creation step; their actual results remain
+in the workflow logs and sanitized artifact even when PR creation is denied.
+Only an accepted candidate is committed/pushed as a branch. A failed PR-create
+still fails the workflow, opens or refreshes the blocked-update issue, and
+never authorizes merge, image publishing or release. Top-level
 `permissions: pull-requests: write` is already declared but cannot override
 that setting. No PAT, app token, secret or workflow-file workaround is used.
 Enabling the setting permits candidate PR creation only; the separate
@@ -217,7 +221,11 @@ network security require separate approval.
    downloader alongside disposable Nextcloud and a generated legal media fixture.
 5. The E2E test verifies yt-dlp, aria2c, gallery-dl, generic/curl, and
    you-get downloads and fetches WebDAV files back to compare SHA-256 and size.
-6. On a green gate, attempts a normal squash merge and patch release. The normal
+   Only **after** this green acceptance does the workflow commit and attempt
+   creation of a candidate PR. A repository-level PR permission denial is
+   reported separately from candidate functionality and retains diagnostics.
+6. On a green gate **with a successfully created candidate PR and explicit
+   release approval**, attempts a normal squash merge and patch release. The normal
    GitHub branch protection, permissions, and merge rules still apply.
 7. On any failed gate, leaves the candidate PR unmerged and opens/updates a
    labelled `engine-update-blocked` issue with versions, workflow link, and
