@@ -32,12 +32,13 @@ from app.config import Settings
 from app.cookies import encrypt_cookie
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
+from app.direct_metadata import inspect_direct_head
 from app.options_catalog import get_catalog
 from app.engine_registry import ENGINE_SETTING_KEYS
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
-from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn, MediaPreviewOut, TorrentManifestOut
+from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn, MediaPreviewOut, TorrentManifestOut, DirectMetadataIn, DirectMetadataOut
 from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url, supported_url_schemes
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 
@@ -146,6 +147,16 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             detail, code = str(exc), exc.reason_code
         # Same HTTP 422 and exact detail string as before; only the code is new.
         return JSONResponse(status_code=422, content={"detail": detail, "reason_code": code})
+
+
+    @app.post("/api/v1/direct-metadata", response_model=DirectMetadataOut, tags=["jobs"])
+    async def direct_metadata(payload: DirectMetadataIn, _: bool = Depends(authenticate)):
+        """One bounded, pinned-DNS HTTP HEAD; no body, cookies or redirects."""
+        try:
+            return await inspect_direct_head(payload.url, config.allow_private_targets)
+        except (UnsafeUrlError, SourceResolutionError, ValueError, RuntimeError, TimeoutError, OSError) as exc:
+            # Do not expose the URL, target response or upstream diagnostics.
+            raise HTTPException(status_code=422, detail="Could not verify direct-file metadata") from exc
 
 
     @app.post("/api/v1/torrent/manifest", response_model=TorrentManifestOut, tags=["jobs"])
