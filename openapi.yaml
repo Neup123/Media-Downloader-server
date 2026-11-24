@@ -108,6 +108,49 @@ paths:
               example:
                 detail: yt-dlp metadata inspection failed (exit 1)
                 reason_code: could_not_check
+  /direct-metadata:
+    post:
+      operationId: inspectDirectFileHead
+      summary: Inspect bounded HTTP(S) HEAD metadata without downloading content
+      description: |-
+        One authenticated metadata-only request. Public-target DNS answers are
+        pinned for curl; proxies and redirects are disabled. No cookies or
+        response body are forwarded. A failed or unsupported HEAD returns 422,
+        not invented file metadata. This does not replace host egress controls.
+      tags: [jobs]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [url]
+              properties:
+                url: {type: string, minLength: 8, maxLength: 4096}
+      responses:
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '200':
+          description: Only directly observed header values; missing fields are null.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [filename, mime, size]
+                properties:
+                  filename: {type: [string, 'null']}
+                  mime: {type: [string, 'null']}
+                  size: {type: [integer, 'null'], minimum: 0, maximum: 9007199254740991}
+        '422':
+          description: Unsafe URL, unsupported remote HEAD or missing trustworthy metadata response.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail: {type: string}
   /torrent/manifest:
     post:
       operationId: inspectTorrentManifest
