@@ -21,6 +21,7 @@ class MediaPreviewIn(BaseModel):
 
 
 class DirectMetadataIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     url: str = Field(min_length=8, max_length=4096)
 
 
