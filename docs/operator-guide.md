@@ -53,3 +53,21 @@ The HTTP `/healthz` endpoint checks process liveness only. A queue can still be 
 For a reproducible diagnosis: record the affected job's **redacted** ID and status, inspect whether the queue/scheduler is advancing, run a disposable fixture download into a test destination, and verify actual bytes by readback. Escalate unresolved failures with sanitized steps and an exact commit identifier.
 
 Do not expose the downloader to arbitrary untrusted source URLs while the host-level egress safety and real-site acceptance gates remain open. See [installation/acceptance](installation-acceptance.md).
+
+## Direct HTTP file metadata
+
+The authenticated `POST /api/v1/direct-metadata` endpoint inspects a public
+HTTP(S) URL with a bounded HTTP HEAD request before any download. It uses the
+generic curl engine's validated, pinned first-hop DNS, disables proxies and
+redirects, and never requests the response body or sends browser cookies.
+`filename` (from safe Content-Disposition), `mime`, and `size` are
+explicitly nullable; a missing or failed HEAD check does not prove an item
+does not exist. The visible filename can otherwise be taken from the link,
+but must not be labelled as server-verified. HTML responses are not direct
+files. A redirect requires a separately reviewed source and cannot be
+trusted solely because the first host was public.
+
+This check **does not prove final download success**, identify every file
+type, validate a remote HTTPS certificate beyond curl's configured trust,
+or replace real target-host IPv4/IPv6 egress rules. Do not treat a green
+unit/CI fixture as a target-machine acceptance receipt.
