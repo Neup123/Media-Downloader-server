@@ -53,13 +53,18 @@ def test_engine_candidate_acceptance_precedes_permission_gated_pr_creation():
     workflow = yaml.safe_load((ROOT / ".github/workflows/pinned-engine-updates.yml").read_text())
     steps = workflow["jobs"]["candidate-gate"]["steps"]
     names = [step.get("name") for step in steps]
+    patch = names.index("Preserve exact proposed pin patch before acceptance")
     policy = names.index("Require a real smoke test and reviewed source provenance for every updated engine")
     python = names.index("Install pinned dependencies and test requirements")
     image = names.index("Compile the production image with candidate engine versions")
     webdav = names.index("Verify real downloads and delivered SHA-256 hashes in Nextcloud")
     pr = names.index("Open a candidate PR after full acceptance (not a prerequisite to tests)")
     diagnostics = names.index("Collect sanitized diagnostic logs and release manifest")
-    assert policy < python < image < webdav < pr < diagnostics
+    assert patch < policy < python < image < webdav < pr < diagnostics
+    patch_step = steps[patch]
+    assert "inputs.rehearsal_only != true" in patch_step["if"]
+    assert "git diff -- requirements.txt Dockerfile > engine-candidate.patch" in patch_step["run"]
+    assert "test -s engine-candidate.patch" in patch_step["run"]
 
     candidate = steps[pr]
     assert "steps.detect.outputs.changed == 'true'" in candidate["if"]
