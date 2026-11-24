@@ -19,6 +19,20 @@ class MediaPreviewIn(BaseModel):
     offset: int = Field(default=0, ge=0, le=100_000)
 
 
+
+class DirectMetadataIn(BaseModel):
+    url: str = Field(min_length=8, max_length=4096)
+
+
+class DirectMetadataOut(BaseModel):
+    """Values are null when the server did not supply trusted HEAD headers."""
+    model_config = ConfigDict(extra="forbid")
+    filename: str | None
+    mime: str | None
+    size: int | None = Field(ge=0, le=9_007_199_254_740_991)
+
+
+
 class TorrentManifestIn(BaseModel):
     """Exactly one source: magnet link or base64-encoded .torrent file."""
     url: str | None = Field(default=None, min_length=8, max_length=4096)
