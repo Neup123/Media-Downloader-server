@@ -87,39 +87,14 @@ jobs:
           fi
 
           } 2>&1 | tee engine-update-detect-gate.log
-      - name: Open a dedicated candidate PR (the remaining steps test that exact candidate)
-        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none')
-        id: open_pr
+      - name: Preserve exact proposed pin patch before acceptance
+        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true
         shell: bash
         run: |
           set -euo pipefail
-          {
-          branch="automatic/engine-update-$GITHUB_RUN_ID"
-          git switch -c "$branch"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add requirements.txt Dockerfile
-          git commit -m "chore: propose pinned engine version updates"
-          git push origin HEAD:"$branch"
-          sha=$(git rev-parse HEAD)
-          echo "head_sha=$sha" >> "$GITHUB_OUTPUT"
-          title="Pinned engine updates ($GITHUB_RUN_ID)"
-          {
-            echo "Candidate versions are recorded in the linked workflow artifact."
-            echo
-            echo "Full Python tests, Docker build and live disposable-Nextcloud WebDAV acceptance"
-            echo "run in this same workflow; the bot-created PR does not rely on ordinary PR CI"
-            echo "being automatically triggered by GITHUB_TOKEN."
-            echo
-            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
-            echo
-            echo "This PR must remain unmerged on a red gate."
-          } > engine-pr-body.md
-          gh pr create --base main --head "$branch" --title "$title" --body-file engine-pr-body.md
-          number=$(gh pr view "$branch" --json number --jq .number)
-          echo "number=$number" >> "$GITHUB_OUTPUT"
-
-          } 2>&1 | tee engine-update-pr.log
+          git diff -- requirements.txt Dockerfile > engine-candidate.patch
+          test -s engine-candidate.patch
+          git rev-parse HEAD > engine-candidate-source.txt
       - name: Require a real smoke test and reviewed source provenance for every updated engine
         if: steps.detect.outputs.changed == 'true'
         shell: bash
@@ -221,6 +196,45 @@ jobs:
           set -euo pipefail
           python tests/e2e_live_webdav.py 2>&1 | tee engine-update-webdav.log
 
+      # A repository-level GitHub Actions setting may reject gh pr create.
+      # Keep the actual Python/Docker/WebDAV gates ahead of that administrative
+      # operation so a blocked PR never prevents security-candidate acceptance.
+      - name: Open a candidate PR after full acceptance (not a prerequisite to tests)
+        if: steps.detect.outputs.changed == 'true' && inputs.rehearsal_only != true && (inputs.demonstration == '' || inputs.demonstration == 'none')
+        id: open_pr
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+          branch="automatic/engine-update-$GITHUB_RUN_ID"
+          git switch -c "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add requirements.txt Dockerfile
+          git commit -m "chore: propose pinned engine version updates"
+          # The accepted requirements and Dockerfile must be byte-identical to
+          # the candidate commit. Do not allow a red/modified worktree through.
+          git diff --quiet HEAD -- requirements.txt Dockerfile
+          git push origin HEAD:"$branch"
+          sha=$(git rev-parse HEAD)
+          echo "head_sha=$sha" >> "$GITHUB_OUTPUT"
+          title="Pinned engine updates ($GITHUB_RUN_ID)"
+          {
+            echo "Candidate versions are recorded in the linked workflow artifact."
+            echo
+            echo "Full Python tests, Docker build and live disposable-Nextcloud WebDAV acceptance"
+            echo "run in this same workflow; the bot-created PR does not rely on ordinary PR CI"
+            echo "being automatically triggered by GITHUB_TOKEN."
+            echo
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo
+            echo "This PR must remain unmerged on a red gate."
+          } > engine-pr-body.md
+          gh pr create --base main --head "$branch" --title "$title" --body-file engine-pr-body.md
+          number=$(gh pr view "$branch" --json number --jq .number)
+          echo "number=$number" >> "$GITHUB_OUTPUT"
+
+          } 2>&1 | tee engine-update-pr.log
       - name: Collect sanitized diagnostic logs and release manifest
         if: always() && steps.detect.outputs.changed == 'true'
         shell: bash

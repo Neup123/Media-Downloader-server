@@ -164,7 +164,7 @@ def test_workflow_captures_unteeed_gates_and_keeps_credential_masks_out_of_stdou
     steps = workflow["jobs"]["candidate-gate"]["steps"]
     for name, log in (
         ("Detect stable PyPI and Debian trixie release candidates", "engine-update-detect-gate.log"),
-        ("Open a dedicated candidate PR (the remaining steps test that exact candidate)", "engine-update-pr.log"),
+        ("Open a candidate PR after full acceptance (not a prerequisite to tests)", "engine-update-pr.log"),
         ("Install pinned dependencies and test requirements", "engine-update-install-gate.log"),
         ("Create a deterministic legal media fixture from the candidate image", "engine-update-fixture-gate.log"),
         ("Merge green candidate (normal branch protection still applies)", "engine-update-promote-gate.log"),
