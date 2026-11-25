@@ -82,3 +82,16 @@ that may change the selection are rejected. If the number of output files
 changes, the job fails before delivery; the source must be checked again.
 This count check does not establish immutable file identity for changing
 remote galleries. Native gallery preview and selection UI are not yet enabled.
+
+### Explicit gallery preview
+
+The same authenticated `POST /api/v1/preview` endpoint now accepts
+`engine: "gallery-dl"` for public, unauthenticated flat galleries.
+The default remains yt-dlp. Request up to 100 entries per page; gallery
+offsets above 1000 are rejected, even when a source has more items.
+The response identifies `extractor: "gallery-dl"` and uses the existing
+list contract (`kind: "playlist"`), with source-order indices, real nullable
+sizes/thumbnails and no source media URLs. Do not assume chronological
+ordering or immutable identity across repeated extraction. Nested chapter
+listings are not supported. Native Nextcloud users are not yet wired to
+this path.

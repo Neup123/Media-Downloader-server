@@ -41,7 +41,7 @@ paths:
   /preview:
     post:
       operationId: previewYtDlpMedia
-      summary: Inspect yt-dlp media formats or page source-ordered playlist entries without downloading
+      summary: Inspect yt-dlp media formats or explicit gallery-dl file listings without downloading
       tags: [jobs]
       requestBody:
         required: true
@@ -53,13 +53,17 @@ paths:
               properties:
                 url: { type: string, minLength: 8, maxLength: 4096 }
                 max_entries: { type: integer, minimum: 1, maximum: 100, default: 50 }
-                offset: { type: integer, minimum: 0, maximum: 100000, default: 0, description: Zero-based playlist offset }
+                offset: { type: integer, minimum: 0, maximum: 100000, default: 0, description: Zero-based source offset. Explicit gallery-dl requests are limited to offset 1000. }
+                engine: { type: string, enum: [yt-dlp, gallery-dl], default: yt-dlp, description: Explicit extractor; gallery-dl accepts public unauthenticated flat galleries only. }
             example: {url: 'https://example.org/video', max_entries: 20, offset: 0}
       responses:
         '401': { $ref: '#/components/responses/Unauthorized' }
         '200':
           description: |-
-            Sanitized yt-dlp metadata. Entries retain extractor source order (which
+            Sanitized extractor metadata. Explicit gallery-dl previews use
+            extractor=gallery-dl and kind=playlist for the existing list
+            response contract; nested chapter/queue streams are rejected.
+            No source file URLs or credentials are returned. Entries retain extractor source order (which
             is newest-first when the source's own order is newest-first); Core
             does not globally sort by timestamp. Missing thumbnails, duration,
             timestamps and live fields are null, not generated placeholders.
