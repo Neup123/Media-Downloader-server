@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+import sys
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Any, Awaitable, Callable
@@ -9,7 +10,7 @@ from typing import Any, Awaitable, Callable
 from app.adapters.process_env import downloader_environment
 from app.engine_failures import EngineFailure, EngineFailureKind, classify_cli_error
 from app.cookies import materialize_cookie_file
-from app.gallery_selection import validate_gallery_selection_settings
+from app.gallery_selection import validate_gallery_selection_settings, validate_gallery_identity_settings
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
@@ -117,6 +118,7 @@ async def run_gallery_dl(
 ) -> list[Path]:
     effective = _effective_settings(global_settings, overrides)
     selection = validate_gallery_selection_settings(effective)
+    identities = validate_gallery_identity_settings(effective)
     workdir.mkdir(parents=True, exist_ok=True)
 
     argv = [
@@ -153,9 +155,17 @@ async def run_gallery_dl(
             argv.extend(["-o", f"{key}={value}"])
         if selection is not None:
             argv.extend(["--range", selection[0], "--"])
+        if identities is not None:
+            # The installed, pinned gallery-dl CLI handles extraction and
+            # downloading; the isolated wrapper restricts its actual URL
+            # handler, not mutable positions or extractor-supplied metadata.
+            wrapper = Path(__file__).resolve().parents[1] / "gallery_identity_download.py"
+            argv = [sys.executable, str(wrapper), ",".join(identities), *argv[1:],
+                    "-o", "extractor.fallback=false", "--"]
         argv.append(url)
         files = await _execute_gallery_dl(argv, workdir, on_progress, on_log, is_cancelled)
-        if selection is not None and len(files) != selection[1]:
+        expected = len(identities) if identities is not None else selection[1] if selection is not None else None
+        if expected is not None and len(files) != expected:
             raise RuntimeError("Gallery selection changed or incomplete; no files will be delivered")
         return files
 

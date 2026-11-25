@@ -74,6 +74,7 @@ class PreviewEntryOut(PreviewMetadataOut):
     index: int = Field(ge=1)
     id: str
     title: str
+    selection_id: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     # Optional extensions accepted before upstream flat-playlist metadata is
     # available. Do not invent bytes when the extractor omits these fields.
     size_bytes: int | None = Field(default=None, ge=0)

@@ -22,6 +22,7 @@ export interface PreviewEntryOut {
   index: number;
   id: string;
   title: string;
+  selection_id?: string | null;
   size_bytes?: number | null;
   size_estimate_bytes?: number | null;
 }
