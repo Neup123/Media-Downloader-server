@@ -977,10 +977,7 @@ components:
         index: { type: integer, minimum: 1 }
         id: { type: string }
         title: { type: string }
-        selection_id: { type: [string, 'null'], pattern: '^[a-f0-9]{64}
-        size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
-        size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
-, default: null }
+        selection_id: { type: [string, 'null'], pattern: '^[a-f0-9]{64}$', default: null }
         size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
         size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
     PreviewFormatOut:
