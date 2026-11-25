@@ -71,3 +71,13 @@ Run `python -m pytest tests/test_gallery_selection.py tests/test_gallery_preview
 Verify job-only one-based ranges, rejection of conflicting extractor settings,
 and a partial-output failure with no verified completion manifest. The offline
 adapter fixture is not a live gallery identity or production egress test.
+
+### Explicit gallery preview API
+
+The existing authenticated preview route supports the new explicit
+gallery-dl engine selector with no new service or credentials. Verify
+unauthenticated access, private source rejection, bounded offset, default
+yt-dlp compatibility and sanitized metadata with
+`python -m pytest tests/test_gallery_preview.py tests/test_discovery.py -q`.
+This does not replace the host egress policy or verify a remote gallery's
+stable identity, nested chapter handling or native signed gateway.

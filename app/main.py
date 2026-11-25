@@ -32,6 +32,7 @@ from app.config import Settings
 from app.cookies import encrypt_cookie
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
+from app.gallery_preview import inspect_gallery_dl
 from app.direct_metadata import inspect_direct_head
 from app.options_catalog import get_catalog
 from app.engine_registry import ENGINE_SETTING_KEYS
@@ -135,10 +136,15 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
     @app.post("/api/v1/preview", response_model=MediaPreviewOut, response_model_exclude_unset=True, tags=["jobs"])
     async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
         try:
-            url = validate_target_url(payload.url, "yt-dlp", config.allow_private_targets)
-            if not config.allow_private_targets:
+            # Explicit extractor choice only; keep existing yt-dlp callers
+            # unchanged. The gallery path is strictly public even on trusted
+            # test installs that permit private targets for other engines.
+            allow_private = config.allow_private_targets and payload.engine == "yt-dlp"
+            url = validate_target_url(payload.url, payload.engine, allow_private)
+            if not allow_private:
                 await asyncio.to_thread(preflight_source_dns, url)
-            return await inspect_ytdlp(url, max_entries=payload.max_entries, offset=payload.offset)
+            inspect = inspect_gallery_dl if payload.engine == "gallery-dl" else inspect_ytdlp
+            return await inspect(url, max_entries=payload.max_entries, offset=payload.offset)
         except SourceResolutionError as exc:
             detail, code = str(exc), "could_not_check"
         except (UnsafeUrlError, ValueError) as exc:

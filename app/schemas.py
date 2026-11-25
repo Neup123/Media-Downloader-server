@@ -17,6 +17,14 @@ class MediaPreviewIn(BaseModel):
     url: str = Field(min_length=8, max_length=4096)
     max_entries: int = Field(default=50, ge=1, le=100)
     offset: int = Field(default=0, ge=0, le=100_000)
+    engine: Literal["yt-dlp", "gallery-dl"] = "yt-dlp"
+
+    @model_validator(mode="after")
+    def validate_gallery_window(self):
+        from app.gallery_selection import MAX_GALLERY_OFFSET
+        if self.engine == "gallery-dl" and self.offset > MAX_GALLERY_OFFSET:
+            raise ValueError(f"Gallery offset must be at most {MAX_GALLERY_OFFSET}")
+        return self
 
 
 
