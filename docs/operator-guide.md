@@ -95,3 +95,13 @@ sizes/thumbnails and no source media URLs. Do not assume chronological
 ordering or immutable identity across repeated extraction. Nested chapter
 listings are not supported. Native Nextcloud users are not yet wired to
 this path.
+
+### Engine admission policy (administrator API)
+
+The authenticated Core administrator may read or set
+`GET/PUT /api/v1/engines/{engine_name}/policy` with `{"enabled": false}`.
+The seven existing engines default to enabled. Turning one off blocks new
+jobs for that engine and leaves previously queued jobs waiting; active
+transfers are not cancelled. Re-enable it to resume queued work, or cancel
+individual queued jobs. This is not a background-service mode or a
+credential connection. No new engine or native UI control is activated.

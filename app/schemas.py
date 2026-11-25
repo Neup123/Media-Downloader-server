@@ -257,12 +257,22 @@ class JobBatchOut(BaseModel):
     jobs: list[JobOut]
 
 
+class EnginePolicyIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = Field(strict=True)
+
+
+class EnginePolicyOut(EnginePolicyIn):
+    engine: EngineName
+
+
 class EngineStatusOut(BaseModel):
     name: EngineName
     label: str
     role: str
     priority: str
     available: bool
+    enabled: bool = True
     installed: bool
     version: str | None
     defaults: dict[str, Any]

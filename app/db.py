@@ -51,6 +51,14 @@ class EngineSetting(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
+class EnginePolicy(Base):
+    """Administrator's persistent admission switch; not a job state."""
+    __tablename__ = "engine_policies"
+
+    engine: Mapped[str] = mapped_column(String(40), primary_key=True)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
 class Preset(Base):
     __tablename__ = "presets"
 
