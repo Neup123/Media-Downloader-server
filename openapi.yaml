@@ -977,6 +977,10 @@ components:
         index: { type: integer, minimum: 1 }
         id: { type: string }
         title: { type: string }
+        selection_id: { type: [string, 'null'], pattern: '^[a-f0-9]{64}
+        size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
+        size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
+, default: null }
         size_bytes: { type: [integer, 'null'], minimum: 0, default: null }
         size_estimate_bytes: { type: [integer, 'null'], minimum: 0, default: null }
     PreviewFormatOut:
@@ -1169,7 +1173,7 @@ components:
         overrides:
           type: object
           additionalProperties: true
-          description: Per-job engine options. For gallery-dl only, gallery_items is a one-based source-order file index/range string (e.g. 1,3-5). Not valid in presets or global settings; rejects conflicting extractor settings and incomplete output. Does not guarantee immutable remote file identity.
+          description: Per-job engine options. For gallery-dl only, gallery_items is a one-based source-order file index/range string (e.g. 1,3-5). Not valid in presets or global settings; rejects conflicting extractor settings and incomplete output. Does not guarantee immutable remote file identity. Alternatively, gallery_item_ids accepts 1–200 unique SHA-256 selection_id values returned by gallery-dl preview; current extractor URLs must match during actual download. The URLs may change and remote bytes are not immutable.
         delivery_subfolder: { type: [string, 'null'], maxLength: 100, default: null, description: Standalone jobs only; one safe folder name inside the administrator-configured delivery target. }
         owner_id: { type: [string, 'null'], minLength: 1, maxLength: 255, pattern: '^[^/\\\\\x00-\x1f]+$', default: null }
         delivery: { type: [object, 'null'], additionalProperties: true, default: null }
