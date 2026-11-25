@@ -8,3 +8,4 @@ yt-dlp==2026.11.23
 gallery-dl==1.32.21
 you-get==0.4.1743
 svtplay-dl==4.211
+streamlink==8.6.3
