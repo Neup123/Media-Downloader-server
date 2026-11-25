@@ -13,7 +13,7 @@ import yaml
 
 from app.schemas import (
     CookieUploadIn, DeliverySettingsIn, EngineRuleInput, EngineRuleOrderInput,
-    EngineSettingsIn, JobBatchCreate, JobCreate, MediaPreviewIn, TorrentManifestIn, DirectMetadataIn, PresetInput,
+    EngineSettingsIn, EnginePolicyIn, JobBatchCreate, JobCreate, MediaPreviewIn, TorrentManifestIn, DirectMetadataIn, PresetInput,
 )
 
 
@@ -22,6 +22,7 @@ OPERATIONS = {
     ("post", "/direct-metadata"): DirectMetadataIn,
     ("post", "/torrent/manifest"): TorrentManifestIn,
     ("put", "/engines/{engine_name}/settings"): EngineSettingsIn,
+    ("put", "/engines/{engine_name}/policy"): EnginePolicyIn,
     ("put", "/cookies/{filename}"): CookieUploadIn,
     ("post", "/presets"): PresetInput,
     ("put", "/presets/{preset_id}"): PresetInput,

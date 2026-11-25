@@ -23,6 +23,7 @@ from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE
 from app.delivery import deliver_files
 from app.redaction import _redact
 from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS
+from app.engine_gate import disabled_engines, engine_permitted
 from app.user_failures import user_failure_message
 from app.security import preflight_source_dns
 
@@ -193,7 +194,8 @@ class JobWorker:
                     # otherwise 100 queued items of a busy engine can hide a
                     # runnable job of another engine.
                     with self.session_factory() as session:
-                        queued = get_queued_jobs(session, max(100, slots), saturated_engines)
+                        queued = get_queued_jobs(session, max(100, slots),
+                                                 saturated_engines | disabled_engines(session))
                     for job in self._select_queued_jobs(queued, slots):
                         job_id = job.id
                         task = asyncio.create_task(self._execute(job_id), name=f"download-{job_id}")
@@ -223,6 +225,10 @@ class JobWorker:
         with self.session_factory() as session:
             job = session.get(Job, job_id)
             if not job or job.status != "queued":
+                return
+            # Recheck after scheduler selection in case the admin changed the
+            # policy between SQL selection and worker admission.
+            if not engine_permitted(session, job.engine):
                 return
             transition_job(job, JobStatus.STARTING)
             # Preserve previously verified delivery records on crash recovery.

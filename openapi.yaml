@@ -231,6 +231,42 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/EngineOptionsOut' }
         '404': { description: Unknown engine }
+  /engines/{engine_name}/policy:
+    parameters:
+      - name: engine_name
+        in: path
+        required: true
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+    get:
+      operationId: getEnginePolicy
+      summary: Read administrator engine admission policy
+      tags: [engines]
+      responses:
+        '200':
+          description: Current policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnginePolicyOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Unknown engine }
+    put:
+      operationId: updateEnginePolicy
+      summary: Enable or disable new transfers for one installed engine
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EnginePolicyIn' }
+      responses:
+        '200':
+          description: Persisted policy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnginePolicyOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Unknown engine }
+        '422': { description: Invalid policy }
   /engines/{engine_name}/settings:
     parameters:
       - name: engine_name
@@ -994,6 +1030,18 @@ components:
         reason_code:
           type: string
           enum: [malformed_link, unsupported_domain, item_not_found, not_media, could_not_check]
+    EnginePolicyIn:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+    EnginePolicyOut:
+      type: object
+      required: [engine, enabled]
+      properties:
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        enabled: { type: boolean }
     EngineStatusOut:
       type: object
       required: [name, label, role, priority, available, installed, version, defaults, url_schemes]
@@ -1003,6 +1051,7 @@ components:
         role: { type: string }
         priority: { type: string }
         available: { type: boolean }
+        enabled: { type: boolean, default: true }
         installed: { type: boolean }
         version: { type: [string, 'null'] }
         defaults: { type: object, additionalProperties: true }
