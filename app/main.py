@@ -36,12 +36,14 @@ from app.gallery_preview import inspect_gallery_dl
 from app.direct_metadata import inspect_direct_head
 from app.options_catalog import get_catalog
 from app.engine_registry import ENGINE_SETTING_KEYS
+from app.engine_gate import disabled_engines, engine_permitted, set_engine_enabled
 from app.db import DeliverySetting, EngineSetting, EngineRule, Preset, Job, make_engine, make_session_factory, initialize_database, append_log, requeue_job, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, transition_job
 from app.delivery import DeliveryError, serialize_delivery, set_delivery_settings, encrypt_job_delivery, verify_delivery_destination
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn, MediaPreviewOut, TorrentManifestOut, DirectMetadataIn, DirectMetadataOut
 from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url, supported_url_schemes
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
+from app.schemas import EnginePolicyIn, EnginePolicyOut
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -196,8 +198,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.get("/api/v1/engines", response_model=list[EngineStatusOut], tags=["engines"])
-    def list_engines(_: bool = Depends(authenticate)):
+    def list_engines(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
         result = []
+        disabled = disabled_engines(session)
         for item in ENGINE_DESCRIPTIONS:
             binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce"}[item["name"]]
             executable = shutil.which(binary)
@@ -231,11 +234,25 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             result.append({
                 **item, "installed": executable is not None,
                 "available": executable is not None and version not in (None, "unknown"),
+                "enabled": item["name"] not in disabled,
                 "version": version,
                 "defaults": ENGINE_DEFAULTS[item["name"]],
                 "url_schemes": supported_url_schemes(item["name"]),
             })
+            result[-1]["available"] = bool(result[-1]["available"] and result[-1]["enabled"])
         return result
+
+    @app.get("/api/v1/engines/{engine_name}/policy", response_model=EnginePolicyOut, tags=["engines"])
+    def get_engine_policy(engine_name: str, _: bool = Depends(authenticate),
+                          session: Session = Depends(db_session)):
+        _require_engine(engine_name)
+        return {"engine": engine_name, "enabled": engine_permitted(session, engine_name)}
+
+    @app.put("/api/v1/engines/{engine_name}/policy", response_model=EnginePolicyOut, tags=["engines"])
+    def update_engine_policy(engine_name: str, payload: EnginePolicyIn,
+                             _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        _require_engine(engine_name)
+        return {"engine": engine_name, "enabled": set_engine_enabled(session, engine_name, payload.enabled)}
 
     @app.get("/api/v1/engines/{engine_name}/options", response_model=EngineOptionsOut, response_model_exclude_unset=True, tags=["engines"])
     def engine_option_catalog(engine_name: str, _: bool = Depends(authenticate)):
@@ -1054,6 +1071,8 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
             raise HTTPException(status_code=404, detail="Selected preset was not found")
 
     engine = _resolve_job_engine(payload.url, payload.engine, session, preset)
+    if not engine_permitted(session, engine):
+        raise HTTPException(status_code=422, detail="Selected engine is disabled")
     if preset is not None and preset.engine != engine:
         raise HTTPException(
             status_code=422,

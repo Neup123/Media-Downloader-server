@@ -90,3 +90,14 @@ public wording, typed CLI failure, missing executable, empty output, native
 curl/aria2 codes and separation from technical diagnostics. These tests
 exercise deterministic inputs, not actual remote authentication or every
 possible upstream diagnostic. Existing end-to-end delivery gates still apply.
+
+### Engine admission policy migration
+
+Normal startup creates the additive `engine_policies` table. No existing
+job, setting or preset row is changed. A missing policy row preserves
+the prior enabled behavior. The single authenticated PUT writer persists
+and refreshes the policy. Verify existing queue retention, invalid payload
+rejection, admission recheck and cancel with
+`python -m pytest tests/test_engine_admission_policy.py tests/test_openapi_request_schemas.py -q`.
+The current slice does not verify new-engine requirements, service modes,
+credential storage or target live downloads.
