@@ -367,5 +367,15 @@ class DeliverySettingsIn(BaseModel):
         return self
 
 
+class ProvidedCookieOut(BaseModel):
+    hostname: str
+    stored: bool
+
+
+class ProvidedCookieDeletedOut(BaseModel):
+    hostname: str
+    deleted: bool
+
+
 class CookieUploadIn(BaseModel):
     content_base64: str = Field(min_length=4, max_length=1_400_000)

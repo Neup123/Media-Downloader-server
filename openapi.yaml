@@ -356,6 +356,57 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/CookieDeletedOut' }
         '404': { description: Cookie file not found }
+  /provided-cookies:
+    get:
+      operationId: listProvidedCookies
+      summary: List exact source hosts with instance-provided cookies (administrator)
+      tags: [engines]
+      responses:
+        '200':
+          description: Provisioning inventory without cookie values
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ProvidedCookieOut' } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /provided-cookies/{hostname}:
+    parameters:
+      - name: hostname
+        in: path
+        required: true
+        schema: { type: string }
+    put:
+      operationId: provideSiteCookie
+      summary: Store encrypted instance fallback cookies for one exact source host
+      tags: [engines]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [content_base64]
+              properties:
+                content_base64: { type: string, minLength: 4, maxLength: 1400000 }
+      responses:
+        '200':
+          description: Provisioned cookies stored, not tested
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProvidedCookieOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { description: Invalid host, cookie export or encryption configuration }
+    delete:
+      operationId: revokeSiteCookie
+      summary: Remove instance fallback cookies for this exact host
+      tags: [engines]
+      responses:
+        '200':
+          description: Provisioned cookie file removed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProvidedCookieDeletedOut' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Provided cookie not found }
   /presets:
     get:
       operationId: listPresets
@@ -1095,6 +1146,18 @@ components:
       properties:
         engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         settings: { type: object, additionalProperties: true }
+    ProvidedCookieOut:
+      type: object
+      required: [hostname, stored]
+      properties:
+        hostname: { type: string }
+        stored: { type: boolean }
+    ProvidedCookieDeletedOut:
+      type: object
+      required: [hostname, deleted]
+      properties:
+        hostname: { type: string }
+        deleted: { type: boolean }
     CookieFileOut:
       type: object
       required: [filename, size_bytes]
