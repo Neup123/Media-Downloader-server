@@ -233,12 +233,13 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                     version = "unknown"
             result.append({
                 **item, "installed": executable is not None,
-                "available": item["name"] not in disabled and executable is not None and version not in (None, "unknown"),
+                "available": executable is not None and version not in (None, "unknown"),
                 "enabled": item["name"] not in disabled,
                 "version": version,
                 "defaults": ENGINE_DEFAULTS[item["name"]],
                 "url_schemes": supported_url_schemes(item["name"]),
             })
+            result[-1]["available"] = bool(result[-1]["available"] and result[-1]["enabled"])
         return result
 
     @app.get("/api/v1/engines/{engine_name}/policy", response_model=EnginePolicyOut, tags=["engines"])

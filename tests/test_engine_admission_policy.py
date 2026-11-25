@@ -43,3 +43,20 @@ def test_worker_rechecks_policy_after_selection(settings, client, auth_headers):
     cancelled = client.post(f"/api/v1/jobs/{job['id']}/cancel", headers=auth_headers)
     assert cancelled.status_code == 200
     assert cancelled.json()["status"] == "cancelled"
+
+
+def test_engine_registry_requires_probe_and_policy(client, auth_headers, monkeypatch):
+    from types import SimpleNamespace
+
+    monkeypatch.setattr("app.main.shutil.which", lambda name: "/bin/" + name)
+    monkeypatch.setattr("app.main.subprocess.run", lambda *a, **kw: SimpleNamespace(
+        returncode=0, stdout="v1.2.3\n", stderr=""))
+    def generic():
+        return next(row for row in client.get("/api/v1/engines", headers=auth_headers).json()
+                    if row["name"] == "generic")
+    assert generic()["available"] is True
+    client.put("/api/v1/engines/generic/policy", headers=auth_headers, json={"enabled": False})
+    assert generic()["available"] is False and generic()["installed"] is True
+    client.put("/api/v1/engines/generic/policy", headers=auth_headers, json={"enabled": True})
+    monkeypatch.setattr("app.main.shutil.which", lambda name: None)
+    assert generic()["available"] is False and generic()["enabled"] is True
