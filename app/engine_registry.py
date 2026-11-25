@@ -169,6 +169,19 @@ ENGINE_REGISTRY: dict[str, dict[str, Any]] = {
         field("subdirectory", "Create media subfolder", "Files", "boolean"),
     ],
     },
+    "streamlink": {
+        "label": "Streamlink",
+        "role": "Explicit live-stream recording",
+        "priority": "P2",
+        "available": True,
+        "default_enabled": False,
+        "title": "Live streams",
+        "purpose": "Record supported public streams until they end or you stop",
+        "defaults": {"quality": "best"},
+        "fields": [
+            field("quality", "Stream quality", "Quality", "text", "best, worst, or a resolution such as 720p"),
+        ],
+    },
 }
 
 ENGINE_NAMES = tuple(ENGINE_REGISTRY)

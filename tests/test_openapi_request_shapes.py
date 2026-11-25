@@ -118,6 +118,7 @@ JOB_RESPONSE_OPERATIONS = [
     ("post", "/jobs/batch", "202"),
     ("get", "/jobs/{job_id}", "200"),
     ("post", "/jobs/{job_id}/cancel", "200"),
+    ("post", "/jobs/{job_id}/stop", "200"),
     ("post", "/jobs/{job_id}/pause", "200"),
     ("post", "/jobs/{job_id}/resume", "200"),
     ("post", "/jobs/{job_id}/retry", "202"),
@@ -151,10 +152,11 @@ def test_job_response_models_preserve_log_and_state(client, auth_headers):
     assert job.status_code == 202
     expected = {
         "id", "url", "owner_id", "delivery_subfolder", "engine", "status", "pause_capability", "overrides", "progress",
-        "output_files", "log_text", "error", "cancel_requested",
+        "output_files", "log_text", "error", "cancel_requested", "stop_requested", "can_stop",
         "created_at", "updated_at", "finished_at",
     }
     assert set(job.json()) == expected
+    assert job.json()["stop_requested"] is False and job.json()["can_stop"] is False
     identifier = job.json()["id"]
 
     details = client.get(f"/api/v1/jobs/{identifier}", headers=auth_headers)

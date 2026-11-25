@@ -247,6 +247,8 @@ class JobOut(BaseModel):
     log_text: str
     error: str | None
     cancel_requested: bool
+    stop_requested: bool = False
+    can_stop: bool = False
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
