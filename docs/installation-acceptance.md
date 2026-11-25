@@ -63,3 +63,11 @@ Pinned candidate PRs, GHCR image builds and disposable CI can demonstrate develo
 ## 6. Nextcloud integration is separate
 
 The Core UI and queue stay in this repository. The optional Nextcloud plugin has its own native Files, Dashboard, Library and settings surfaces under [downloader-server-nextcloud](https://github.com/Neup123/downloader-server-nextcloud). Its privileged AppAPI/ExApp gateway calls the Core API server-side and owns per-user entitlement and encrypted WebDAV identity. Never embed the standalone Core UI in that plugin, or add a Core token field to a regular Nextcloud user's UI.
+
+## Selected gallery API acceptance
+
+No new storage or credentials are required for gallery index selection.
+Run `python -m pytest tests/test_gallery_selection.py tests/test_gallery_preview.py -q`.
+Verify job-only one-based ranges, rejection of conflicting extractor settings,
+and a partial-output failure with no verified completion manifest. The offline
+adapter fixture is not a live gallery identity or production egress test.
