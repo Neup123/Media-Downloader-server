@@ -250,7 +250,7 @@ export default function App() {
   const [svtOverride, setSvtOverride] = useState<SvtSettings>(svtDefaults);
   const [getSauce, setGetSauce] = useState<GetSauceSettings>(getSauceDefaults);
   const [getSauceOverride, setGetSauceOverride] = useState<GetSauceSettings>(getSauceDefaults);
-  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [], 'get-sauce': [] });
+  const [optionCatalog, setOptionCatalog] = useState<Record<Engine, OptionField[]>>({ 'yt-dlp': [], aria2c: [], 'gallery-dl': [], generic: [], 'you-get': [], 'svtplay-dl': [], 'get-sauce': [], streamlink: [] });
   const [engineStatus, setEngineStatus] = useState<EngineStatus[]>([]);
   const [editingEngine, setEditingEngine] = useState<Engine>('yt-dlp');
   const [engineLoaded, setEngineLoaded] = useState<Partial<Record<Engine, boolean>>>({});
@@ -1238,7 +1238,7 @@ export default function App() {
             <summary>{t('Options')} <span className="muted">Engine, preset and download choices</span></summary>
           <label>Engine<select value={engine} onChange={event => { setEngine(event.target.value as EngineSelection); setSelectedPresetId(''); }}>
             <option value="auto">Automatic</option>
-            {engineStatus.filter(item => item.installed).map(item =>
+            {engineStatus.filter(item => item.installed && item.name !== 'streamlink').map(item =>
               <option key={item.name} value={item.name}>{item.name}</option>)}
           </select></label>
           <label>Option preset<select value={selectedPresetId} onChange={event => setSelectedPresetId(event.target.value)}>
@@ -1384,7 +1384,7 @@ export default function App() {
       <nav className="panel engine-picker" aria-label="Download engines">
         <h2>Download engines</h2>
         <p className="muted">Choose an engine to edit its defaults. You usually do not need to change these.</p>
-        {ENGINE_ORDER.map(name => {
+        {ENGINE_ORDER.filter(name => name !== 'streamlink').map(name => {
           const status = engineStatus.find(item => item.name === name);
           return <button key={name} type="button" data-engine-select={name}
             className={editingEngine === name ? 'engine-choice active' : 'engine-choice'}

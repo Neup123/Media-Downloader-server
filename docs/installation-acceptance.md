@@ -101,3 +101,14 @@ rejection, admission recheck and cancel with
 `python -m pytest tests/test_engine_admission_policy.py tests/test_openapi_request_schemas.py -q`.
 The current slice does not verify new-engine requirements, service modes,
 credential storage or target live downloads.
+
+### Streamlink explicit recording API
+
+Startup adds `jobs.stop_requested BOOLEAN NOT NULL DEFAULT FALSE` to existing
+databases. The canonical registry defaults Streamlink to disabled; no
+existing engine is disabled or automatically rerouted. Run
+`python -m pytest tests/test_streamlink_recording_job.py -q` and the existing
+container HLS acceptance. The isolated local test checks actual CLI
+recording, graceful Stop, decoded media, verified local delivery and recovery;
+it does not establish real Twitch/YouTube, user credentials or native
+Nextcloud acceptance. No new production deployment is required for CI.

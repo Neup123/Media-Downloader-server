@@ -108,6 +108,17 @@ export const ENGINE_REGISTRY = {
       "subdirectory": false,
       "timeout_minutes": 15
     }
+  },
+  "streamlink": {
+    "label": "Streamlink",
+    "role": "Explicit live-stream recording",
+    "priority": "P2",
+    "available": true,
+    "title": "Live streams",
+    "purpose": "Record supported public streams until they end or you stop",
+    "defaults": {
+      "quality": "best"
+    }
   }
 } as const;
 

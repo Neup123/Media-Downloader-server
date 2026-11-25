@@ -1,8 +1,8 @@
-"""Streamlink recording adapter (not registered for public job submission yet).
+"""Streamlink recording adapter for explicit standalone jobs.
 
 Uses pinned Streamlink's native recording CLI. The existing shared CLI runner
 owns process cancellation and graceful stop; no second subprocess state machine.
-Cookie/identity resolution and durable Stop action are separate integration work.
+Cookie/identity resolution and automatic live detection remain separate work.
 """
 from __future__ import annotations
 

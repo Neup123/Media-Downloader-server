@@ -22,7 +22,7 @@ def test_engine_policy_persists_and_blocks_new_jobs(client, auth_headers):
     assert client.post("/api/v1/jobs", headers=auth_headers, json=request).status_code == 422
     assert client.get("/api/v1/engines/not-installed/policy", headers=auth_headers).status_code == 404
     with client.app.state.session_factory() as session:
-        assert disabled_engines(session) == {"generic"}
+        assert disabled_engines(session) == {"generic", "streamlink"}
         assert not engine_permitted(session, "generic")
         assert engine_permitted(session, "yt-dlp")
         assert not get_queued_jobs(session, 100, disabled_engines(session))

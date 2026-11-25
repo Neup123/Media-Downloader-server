@@ -20,7 +20,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_identity_defaults_descriptions_and_catalog_are_same_registry():
-    assert len(ENGINE_NAMES) == 7
+    assert len(ENGINE_NAMES) == 8
     assert len(ENGINE_NAMES) == len(set(ENGINE_NAMES))
     assert set(ENGINE_NAMES) == set(ENGINE_DEFAULTS) == set(OPTION_CATALOG)
     assert set(ENGINE_NAMES) == {row["name"] for row in ENGINE_DESCRIPTIONS}

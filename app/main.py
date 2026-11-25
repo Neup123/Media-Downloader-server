@@ -46,6 +46,7 @@ from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, Cookie
 from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url, supported_url_schemes
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
 from app.schemas import EnginePolicyIn, EnginePolicyOut, ProvidedCookieOut, ProvidedCookieDeletedOut
+from app.recording import can_request_stop, request_recording_stop
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -206,7 +207,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         result = []
         disabled = disabled_engines(session)
         for item in ENGINE_DESCRIPTIONS:
-            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce"}[item["name"]]
+            binary = {"yt-dlp": "yt-dlp", "aria2c": "aria2c", "gallery-dl": "gallery-dl", "generic": "curl", "you-get": "you-get", "svtplay-dl": "svtplay-dl", "get-sauce": "get-sauce", "streamlink": "streamlink"}[item["name"]]
             executable = shutil.which(binary)
             version = None
             if executable:
@@ -735,6 +736,15 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.refresh(job)
         return job_to_dict(job)
 
+    @app.post("/api/v1/jobs/{job_id}/stop", response_model=JobOut, tags=["jobs"])
+    def stop_recording(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
+        if session.get(Job, job_id) is None:
+            raise HTTPException(status_code=404, detail="Job not found")
+        job = request_recording_stop(session, job_id)
+        if job is None:
+            raise HTTPException(status_code=409, detail="Only active standalone Streamlink recordings can be stopped")
+        return job_to_dict(job)
+
     @app.post("/api/v1/jobs/{job_id}/pause", response_model=JobOut, tags=["jobs"])
     async def pause_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
         job = session.get(Job, job_id)
@@ -936,6 +946,11 @@ def validate_engine_settings(engine: str, values: dict, partial: bool = False) -
                     raise ValueError("playlist_items must be comma-separated indices or index ranges")
                 result[key] = value
         return result
+    if engine == "streamlink":
+        from app.adapters.streamlink import QUALITY
+        if "quality" in values and (not isinstance(values["quality"], str) or not QUALITY.fullmatch(values["quality"])):
+            raise ValueError("Invalid Streamlink quality")
+        return dict(values)
     if engine == "get-sauce":
         from app.adapters.get_sauce import effective_settings
         validated = effective_settings(ENGINE_DEFAULTS["get-sauce"], values)
@@ -1105,6 +1120,8 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
     engine = _resolve_job_engine(payload.url, payload.engine, session, preset)
     if not engine_permitted(session, engine):
         raise HTTPException(status_code=422, detail="Selected engine is disabled")
+    if engine == "streamlink" and (payload.owner_id is not None or payload.engine != "streamlink"):
+        raise HTTPException(status_code=422, detail="Streamlink currently requires explicit standalone recording submission")
     if preset is not None and preset.engine != engine:
         raise HTTPException(
             status_code=422,
@@ -1203,6 +1220,8 @@ def job_to_dict(job: Job) -> dict:
         "log_text": job.log_text,
         "error": job.error,
         "cancel_requested": job.cancel_requested,
+        "stop_requested": job.stop_requested,
+        "can_stop": can_request_stop(job),
         "created_at": job.created_at,
         "updated_at": job.updated_at,
         "finished_at": job.finished_at,
