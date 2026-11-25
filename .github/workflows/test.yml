@@ -94,3 +94,9 @@ jobs:
                              check=False, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
           PY
+
+      - name: Record and gracefully stop synthetic HLS with pinned Streamlink
+        run: |
+          docker run --rm --network none --entrypoint python \
+            -e PYTHONPATH=/app -v "$PWD/tests/e2e_streamlink_adapter.py:/tmp/e2e_streamlink_adapter.py:ro" \
+            downloader-server:test /tmp/e2e_streamlink_adapter.py
