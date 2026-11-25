@@ -12,7 +12,7 @@ from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
 import httpx
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
 BASE_URL = os.getenv("DOWNLOADER_UI_URL", "http://127.0.0.1:8080")
 API_TOKEN = os.environ["APP_API_TOKEN"]
@@ -431,7 +431,9 @@ def run_browser_acceptance() -> None:
             page.set_viewport_size({"width": 390, "height": 844})
             rule_toolbar = page.locator('.rule-card[data-rule-id="' + second_id + '"] .rule-actions')
             icons = rule_toolbar.locator('button.rule-icon')
-            assert icons.count() == 4
+            # The PUT response can arrive before React commits the updated rule list.
+            # Keep the exact four-control assertion, but wait for the render.
+            expect(icons).to_have_count(4, timeout=10000)
             for index in range(icons.count()):
                 button = icons.nth(index)
                 dimensions = button.bounding_box()

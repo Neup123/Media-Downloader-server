@@ -14,5 +14,5 @@ This is identity of an extractor URL, not an immutable byte snapshot or an
 authorization token. Expiring/signed URLs can legitimately change and fail;
 preview again rather than silently downloading an unrelated item. Nested
 chapters, CBZ, and native gallery integration remain separate. Tests use the
-pinned gallery-dl with a loopback HTML gallery and changed source order, never
+pinned gallery-dl with a test-only registered extractor and loopback HTTP JSON gallery and changed source order, never
 a public account or media service. No new configuration or dependencies.

@@ -29,7 +29,9 @@ from app.adapters.aria2 import Aria2Rpc
 from app.adapters.process_env import downloader_environment
 from app.completion import load_completed_files
 from app.config import Settings
-from app.cookies import encrypt_cookie
+from app.cookies import (
+    store_cookie_file, provided_cookie_dir, provided_hostname, validate_provided_cookie_export,
+)
 from app.version import product_version
 from app.discovery import PreviewError, inspect_ytdlp
 from app.gallery_preview import inspect_gallery_dl
@@ -43,7 +45,7 @@ from app.delivery import DeliveryError, serialize_delivery, set_delivery_setting
 from app.schemas import CookieUploadIn, CookieFileOut, CookieUploadedOut, CookieDeletedOut, DeliverySettingsIn, DeliverySettingsOut, DeliveryTestOut, EngineStatusOut, EngineOptionsOut, EngineSettingsIn, EngineSettingsOut, EngineRuleInput, EngineRuleOrderInput, PresetInput, JobBatchCreate, JobCreate, JobBatchOut, JobOut, MediaPreviewIn, TorrentManifestIn, MediaPreviewOut, TorrentManifestOut, DirectMetadataIn, DirectMetadataOut
 from app.security import SourceResolutionError, UnsafeUrlError, preflight_source_dns, validate_target_url, supported_url_schemes
 from app.worker import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, JobWorker
-from app.schemas import EnginePolicyIn, EnginePolicyOut
+from app.schemas import EnginePolicyIn, EnginePolicyOut, ProvidedCookieOut, ProvidedCookieDeletedOut
 from app.recording import can_request_stop, request_recording_stop
 
 
@@ -96,6 +98,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                 status_code=422,
                 content={"detail": jsonable_encoder(exc.errors()), "reason_code": "malformed_link"},
             )
+        if request.url.path.startswith("/api/v1/provided-cookies/"):
+            return JSONResponse(status_code=422, content={"detail": "Invalid cookie export or hostname"})
         return await request_validation_exception_handler(request, exc)
 
     def db_session():
@@ -305,34 +309,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         if len(content) > 1_000_000 or "\x00" in decoded:
             raise HTTPException(status_code=413, detail="Cookie file is too large or contains invalid bytes")
         try:
-            encrypted = encrypt_cookie(content, config.encryption_key)
+            store_cookie_file(config.data_dir / "cookies", filename, content, config.encryption_key)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
-        cookie_dir = config.data_dir / "cookies"
-        cookie_dir.mkdir(parents=True, exist_ok=True)
-        if cookie_dir.is_symlink():
-            raise HTTPException(status_code=422, detail="Cookie directory must not be a symlink")
-        target = cookie_dir / filename
-        temporary: Path | None = None
-        try:
-            # NamedTemporaryFile is created 0600; replace the destination
-            # atomically so partial writes and pre-existing symlinks cannot
-            # redirect or expose credentials outside the cookie directory.
-            with tempfile.NamedTemporaryFile(
-                mode="wb", dir=cookie_dir, prefix=".downloader-cookie-",
-                suffix=".part", delete=False,
-            ) as stream:
-                temporary = Path(stream.name)
-                os.chmod(stream.name, 0o600)
-                stream.write(encrypted)
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, target)
         except OSError as exc:
             raise HTTPException(status_code=500, detail="Cookie file could not be stored securely") from exc
-        finally:
-            if temporary is not None:
-                temporary.unlink(missing_ok=True)
         return {"filename": filename, "size_bytes": len(content), "stored": True}
 
     @app.delete("/api/v1/cookies/{filename}", response_model=CookieDeletedOut, tags=["engines"])
@@ -344,6 +325,57 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             raise HTTPException(status_code=404, detail="Cookie file not found")
         target.unlink()
         return {"deleted": True, "filename": filename}
+
+    @app.get("/api/v1/provided-cookies", response_model=list[ProvidedCookieOut], tags=["engines"])
+    def list_provided_cookies(_: bool = Depends(authenticate)):
+        directory = provided_cookie_dir(config.data_dir)
+        if directory.is_symlink():
+            raise HTTPException(status_code=422, detail="Provided cookie directory must not be a symlink")
+        if not directory.exists():
+            return []
+        rows = []
+        for path in sorted(directory.glob("*.txt")):
+            if path.is_file() and not path.is_symlink():
+                try:
+                    host = provided_hostname(path.stem)
+                except ValueError:
+                    continue
+                if path.name == host + ".txt":
+                    rows.append({"hostname": host, "stored": True})
+        return rows
+
+    @app.put("/api/v1/provided-cookies/{hostname}", response_model=ProvidedCookieOut, tags=["engines"])
+    def provide_site_cookie(hostname: str, payload: CookieUploadIn, _: bool = Depends(authenticate)):
+        try:
+            host = provided_hostname(hostname)
+            content = base64.b64decode(payload.content_base64, validate=True)
+            validate_provided_cookie_export(content, host)
+            store_cookie_file(provided_cookie_dir(config.data_dir), host + ".txt", content, config.encryption_key)
+        except (ValueError, binascii.Error) as exc:
+            raise HTTPException(status_code=422, detail="Invalid cookie export, hostname or encryption configuration") from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Provided cookie could not be stored securely") from exc
+        return {"hostname": host, "stored": True}
+
+    @app.delete("/api/v1/provided-cookies/{hostname}", response_model=ProvidedCookieDeletedOut, tags=["engines"])
+    def revoke_site_cookie(hostname: str, _: bool = Depends(authenticate)):
+        try:
+            host = provided_hostname(hostname)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="Invalid hostname") from exc
+        directory = provided_cookie_dir(config.data_dir)
+        if directory.is_symlink():
+            raise HTTPException(status_code=422, detail="Provided cookie directory must not be a symlink")
+        target = directory / (host + ".txt")
+        if not target.is_file() or target.is_symlink():
+            raise HTTPException(status_code=404, detail="Provided cookie not found")
+        try:
+            target.unlink()
+        except FileNotFoundError as exc:
+            raise HTTPException(status_code=404, detail="Provided cookie not found") from exc
+        except OSError as exc:
+            raise HTTPException(status_code=500, detail="Provided cookie could not be revoked") from exc
+        return {"hostname": host, "deleted": True}
 
     @app.get("/api/v1/presets", tags=["settings"])
     def list_presets(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
