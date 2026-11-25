@@ -638,7 +638,7 @@ def run_browser_acceptance() -> None:
                 page.get_by_role("navigation", name="Main navigation").get_by_role(
                     "button", name="Download", exact=True
                 ).click()
-                card = page.locator("article.job-card").filter(has_text="recording.m3u8")
+                card = page.locator("article.job-card").filter(has_text="streamlink")
                 stop = card.get_by_role("button", name="Stop recording", exact=True)
                 expect(stop).to_be_visible(timeout=20_000)
                 capture_ui_evidence(page, "streamlink-stop-recording.png")
