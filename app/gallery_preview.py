@@ -19,7 +19,7 @@ from app.discovery import (
     read_bounded_preview, summarize_metadata, terminate_preview_process,
 )
 
-from app.gallery_selection import MAX_GALLERY_OFFSET, MAX_GALLERY_PAGE
+from app.gallery_selection import MAX_GALLERY_OFFSET, MAX_GALLERY_PAGE, gallery_url_identity
 
 
 def _validate_window(max_entries: int, offset: int) -> None:
@@ -58,6 +58,7 @@ def summarize_gallery_messages(messages: object, max_entries: int, offset: int =
     if not isinstance(messages, list):
         raise PreviewError("Invalid gallery metadata response")
     entries = []
+    identities = []
     title = None
     for message in messages:
         if not isinstance(message, list) or not message or type(message[0]) is not int:
@@ -74,6 +75,7 @@ def summarize_gallery_messages(messages: object, max_entries: int, offset: int =
             # DataJob can report an embedded error despite exiting zero.
             raise PreviewError("Gallery metadata extraction did not complete")
         data = message[2]
+        identities.append(gallery_url_identity(message[1]))
         if len(entries) >= max_entries + 1:
             raise PreviewError("Gallery extractor exceeded the requested range")
         index = offset + len(entries) + 1
@@ -88,11 +90,14 @@ def summarize_gallery_messages(messages: object, max_entries: int, offset: int =
         })
     if not entries and offset == 0:
         raise PreviewError("No selectable gallery files were reported")
-    return summarize_metadata({
+    result = summarize_metadata({
         "title": title or "Image gallery",
         "extractor_key": "gallery-dl",
         "entries": entries,
     }, max_entries, offset)
+    for entry, identity in zip(result["entries"], identities):
+        entry["selection_id"] = identity
+    return result
 
 
 async def inspect_gallery_dl(

@@ -1135,6 +1135,10 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
         # Selection belongs only to this job, never an engine default or preset.
         has_gallery_items = engine == "gallery-dl" and "gallery_items" in raw_overrides
         gallery_items = raw_overrides.pop("gallery_items") if has_gallery_items else None
+        has_gallery_ids = engine == "gallery-dl" and "gallery_item_ids" in raw_overrides
+        gallery_ids = raw_overrides.pop("gallery_item_ids") if has_gallery_ids else None
+        if has_gallery_items and has_gallery_ids:
+            raise ValueError("Choose gallery indexes or file identities, not both")
         job_overrides = validate_engine_settings(engine, raw_overrides, partial=True)
         overrides = _merge_settings(preset_settings, job_overrides)
         if has_gallery_items:
@@ -1149,6 +1153,15 @@ def build_job(payload: JobCreate, session: Session, config: Settings) -> Job:
             selection = validate_gallery_selection_settings(effective)
             assert selection is not None
             overrides["gallery_items"] = selection[0]
+        if has_gallery_ids:
+            from app.adapters.gallery_dl import _effective_settings
+            from app.gallery_selection import validate_gallery_identity_settings
+            overrides["gallery_item_ids"] = gallery_ids
+            saved = session.get(EngineSetting, "gallery-dl")
+            effective = _effective_settings(
+                {**ENGINE_DEFAULTS["gallery-dl"], **(saved.settings if saved else {})}, overrides,
+            )
+            overrides["gallery_item_ids"] = validate_gallery_identity_settings(effective)
         if engine == "yt-dlp":
             allow_playlist = overrides.get("allow_playlist")
             if allow_playlist is None:

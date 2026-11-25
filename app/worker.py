@@ -335,7 +335,7 @@ class JobWorker:
             cookie_dir = self.settings.data_dir / "cookies"
             if (not existing_files and owner_id is not None
                     and engine in {"yt-dlp", "gallery-dl", "you-get"}
-                    and not overrides.get("cookies_file") and "gallery_items" not in overrides):
+                    and not overrides.get("cookies_file") and "gallery_items" not in overrides and "gallery_item_ids" not in overrides):
                 provided = provided_cookie_for_url(self.settings.data_dir, url)
                 if provided is not None:
                     cookie_dir = provided.parent
