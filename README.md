@@ -2,6 +2,16 @@
 
 Downloader Server is a server-side media downloader with one web interface for established CLI engines. It manages jobs, engine settings, progress, logs, and file delivery. The core product runs as a standalone Docker Compose service. Nextcloud support is an optional integration maintained in a separate repository.
 
+## Running standalone UI
+
+Actual screenshots from the successful [disposable Chromium/WebDAV acceptance run](https://github.com/Neup123/Media-Downloader-server/actions/runs/45484230590) (24 November 2026). They contain synthetic downloads only; editable fields are intentionally masked in grey. This is the tested standalone interface, not the Nextcloud plugin or a design mockup. Target-host and final visual acceptance remain separate.
+
+![Download screen with verified delivered files](docs/screenshots/01-download-desktop.png)
+
+![Desktop Library with verified download history](docs/screenshots/02-library-desktop.png)
+
+[View the mobile Library screenshot](docs/screenshots/03-library-mobile.png).
+
 ## Documentation
 
 Start with the [documentation index](docs/README.md), the [daily operator guide](docs/operator-guide.md), or the [install, upgrade and acceptance guide](docs/installation-acceptance.md). Specialized security, engine-update and release documents remain linked from that index. The [live browser acceptance workflow](.github/workflows/live-nextcloud-e2e.yml) retains masked screenshots of the running standalone Download and Library screens, including a narrow mobile view, in its `standalone-running-ui-*` artifact after successful disposable acceptance. These show the actual tested build, not the separate HTML redesign prototype. Review and refresh permanent README screenshot assets after material UI changes; target-host production acceptance remains separate.
