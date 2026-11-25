@@ -114,3 +114,16 @@ jobs for that engine and leaves previously queued jobs waiting; active
 transfers are not cancelled. Re-enable it to resume queued work, or cancel
 individual queued jobs. This is not a background-service mode or a
 credential connection. No new engine or native UI control is activated.
+
+### Explicit Streamlink recording API (opt-in)
+
+Streamlink remains disabled by default. A Core administrator can enable it
+with `PUT /api/v1/engines/streamlink/policy` and `{"enabled":true}`, then
+submit a standalone job with `{"url":"https://example.org/live","engine":"streamlink","overrides":{"quality":"best"}}` (replace the example with a public stream you may record).
+Use `POST /api/v1/jobs/{id}/stop` when `can_stop` is true to finalize the
+existing file; `stop_requested` means the request was accepted, not that
+delivery succeeded. Wait for verified terminal output. Cancel discards the
+current recording instead. An interruption after Stop never silently
+restarts a new recording; only verified completed manifests can be delivered.
+The existing timeout still applies. Explicit retry is a new recording, not
+continuation. No automatic live detection, credentials or Nextcloud UI yet.

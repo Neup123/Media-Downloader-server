@@ -218,7 +218,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
     get:
       operationId: getEngineOptionCatalog
       summary: List typed common engine option fields for graphical settings
@@ -236,7 +236,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
     get:
       operationId: getEnginePolicy
       summary: Read administrator engine admission policy
@@ -272,7 +272,7 @@ paths:
       - name: engine_name
         in: path
         required: true
-        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        schema: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
     get:
       operationId: getEngineSettings
       summary: Read global settings for one engine
@@ -771,6 +771,21 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/JobOut' }
         '409': { description: Job cannot be cancelled in its current state }
+  /jobs/{job_id}/stop:
+    parameters:
+      - name: job_id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: stopRecording
+      summary: Request graceful finalization of a standalone Streamlink recording
+      tags: [jobs]
+      responses:
+        '200': { description: Stop requested (not yet delivered), content: { application/json: { schema: { $ref: '#/components/schemas/JobOut' } } } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { description: Job not found }
+        '409': { description: Job is not an active standalone recording }
   /jobs/{job_id}/pause:
     parameters:
       - name: job_id
@@ -1040,13 +1055,13 @@ components:
       type: object
       required: [engine, enabled]
       properties:
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         enabled: { type: boolean }
     EngineStatusOut:
       type: object
       required: [name, label, role, priority, available, installed, version, defaults, url_schemes]
       properties:
-        name: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        name: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         label: { type: string }
         role: { type: string }
         priority: { type: string }
@@ -1072,13 +1087,13 @@ components:
       type: object
       required: [engine, fields]
       properties:
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         fields: { type: array, items: { $ref: '#/components/schemas/EngineOptionFieldOut' } }
     EngineSettingsOut:
       type: object
       required: [engine, settings]
       properties:
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         settings: { type: object, additionalProperties: true }
     CookieFileOut:
       type: object
@@ -1133,6 +1148,8 @@ components:
         log_text: { type: string }
         error: { type: [string, 'null'] }
         cancel_requested: { type: boolean }
+        stop_requested: { type: boolean, default: false }
+        can_stop: { type: boolean, default: false }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         finished_at: { type: [string, 'null'], format: date-time }
@@ -1147,7 +1164,7 @@ components:
       required: [url]
       properties:
         url: { type: string, minLength: 8, maxLength: 4096 }
-        engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce], default: auto }
+        engine: { type: string, enum: [auto, yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink], default: auto }
         preset_id: { type: [string, 'null'], maxLength: 36, default: null }
         overrides:
           type: object
@@ -1177,7 +1194,7 @@ components:
       required: [name, engine]
       properties:
         name: { type: string, minLength: 1, maxLength: 120 }
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         settings: { type: object, additionalProperties: true }
         description: { type: string, maxLength: 1000, default: '' }
         is_shared: { type: boolean, default: false, description: Administrator opt-in; makes a safe preset available to entitled Nextcloud users. }
@@ -1209,7 +1226,7 @@ components:
       properties:
         host_suffix: { type: string, minLength: 3, maxLength: 255, description: Hostname suffix without scheme or wildcard. Matches the exact host and its subdomains. }
         path_prefix: { type: string, maxLength: 1024, default: / }
-        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce] }
+        engine: { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
         priority: { type: integer, minimum: 0, maximum: 1000, default: 100 }
         enabled: { type: boolean, default: true }
         description: { type: string, maxLength: 255, default: '' }

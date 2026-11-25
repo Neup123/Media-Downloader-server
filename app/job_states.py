@@ -101,6 +101,7 @@ def transition_job(
     job.progress = next_progress
     if target in TERMINAL_STATUSES:
         from app.db import utcnow
+        job.stop_requested = False
         job.finished_at = utcnow()
     elif target == JobStatus.QUEUED:
         job.finished_at = None

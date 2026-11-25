@@ -16,6 +16,7 @@ from app.adapters.you_get import run_you_get
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce
 from app.adapters.yt_dlp import run_ytdlp
+from app.adapters.streamlink import run_streamlink
 from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery, save_completed_files
 from app.config import Settings
 from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
@@ -268,6 +269,11 @@ class JobWorker:
                 current = session.get(Job, job_id)
                 return not current or current.cancel_requested
 
+        async def is_stopped() -> bool:
+            with self.session_factory() as session:
+                current = session.get(Job, job_id)
+                return bool(current and current.stop_requested and not current.cancel_requested)
+
         async def on_delivered(item: dict[str, Any]) -> None:
             # Keep verified partial results if cancellation interrupts a
             # multi-file delivery; remote writes cannot be rolled back safely.
@@ -311,6 +317,10 @@ class JobWorker:
                 shutil.rmtree(workdir)
                 workdir.mkdir(parents=True, exist_ok=True)
                 await on_log("Discarded unverified output left by an interrupted download")
+            if engine == "streamlink" and not existing_files and await is_stopped():
+                # A crash/shutdown after accepted Stop must not start recording
+                # again. Only the normal verified manifest can be recovered.
+                raise RuntimeError("Recording was interrupted before finalization")
             if not existing_files and not self.settings.allow_private_targets and engine != "generic":
                 # Check every A/AAAA answer before the engine starts. This is
                 # defense in depth, not DNS pinning: an egress firewall is
@@ -365,6 +375,13 @@ class JobWorker:
                         executable="svtplay-dl", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                    )
+                elif engine == "streamlink":
+                    files = await run_streamlink(
+                        executable="streamlink", url=url, workdir=workdir,
+                        quality=overrides.get("quality", global_settings["quality"]),
+                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        is_stopped=is_stopped,
                     )
                 elif engine == "aria2c":
                     files = await self.get_aria2().download(
