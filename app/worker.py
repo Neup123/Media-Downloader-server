@@ -24,6 +24,7 @@ from app.delivery import deliver_files
 from app.redaction import _redact
 from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS
 from app.engine_gate import disabled_engines, engine_permitted
+from app.cookies import provided_cookie_for_url
 from app.user_failures import user_failure_message
 from app.security import preflight_source_dns
 
@@ -237,6 +238,7 @@ class JobWorker:
             job.updated_at = utcnow()
             append_log(job, f"Job started with engine {job.engine}")
             url, engine, overrides = job.url, job.engine, dict(job.overrides or {})
+            owner_id = job.owner_id
             engine_row = session.get(EngineSetting, engine)
             global_settings = {**ENGINE_DEFAULTS.get(engine, {}), **(engine_row.settings if engine_row else {})}
             session.commit()
@@ -316,6 +318,18 @@ class JobWorker:
                 # defense in depth, not DNS pinning: an egress firewall is
                 # still required for redirects and engine-discovered URLs.
                 await asyncio.to_thread(preflight_source_dns, url)
+            # The owner gateway has already chosen an explicit or matching
+            # personal cookie. Only if none was selected, resolve the current
+            # provisioned exact-host fallback at execution time. Never persist
+            # or return the administrator's filename in the job.
+            cookie_dir = self.settings.data_dir / "cookies"
+            if (not existing_files and owner_id is not None
+                    and engine in {"yt-dlp", "gallery-dl", "you-get"}
+                    and not overrides.get("cookies_file") and "gallery_items" not in overrides):
+                provided = provided_cookie_for_url(self.settings.data_dir, url)
+                if provided is not None:
+                    cookie_dir = provided.parent
+                    overrides["cookies_file"] = provided.name
             # Deadline covers the engine invocation, not verified delivery or
             # checksum readback; an expired engine fails with a distinct error.
             async with asyncio.timeout(self.settings.job_timeout_seconds) as deadline:
@@ -327,7 +341,7 @@ class JobWorker:
                     files = await run_ytdlp(
                         executable="yt-dlp", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
-                        cookie_dir=self.settings.data_dir / "cookies",
+                        cookie_dir=cookie_dir,
                         encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
@@ -335,7 +349,7 @@ class JobWorker:
                     files = await run_gallery_dl(
                         executable="gallery-dl", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
-                        cookie_dir=self.settings.data_dir / "cookies",
+                        cookie_dir=cookie_dir,
                         encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )
@@ -350,7 +364,7 @@ class JobWorker:
                     files = await run_you_get(
                         executable="you-get", url=url, workdir=workdir,
                         global_settings=global_settings, overrides=overrides,
-                        cookie_dir=self.settings.data_dir / "cookies",
+                        cookie_dir=cookie_dir,
                         encryption_key=self.settings.encryption_key,
                         on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
                     )

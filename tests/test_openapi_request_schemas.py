@@ -24,6 +24,7 @@ OPERATIONS = {
     ("put", "/engines/{engine_name}/settings"): EngineSettingsIn,
     ("put", "/engines/{engine_name}/policy"): EnginePolicyIn,
     ("put", "/cookies/{filename}"): CookieUploadIn,
+    ("put", "/provided-cookies/{hostname}"): CookieUploadIn,
     ("post", "/presets"): PresetInput,
     ("put", "/presets/{preset_id}"): PresetInput,
     ("post", "/engine-rules"): EngineRuleInput,

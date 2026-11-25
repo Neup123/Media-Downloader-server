@@ -112,7 +112,7 @@ def provided_hostname(value: str) -> str:
         host = value.rstrip(".").encode("idna").decode("ascii").lower()
     except UnicodeError as exc:
         raise ValueError("Provide an exact public DNS hostname") from exc
-    if (not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", host)
+    if (len(host) > 253 or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", host)
             or host.endswith((".local", ".localhost", ".internal"))
             or host.rsplit(".", 1)[-1].isdigit()):
         raise ValueError("Provide an exact public DNS hostname")
@@ -180,4 +180,8 @@ def provided_cookie_for_url(data_dir: Path, url: str) -> Path | None:
     target = directory / (host + ".txt")
     if target.is_symlink():
         raise ValueError("Provided cookie file must not be a symlink")
-    return target if target.is_file() else None
+    if not target.is_file():
+        return None
+    if not _looks_like_fernet_token(target.read_bytes()):
+        raise ValueError("Provided cookie file is not an encrypted export")
+    return target
