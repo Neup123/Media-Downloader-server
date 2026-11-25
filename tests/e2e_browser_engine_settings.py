@@ -617,6 +617,57 @@ def run_browser_acceptance() -> None:
             assert page.url.endswith("#administration"), page.url
             print("Real Chromium: legacy route redirects PASS", flush=True)
 
+            # Submit through the existing explicit opt-in standalone API. The
+            # real browser then stops the actual worker, not a mocked job.
+            policy = api.put("/engines/streamlink/policy", json={"enabled": True})
+            policy.raise_for_status()
+            job_id = None
+            try:
+                source = SOURCE_URL.rsplit("/", 1)[0] + "/recording.m3u8"
+                queued = api.post("/jobs", json={"engine": "streamlink", "url": source})
+                assert queued.status_code == 202, queued.text
+                job_id = queued.json()["id"]
+                for _ in range(45):
+                    job = api.get(f"/jobs/{job_id}").json()
+                    if job.get("can_stop") and (job.get("progress") or {}).get("downloaded_bytes", 0) > 0:
+                        break
+                    assert job["status"] not in {"completed", "failed", "cancelled"}, job
+                    time.sleep(1)
+                else:
+                    raise AssertionError("Live fixture did not yield recordable bytes")
+                page.get_by_role("navigation", name="Main navigation").get_by_role(
+                    "button", name="Download", exact=True
+                ).click()
+                card = page.locator("article.job-card").filter(has_text="recording.m3u8")
+                stop = card.get_by_role("button", name="Stop recording", exact=True)
+                expect(stop).to_be_visible(timeout=20_000)
+                capture_ui_evidence(page, "streamlink-stop-recording.png")
+                with page.expect_response(lambda response:
+                    response.url.endswith(f"/jobs/{job_id}/stop")
+                    and response.request.method == "POST", timeout=30_000) as stopped:
+                    stop.click()
+                assert stopped.value.status == 200, stopped.value.text()
+                assert stopped.value.json()["stop_requested"]
+                expect(stop).to_have_count(0, timeout=20_000)
+                for _ in range(60):
+                    job = api.get(f"/jobs/{job_id}").json()
+                    if job["status"] == "completed":
+                        break
+                    assert job["status"] not in {"failed", "cancelled"}, job
+                    time.sleep(1)
+                else:
+                    raise AssertionError("Stopped recording did not complete")
+                assert job["output_files"] and all(item["verified"] for item in job["output_files"])
+                verify_webdav_bytes(job)
+                expect(card.get_by_text("Delivered ✓ Verified", exact=True)).to_be_visible(timeout=20_000)
+                print("Real Chromium: graceful Stop on actual HLS recording and WebDAV delivery PASS", flush=True)
+            finally:
+                if job_id:
+                    job = api.get(f"/jobs/{job_id}").json()
+                    if job["status"] not in {"completed", "failed", "cancelled"}:
+                        api.post(f"/jobs/{job_id}/cancel")
+                api.put("/engines/streamlink/policy", json={"enabled": False}).raise_for_status()
+
             print("BROWSER ENGINE SETTINGS ACCEPTANCE: PASS", flush=True)
         except Exception:
             page.screenshot(path="browser-failure.png", full_page=True)

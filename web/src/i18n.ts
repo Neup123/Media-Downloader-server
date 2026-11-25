@@ -43,6 +43,8 @@ const he: Record<string, string> = {
   'Delivering to your destination': 'מעביר אל יעד הקבצים',
   'Queued': 'ממתין בתור',
   'Cancel': 'ביטול',
+  'Stop recording': 'עצירת ההקלטה',
+  'Finalizing recording…': 'מסיים ושומר את ההקלטה…',
   'Try again': 'ניסיון חוזר',
   'Re-deliver': 'העברה מחדש',
   'Open in Files': 'פתיחה בקבצים',

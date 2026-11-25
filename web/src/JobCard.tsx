@@ -7,13 +7,15 @@ export type JobCardData = {
   url: string;
   engine: string;
   status: string;
+  can_stop?: boolean;
+  stop_requested?: boolean;
   progress?: Record<string, unknown>;
   output_files?: { filename: string; size_bytes: number; verified: boolean; skipped?: boolean; skip_reason?: string; path?: string }[];
   log_text?: string;
   error?: string | null;
   created_at?: string;
 };
-type Operation = 'cancel' | 'retry' | 'redeliver';
+type Operation = 'cancel' | 'retry' | 'redeliver' | 'stop';
 type Props = { job: JobCardData; expanded: boolean; onToggle: () => void; onAction: (action: Operation) => void; locale?: Locale };
 
 function amount(input: unknown): string {
@@ -69,6 +71,8 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
     : job.status === 'skipped' ? t('Skipped')
     : job.status === 'failed' ? t('Failed — ') + (job.error || t('Check the log and try again'))
     : job.status === 'cancelled' ? t('Cancelled')
+    : job.status === 'downloading' && job.engine === 'streamlink' && job.stop_requested
+      ? t('Finalizing recording…')
     : job.status === 'downloading'
       ? t('Downloading') + (percent === null ? '' : ' ' + percent.toFixed(0) + '%') +
         (Number(job.progress?.speed_bytes_per_second) > 0
@@ -93,6 +97,7 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
       aria-valuenow={percent ?? undefined} aria-valuemin={0} aria-valuemax={100}>
       <div className="progress-fill" style={{width: (percent ?? 0) + '%'}} /></div>}
     <div className="job-actions">
+      {job.engine === 'streamlink' && job.status === 'downloading' && job.can_stop === true && !job.stop_requested && actionButton('Stop recording', 'stop')}
       {!isTerminalStatus(job.status) && actionButton('Cancel', 'cancel', 'danger')}
       {(job.status === 'failed' || job.status === 'cancelled') && actionButton('Try again', 'retry')}
       {(job.status === 'completed' || job.status === 'skipped') && actionButton('Re-deliver', 'redeliver')}
