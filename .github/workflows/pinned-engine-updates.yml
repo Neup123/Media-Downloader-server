@@ -301,6 +301,11 @@ jobs:
             echo "Candidate PR head changed since the accepted Python/Docker/WebDAV gate" >&2
             exit 1
           fi
+          # Inline acceptance is not a substitute for the PR's actual required checks.
+          # Missing, pending or failed PR checks leave the candidate unmerged.
+          gh pr checks "$number" --repo "$GITHUB_REPOSITORY" --json name,workflow,state > candidate-pr-checks.json
+          python -m scripts.required_pr_checks candidate-pr-checks.json
+          test "$(gh pr view "$number" --json headRefOid --jq .headRefOid)" = "$candidate_sha"
           gh pr merge "$number" --squash --delete-branch --match-head-commit "$candidate_sha"
           merged_sha=$(gh pr view "$number" --json mergeCommit --jq '.mergeCommit.oid // ""')
           if [[ ! "$merged_sha" =~ ^[0-9a-f]{40}$ ]]; then
