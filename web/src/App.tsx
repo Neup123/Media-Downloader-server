@@ -42,6 +42,7 @@ type EngineRuleDraft = Omit<EngineRule, 'id'>;
 type DeliveryDraft = {mode: 'local' | 'webdav'; webdav_url: string | null; username: string | null; folder: string; app_password: null};
 type Job = {
   id: string; url: string; engine: Engine; status: string;
+  can_stop?: boolean; stop_requested?: boolean;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
   log_text: string; error?: string | null; created_at: string;
 };
@@ -982,7 +983,7 @@ export default function App() {
     }
   }
 
-  async function jobAction(id: string, action: 'cancel' | 'retry' | 'redeliver') {
+  async function jobAction(id: string, action: 'cancel' | 'retry' | 'redeliver' | 'stop') {
     try {
       await request(API + '/jobs/' + id + '/' + action, { method: 'POST' });
       if (action === 'redeliver') setMessage('Re-delivery queued using the existing verified download files.');

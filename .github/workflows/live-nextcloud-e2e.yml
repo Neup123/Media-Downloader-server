@@ -134,6 +134,13 @@ jobs:
             -v error -show_entries format=duration,size \
             -of default=noprint_wrappers=1 /fixtures/sample.mp4
           sha256sum fixture/sample.mp4
+          # Test-only unbounded live playlist backed by finite local segments.
+          docker run --rm --user 0 --volume "$PWD/fixture:/fixtures" \
+            --entrypoint ffmpeg downloader-server:local \
+            -hide_banner -loglevel error -f lavfi -i "color=c=blue:s=160x120:r=10:d=8" \
+            -c:v libx264 -g 10 -sc_threshold 0 -f hls -hls_time 1 -hls_list_size 0 \
+            /fixtures/recording.m3u8
+          sed -i '/^#EXT-X-ENDLIST/d' fixture/recording.m3u8
 
       - name: Create ephemeral test credentials
         run: |
