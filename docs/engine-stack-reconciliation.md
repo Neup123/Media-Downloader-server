@@ -28,6 +28,15 @@ start-admission switch, not a promise to revoke active credentials or
 stop a daemon. Future new-engine requirement policy must extend this
 single admission path, not duplicate it.
 
+The queued-engine explanation from #177 is derived in `job_to_dict` from
+`disabled_engines` and the existing QUEUED state; `queue_block_reason` is
+`engine_disabled` only for blocked queued work, otherwise null. It updates
+on list/detail/action/SSE reads, without persisted progress mutations or
+scheduler polling writes. Active jobs remain unaffected and queued jobs
+remain cancellable. Standalone job cards translate the fixed reason code;
+Nextcloud presentation and additional requirement-gated reasons remain
+separate integration work.
+
 Do not claim the original stack or any umbrella issue complete until
 all linked acceptance criteria and exact-head checks pass. Existing
 #227 watch and #230 Streamlink adapter are already on main.

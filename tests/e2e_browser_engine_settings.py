@@ -638,7 +638,22 @@ def run_browser_acceptance() -> None:
                 page.get_by_role("navigation", name="Main navigation").get_by_role(
                     "button", name="Download", exact=True
                 ).click()
-                card = page.locator("article.job-card").filter(has_text="streamlink")
+                # Active recording occupies the engine's only slot. Disabling
+                # admission must explain the second job without affecting Stop.
+                waiting = api.post("/jobs", json={"engine": "streamlink", "url": source.rsplit("/", 1)[0] + "/recording-queued.m3u8"})
+                assert waiting.status_code == 202, waiting.text
+                waiting_id = waiting.json()["id"]
+                try:
+                    api.put("/engines/streamlink/policy", json={"enabled": False}).raise_for_status()
+                    waiting_job = api.get(f"/jobs/{waiting_id}").json()
+                    assert waiting_job["status"] == "queued"
+                    assert waiting_job["queue_block_reason"] == "engine_disabled"
+                    waiting_card = page.locator("article.job-card").filter(has_text="recording-queued.m3u8")
+                    expect(waiting_card.get_by_text("Waiting for administrator to enable the engine", exact=True)).to_be_visible(timeout=20_000)
+                    capture_ui_evidence(page, "queued-disabled-engine.png")
+                finally:
+                    api.post(f"/jobs/{waiting_id}/cancel").raise_for_status()
+                card = page.locator("article.job-card").filter(has_text="streamlink", has_not_text="recording-queued.m3u8")
                 stop = card.get_by_role("button", name="Stop recording", exact=True)
                 expect(stop).to_be_visible(timeout=20_000)
                 capture_ui_evidence(page, "streamlink-stop-recording.png")

@@ -1206,6 +1206,7 @@ components:
         engine: { type: string }
         status: { type: string, description: Includes paused for a suspended live aria2 transfer. }
         pause_capability: { type: object, additionalProperties: true, description: 'Per-job can_pause boolean, can_resume boolean, and reason string or null.' }
+        queue_block_reason: { type: [string, 'null'], enum: [engine_disabled, null], default: null, description: 'Current policy blocks starting this queued job; clears automatically when the engine is enabled or the job leaves the queue.' }
         overrides: { type: object, additionalProperties: true }
         progress: { type: object, additionalProperties: true }
         output_files: { type: array, items: { type: object, additionalProperties: true } }
