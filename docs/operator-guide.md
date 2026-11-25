@@ -71,3 +71,14 @@ This check **does not prove final download success**, identify every file
 type, validate a remote HTTPS certificate beyond curl's configured trust,
 or replace real target-host IPv4/IPv6 egress rules. Do not treat a green
 unit/CI fixture as a target-machine acceptance receipt.
+
+## Selected flat gallery files (API only)
+
+For a reviewed, public, unauthenticated flat gallery, the authenticated job
+API accepts `engine: gallery-dl` with `overrides: {gallery_items: "1,3-5"}`.
+Indexes are one-based and sorted in source order. This is a per-job option,
+not an engine setting or preset. Cookie files, proxies and extractor options
+that may change the selection are rejected. If the number of output files
+changes, the job fails before delivery; the source must be checked again.
+This count check does not establish immutable file identity for changing
+remote galleries. Native gallery preview and selection UI are not yet enabled.

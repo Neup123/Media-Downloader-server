@@ -98,8 +98,11 @@ def wait_for_job(client: httpx.Client, job_id: str, engine: str, action: str) ->
     fail(f"{engine} {action} job {job_id} did not complete in 240 seconds: {str(last)[:1200]}")
 
 
-def submit_and_wait(client: httpx.Client, engine: str) -> dict:
-    response = client.post("/jobs", json={"url": SOURCE_URL, "engine": engine})
+def submit_and_wait(client: httpx.Client, engine: str, *, overrides: dict | None = None) -> dict:
+    payload = {"url": SOURCE_URL, "engine": engine}
+    if overrides is not None:
+        payload["overrides"] = overrides
+    response = client.post("/jobs", json=payload)
     if response.status_code != 202:
         fail(f"{engine} job submission failed: HTTP {response.status_code}")
     job_id = response.json()["id"]
@@ -186,6 +189,15 @@ def main() -> None:
             verify_downloaded_files(job)
             completed.append(job)
             print(f"{engine} -> Nextcloud WebDAV: PASS", flush=True)
+
+        # Exercise the actual pinned gallery-dl CLI range through the new
+        # job-only override, not just the fake adapter or ordinary download.
+        selected = submit_and_wait(client, "gallery-dl", overrides={"gallery_items": "1"})
+        if len(selected.get("output_files") or []) != 1:
+            fail("Explicit single-item gallery selection did not deliver exactly one file")
+        verify_downloaded_files(selected)
+        completed.append(selected)
+        print("gallery-dl explicit selection -> Nextcloud WebDAV: PASS", flush=True)
 
     # This is a real Docker Compose restart, not a TestClient recreation.
     # The same persisted job IDs, logs and verified file records must survive.
