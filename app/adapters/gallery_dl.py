@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.engine_failures import EngineFailure, EngineFailureKind, classify_cli_error
 from app.cookies import materialize_cookie_file
 from app.gallery_selection import validate_gallery_selection_settings
 
@@ -166,13 +167,17 @@ async def _execute_gallery_dl(
     await on_log("Starting gallery-dl")
     await on_log("Started gallery-dl with service-managed output and progress options")
 
-    process = await asyncio.create_subprocess_exec(
-        *argv,
-        cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv,
+            cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise EngineFailure(EngineFailureKind.MISSING_BINARY, "Download executable not found") from exc
+    failure_kind = EngineFailureKind.UNKNOWN
     assert process.stdout is not None
     try:
         while True:
@@ -201,6 +206,9 @@ async def _execute_gallery_dl(
             if progress is not None:
                 await on_progress(progress)
             else:
+                category = classify_cli_error(line)
+                if category is not None:
+                    failure_kind = category
                 await on_log(_redact(line))
 
             if await is_cancelled():
@@ -223,7 +231,7 @@ async def _execute_gallery_dl(
 
     return_code = await process.wait()
     if return_code != 0:
-        raise RuntimeError(f"gallery-dl exited with status {return_code}")
+        raise EngineFailure(failure_kind, f"gallery-dl exited with status {return_code}")
 
     ignored_suffixes = (".part", ".tmp", ".ytdl", ".aria2")
     files = sorted(
@@ -233,7 +241,7 @@ async def _execute_gallery_dl(
         and not Path(str(path) + ".aria2").exists()
     )
     if not files:
-        raise RuntimeError("gallery-dl exited successfully but no output file was found")
+        raise EngineFailure(EngineFailureKind.NO_OUTPUT, "gallery-dl exited successfully but no output file was found")
     return files
 
 

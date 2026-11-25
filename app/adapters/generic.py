@@ -13,6 +13,7 @@ from typing import Any, Awaitable, Callable
 from urllib.parse import unquote, urlsplit
 
 from app.adapters.process_env import downloader_environment
+from app.engine_failures import EngineFailure, EngineFailureKind, curl_failure_kind
 from app.security import UnsafeUrlError, resolve_http_target
 
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
@@ -106,11 +107,14 @@ async def run_generic(
     argv.append(url)
 
     await on_log("Starting curl direct download")
-    process = await asyncio.create_subprocess_exec(
-        *argv, cwd=str(workdir),
-        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, cwd=str(workdir),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise EngineFailure(EngineFailureKind.MISSING_BINARY, "Download executable not found") from exc
     previous_bytes = 0
     assert process.stdout is not None
     try:
@@ -146,9 +150,10 @@ async def run_generic(
         raise
     output = (await process.stdout.read()).decode("utf-8", errors="replace").strip()
     if process.returncode != 0:
-        raise RuntimeError(f"curl failed with status {process.returncode}: {output[:500]}")
+        raise EngineFailure(curl_failure_kind(process.returncode, output[:4000]),
+                            f"curl failed with status {process.returncode}: {output[:500]}")
     if not destination.is_file():
-        raise RuntimeError("curl completed without producing a file")
+        raise EngineFailure(EngineFailureKind.NO_OUTPUT, "curl completed without producing a file")
     if output:
         await on_log(output[:500])
     return [destination]

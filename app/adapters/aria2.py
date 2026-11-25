@@ -12,6 +12,8 @@ import httpx
 
 from app.adapters.process_env import downloader_environment
 
+from app.engine_failures import EngineFailure, EngineFailureKind, aria2_failure_kind
+
 ProgressCallback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
 CancelCallback = Callable[[], Awaitable[bool]]
@@ -310,14 +312,15 @@ class Aria2Rpc:
                         await asyncio.sleep(0.25)
                         continue
                 if current == "error":
-                    raise RuntimeError(f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
+                    raise EngineFailure(aria2_failure_kind(status.get("errorCode")),
+                                        f"aria2 download failed ({status.get('errorCode')}): {status.get('errorMessage')}")
                 if current == "removed":
                     raise RuntimeError("aria2 download was removed")
                 if metadata_phase:
                     if parent_complete and followon_deadline is None:
                         followon_deadline = asyncio.get_running_loop().time() + 10.0
                     if parent_complete and asyncio.get_running_loop().time() >= followon_deadline:
-                        raise RuntimeError("aria2 completed metadata without a payload GID")
+                        raise EngineFailure(EngineFailureKind.METADATA_ONLY, "aria2 completed metadata without a payload GID")
                     await on_progress({
                         "state": "downloading", "engine_status": "active",
                         "downloaded_bytes": None, "total_bytes": None,
@@ -368,7 +371,7 @@ class Aria2Rpc:
                         if path.is_relative_to(root) and path.is_file():
                             result.append(path)
                     if not result:
-                        raise RuntimeError("aria2 reported completion but no output file was found")
+                        raise EngineFailure(EngineFailureKind.NO_OUTPUT, "aria2 reported completion but no output file was found")
                     succeeded = True
                     return result
                 if current == "paused":

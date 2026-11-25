@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
 from app.redaction import _redact
+from app.engine_failures import EngineFailure, EngineFailureKind, classify_cli_error
 
 Callback = Callable[[dict[str, Any]], Awaitable[None]]
 LogCallback = Callable[[str], Awaitable[None]]
@@ -87,15 +88,19 @@ async def run_cli(
     workdir.mkdir(parents=True, exist_ok=True)
     await on_log(f"Starting {name}")
     isolated = is_stopped is not None and os.name == 'posix'
-    process = await asyncio.create_subprocess_exec(
-        *argv, cwd=str(workdir), stdin=asyncio.subprocess.DEVNULL,
-        start_new_session=isolated,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT,
-        env=downloader_environment(),
-    )
+    try:
+        process = await asyncio.create_subprocess_exec(
+            *argv, cwd=str(workdir), stdin=asyncio.subprocess.DEVNULL,
+            start_new_session=isolated,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+            env=downloader_environment(),
+        )
+    except FileNotFoundError as exc:
+        raise EngineFailure(EngineFailureKind.MISSING_BINARY, "Download executable not found") from exc
     assert process.stdout is not None
     previous_size = 0
+    failure_kind = EngineFailureKind.UNKNOWN
     stop_deadline = None
     loop = asyncio.get_running_loop()
     try:
@@ -120,7 +125,11 @@ async def run_cli(
             if raw == b"":
                 break
             if raw:
-                await on_log(_redact(raw.decode("utf-8", errors="replace").rstrip()))
+                line = raw.decode("utf-8", errors="replace").rstrip()
+                category = classify_cli_error(line)
+                if category is not None:
+                    failure_kind = category
+                await on_log(_redact(line))
             files = _output_files(workdir)
             downloaded = sum(path.stat().st_size for path in files if path.exists())
             await on_progress({
@@ -142,8 +151,8 @@ async def run_cli(
             await _terminate_cli(process, isolated)
         raise
     if code != 0 and not (stop_deadline is not None and code in GRACEFUL_STOP_CODES):
-        raise RuntimeError(f"{name} exited with status {code}")
+        raise EngineFailure(failure_kind, f"{name} exited with status {code}")
     files = _output_files(workdir)
     if not files:
-        raise RuntimeError(f"{name} completed without any output file")
+        raise EngineFailure(EngineFailureKind.NO_OUTPUT, f"{name} completed without any output file")
     return files

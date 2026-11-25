@@ -82,6 +82,15 @@ yt-dlp compatibility and sanitized metadata with
 This does not replace the host egress policy or verify a remote gallery's
 stable identity, nested chapter handling or native signed gateway.
 
+### Engine failure categories
+
+No migration or new configuration is required. Run
+`python -m pytest tests/test_engine_failure_categories.py -q` to verify fixed
+public wording, typed CLI failure, missing executable, empty output, native
+curl/aria2 codes and separation from technical diagnostics. These tests
+exercise deterministic inputs, not actual remote authentication or every
+possible upstream diagnostic. Existing end-to-end delivery gates still apply.
+
 ### Engine admission policy migration
 
 Normal startup creates the additive `engine_policies` table. No existing

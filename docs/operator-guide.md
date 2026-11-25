@@ -96,6 +96,15 @@ ordering or immutable identity across repeated extraction. Nested chapter
 listings are not supported. Native Nextcloud users are not yet wired to
 this path.
 
+### Download failure messages
+
+The job card gives a short fixed explanation for a recognized source access,
+rate limit, missing media, network, certificate, storage or engine failure.
+Unrecognized diagnostics remain generic. Technical details stay in the
+existing redacted log; the public message never repeats an engine's stdout,
+source URL or arbitrary error text. A failed recording/transfer is not marked
+complete because the message is more helpful.
+
 ### Engine admission policy (administrator API)
 
 The authenticated Core administrator may read or set
