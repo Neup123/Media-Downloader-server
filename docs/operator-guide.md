@@ -105,6 +105,13 @@ existing redacted log; the public message never repeats an engine's stdout,
 source URL or arbitrary error text. A failed recording/transfer is not marked
 complete because the message is more helpful.
 
+For direct HTTP(S) downloads using curl, the failure message distinguishes
+timeouts, partial transfers, local read/write errors, redirect limits and
+recognized HTTP failures (including deleted files and temporary source
+unavailability). A generic TLS handshake failure is not proof of invalid
+credentials. The technical log remains the place for diagnostic details;
+the public job message does not repeat the raw source response.
+
 For aria2 file and torrent jobs, documented numeric errors also distinguish
 source timeouts, slow or interrupted transfers, failed resume, duplicate
 transfers, workspace conflicts and I/O failures, invalid metadata, protocol

@@ -102,3 +102,102 @@ def test_aria2_unknown_reserved_and_success_codes_remain_generic(code):
     assert category == EngineFailureKind.UNKNOWN
     assert user_failure_message(EngineFailure(category, "fixture diagnostic only")) == (
         "The download failed. Check the technical log or try again.")
+
+
+@pytest.mark.parametrize("codes,kind", [
+    ((1,), EngineFailureKind.UNSUPPORTED),
+    ((2, 4, 48, 53, 54, 59, 66, 77), EngineFailureKind.ENGINE_CONFIGURATION),
+    ((3,), EngineFailureKind.INVALID_METADATA),
+    ((5, 6, 7, 45, 55, 56), EngineFailureKind.NETWORK),
+    ((16, 52, 61, 92, 95), EngineFailureKind.SOURCE_PROTOCOL),
+    ((18,), EngineFailureKind.INCOMPLETE),
+    ((23, 26), EngineFailureKind.STORAGE_IO),
+    ((28,), EngineFailureKind.TIMEOUT),
+    ((33, 36), EngineFailureKind.RESUME_FAILED),
+    ((47,), EngineFailureKind.REDIRECT_LIMIT),
+    ((51, 60, 83, 90, 91), EngineFailureKind.CERTIFICATE),
+    ((67, 94), EngineFailureKind.AUTH_REQUIRED),
+    ((78,), EngineFailureKind.NOT_FOUND),
+    ((0, 20, 35, 98, 999, -9), EngineFailureKind.UNKNOWN),
+])
+def test_curl_documented_numeric_categories(codes, kind):
+    for code in codes:
+        assert curl_failure_kind(code, "synthetic-private-diagnostic") == kind
+        assert "synthetic-private-diagnostic" not in user_failure_message(
+            EngineFailure(kind, "synthetic-private-diagnostic"))
+
+
+@pytest.mark.parametrize("status,kind", [
+    (401, EngineFailureKind.AUTH_REQUIRED), (403, EngineFailureKind.ACCESS_DENIED),
+    (404, EngineFailureKind.NOT_FOUND), (408, EngineFailureKind.TIMEOUT),
+    (410, EngineFailureKind.NOT_FOUND), (429, EngineFailureKind.RATE_LIMITED),
+    (502, EngineFailureKind.SOURCE_PROTOCOL), (503, EngineFailureKind.SOURCE_BUSY),
+    (504, EngineFailureKind.TIMEOUT), (418, EngineFailureKind.UNKNOWN),
+])
+def test_curl_http_status_requires_native_error_line(status, kind):
+    line = f"curl: (22) The requested URL returned error: {status}"
+    assert curl_failure_kind(22, line) == kind
+    assert curl_failure_kind(22, "unrelated " + line) == EngineFailureKind.UNKNOWN
+    assert curl_failure_kind(22, line + " synthetic-private") == EngineFailureKind.UNKNOWN
+    assert curl_failure_kind(999, line) == EngineFailureKind.UNKNOWN
+
+
+@pytest.mark.parametrize("path,kind", [
+    ("/410", EngineFailureKind.NOT_FOUND),
+    ("/503", EngineFailureKind.SOURCE_BUSY),
+    ("/partial", EngineFailureKind.INCOMPLETE),
+    ("/redirect", EngineFailureKind.REDIRECT_LIMIT),
+])
+def test_real_curl_adapter_failure_against_loopback(tmp_path, path, kind):
+    import shutil
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from app.adapters.generic import run_generic
+
+    executable = shutil.which("curl")
+    if executable is None:
+        pytest.skip("curl binary unavailable")
+
+    class Fixture(BaseHTTPRequestHandler):
+        def log_message(self, *args):
+            pass
+
+        def do_GET(self):
+            if self.path == "/partial":
+                self.send_response(200)
+                self.send_header("Content-Length", "100")
+                self.end_headers()
+                self.wfile.write(b"synthetic")
+            elif self.path == "/redirect":
+                self.send_response(302)
+                self.send_header("Location", "/redirect")
+                self.end_headers()
+            else:
+                self.send_response(int(self.path[1:]))
+                self.end_headers()
+
+    async def no_op(_):
+        pass
+
+    async def no():
+        return False
+
+    with ThreadingHTTPServer(("127.0.0.1", 0), Fixture) as server:
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with pytest.raises(EngineFailure) as caught:
+                asyncio.run(run_generic(
+                    executable=executable, url=f"http://127.0.0.1:{server.server_port}{path}",
+                    workdir=tmp_path, global_settings={}, overrides={
+                        "retry_count": 0, "follow_redirects": path == "/redirect", "max_redirects": 1,
+                    }, on_progress=no_op, on_log=no_op, is_cancelled=no,
+                    allow_private_targets=True,
+                ))
+            assert caught.value.kind == kind
+            message = user_failure_message(caught.value)
+            assert "127.0.0.1" not in message and "curl:" not in message
+            assert message != "The download failed. Check the technical log or try again."
+        finally:
+            server.shutdown()
+            thread.join(timeout=5)
