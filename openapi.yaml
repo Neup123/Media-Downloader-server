@@ -94,6 +94,15 @@ paths:
                 formats:
                   - {format_id: '720p', ext: mp4, resolution: 1280x720, vcodec: h264, acodec: aac, filesize: null}
                 subtitle_languages: []
+        '409':
+          description: The selected extractor is disabled by administrator policy. No extractor or DNS inspection occurs; this is not a missing user requirement.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail: {type: string}
         '422':
           description: |-
             Preview failure. The existing detail is unchanged (a string for
@@ -191,6 +200,15 @@ paths:
                 file_count: 1
                 files:
                   - {index: 1, path: 'album/cover.jpg', name: cover.jpg, size_bytes: 123}
+        '409':
+          description: The aria2 engine is disabled by administrator policy. No RPC inspection occurs; this is not a missing user requirement.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [detail]
+                properties:
+                  detail: {type: string}
         '422': { description: Invalid manifest source or metadata fetch failed }
   /engines:
     get:

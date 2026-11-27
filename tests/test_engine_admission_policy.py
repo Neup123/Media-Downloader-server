@@ -99,3 +99,56 @@ def test_queued_policy_reason_is_derived_and_clears_without_a_worker(client, aut
     assert cancelled["status"] == "cancelled" and cancelled["queue_block_reason"] is None
     retried = client.post("/api/v1/jobs/" + first["id"] + "/retry", headers=auth_headers).json()
     assert retried["status"] == "queued" and retried["queue_block_reason"] == "engine_disabled"
+
+
+def test_preview_admission_before_dns_or_extractor(client, auth_headers, monkeypatch):
+    from unittest.mock import AsyncMock, Mock
+    from app.discovery import PreviewError
+    dns = Mock()
+    ytdlp = AsyncMock(side_effect=PreviewError("synthetic extractor reached"))
+    gallery = AsyncMock(side_effect=PreviewError("synthetic extractor reached"))
+    monkeypatch.setattr("app.main.preflight_source_dns", dns)
+    monkeypatch.setattr("app.main.inspect_ytdlp", ytdlp)
+    monkeypatch.setattr("app.main.inspect_gallery_dl", gallery)
+    for engine, inspect, other in (("yt-dlp", ytdlp, gallery), ("gallery-dl", gallery, ytdlp)):
+        dns.reset_mock()
+        inspect.reset_mock()
+        other.reset_mock()
+        path = f"/api/v1/engines/{engine}/policy"
+        request = {"url": "https://example.org/media", "engine": engine}
+        assert client.put(path, headers=auth_headers, json={"enabled": False}).status_code == 200
+        blocked = client.post("/api/v1/preview", headers=auth_headers, json=request)
+        assert blocked.status_code == 409
+        assert blocked.json() == {"detail": "Selected engine is disabled"}
+        dns.assert_not_called()
+        inspect.assert_not_awaited()
+        other.assert_not_awaited()
+        assert client.put(path, headers=auth_headers, json={"enabled": True}).status_code == 200
+        allowed = client.post("/api/v1/preview", headers=auth_headers, json=request)
+        assert allowed.status_code == 422
+        assert allowed.json()["detail"] == "synthetic extractor reached"
+        dns.assert_called_once()
+        inspect.assert_awaited_once()
+        other.assert_not_awaited()
+
+
+def test_disabled_aria2_manifest_never_creates_rpc(client, auth_headers, monkeypatch):
+    from unittest.mock import Mock, AsyncMock
+    rpc = Mock()
+    rpc.return_value.inspect_torrent = AsyncMock(side_effect=ValueError("synthetic RPC reached"))
+    rpc.return_value.close = AsyncMock()
+    monkeypatch.setattr("app.main.Aria2Rpc", rpc)
+    path = "/api/v1/engines/aria2c/policy"
+    request = {"url": "magnet:?xt=urn:btih:0123456789012345678901234567890123456789"}
+    assert client.put(path, headers=auth_headers, json={"enabled": False}).status_code == 200
+    blocked = client.post("/api/v1/torrent/manifest", headers=auth_headers, json=request)
+    assert blocked.status_code == 409
+    assert blocked.json() == {"detail": "Selected engine is disabled"}
+    rpc.assert_not_called()
+    assert client.put(path, headers=auth_headers, json={"enabled": True}).status_code == 200
+    allowed = client.post("/api/v1/torrent/manifest", headers=auth_headers, json=request)
+    assert allowed.status_code == 422
+    assert allowed.json()["detail"] == "synthetic RPC reached"
+    rpc.assert_called_once()
+    rpc.return_value.inspect_torrent.assert_awaited_once()
+    rpc.return_value.close.assert_awaited_once()

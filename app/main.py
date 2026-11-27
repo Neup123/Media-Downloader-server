@@ -141,7 +141,12 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         return {"status": "ready", "service": "downloader-server"}
 
     @app.post("/api/v1/preview", response_model=MediaPreviewOut, response_model_exclude_unset=True, tags=["jobs"])
-    async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
+    async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate),
+                            session: Session = Depends(db_session)):
+        # Administrative admission is not a missing user credential. Reject
+        # before DNS or extractor work; do not emit a requirement hint.
+        if not engine_permitted(session, payload.engine):
+            raise HTTPException(status_code=409, detail="Selected engine is disabled")
         try:
             # Explicit extractor choice only; keep existing yt-dlp callers
             # unchanged. The gallery path is strictly public even on trusted
@@ -173,8 +178,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
 
     @app.post("/api/v1/torrent/manifest", response_model=TorrentManifestOut, tags=["jobs"])
-    async def torrent_manifest(payload: TorrentManifestIn, _: bool = Depends(authenticate)):
+    async def torrent_manifest(payload: TorrentManifestIn, _: bool = Depends(authenticate),
+                               session: Session = Depends(db_session)):
         """Inspect magnet metadata or uploaded .torrent bytes without a download job."""
+        if not engine_permitted(session, "aria2c"):
+            raise HTTPException(status_code=409, detail="Selected engine is disabled")
         try:
             url = None
             torrent_base64 = None
