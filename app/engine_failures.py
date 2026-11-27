@@ -64,17 +64,47 @@ def classify_cli_error(line: str) -> EngineFailureKind | None:
     return EngineFailureKind.UNKNOWN
 
 
+# curl's documented exit statuses (HTTP(S) downloader scope).
+# https://everything.curl.dev/cmdline/exitcode.html
+# Do not infer a credential failure from a generic TLS or protocol error.
+_CURL_FAILURES = {
+    1: EngineFailureKind.UNSUPPORTED,
+    **dict.fromkeys((2, 4, 48, 53, 54, 59, 66, 77), EngineFailureKind.ENGINE_CONFIGURATION),
+    3: EngineFailureKind.INVALID_METADATA,
+    **dict.fromkeys((5, 6, 7, 45, 55, 56), EngineFailureKind.NETWORK),
+    **dict.fromkeys((16, 52, 61, 92, 95), EngineFailureKind.SOURCE_PROTOCOL),
+    18: EngineFailureKind.INCOMPLETE,
+    **dict.fromkeys((23, 26), EngineFailureKind.STORAGE_IO),
+    28: EngineFailureKind.TIMEOUT,
+    **dict.fromkeys((33, 36), EngineFailureKind.RESUME_FAILED),
+    47: EngineFailureKind.REDIRECT_LIMIT,
+    **dict.fromkeys((51, 60, 83, 90, 91), EngineFailureKind.CERTIFICATE),
+    **dict.fromkeys((67, 94), EngineFailureKind.AUTH_REQUIRED),
+    78: EngineFailureKind.NOT_FOUND,
+}
+_CURL_HTTP_FAILURES = {
+    "401": EngineFailureKind.AUTH_REQUIRED,
+    "403": EngineFailureKind.ACCESS_DENIED,
+    "404": EngineFailureKind.NOT_FOUND,
+    "408": EngineFailureKind.TIMEOUT,
+    "410": EngineFailureKind.NOT_FOUND,
+    "429": EngineFailureKind.RATE_LIMITED,
+    "502": EngineFailureKind.SOURCE_PROTOCOL,
+    "503": EngineFailureKind.SOURCE_BUSY,
+    "504": EngineFailureKind.TIMEOUT,
+}
+
+
 def curl_failure_kind(code: int, detail: str) -> EngineFailureKind:
-    # curl's stable exit codes; parse HTTP status only from curl's own format.
     if code == 22:
-        match = re.search(r"curl: \(22\) The requested URL returned error: (\d{3})\b", detail)
+        # Match only curl's own HTTP error line, not arbitrary status-like text.
+        match = re.search(
+            r"^curl: \(22\) The requested URL returned error: (\d{3})[ \t]*$",
+            detail[:4000], re.MULTILINE,
+        )
         if match:
-            return {"401": EngineFailureKind.AUTH_REQUIRED, "403": EngineFailureKind.ACCESS_DENIED,
-                    "404": EngineFailureKind.NOT_FOUND, "429": EngineFailureKind.RATE_LIMITED}.get(
-                        match[1], EngineFailureKind.UNKNOWN)
-    return {5: EngineFailureKind.NETWORK, 6: EngineFailureKind.NETWORK,
-            7: EngineFailureKind.NETWORK, 60: EngineFailureKind.CERTIFICATE}.get(
-                code, EngineFailureKind.UNKNOWN)
+            return _CURL_HTTP_FAILURES.get(match[1], EngineFailureKind.UNKNOWN)
+    return _CURL_FAILURES.get(code, EngineFailureKind.UNKNOWN)
 
 
 # aria2 1.37 RPC errorCode uses the documented exit-status vocabulary.
