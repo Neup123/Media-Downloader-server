@@ -80,8 +80,10 @@ def permits_youtube_fallback(
     if parts.scheme not in {"https", "http"} or parts.username or parts.password:
         return False
     host = parts.hostname
-    query = parse_qs(parts.query)
-    if "list" in query:
+    if parts.port not in {None, 443 if parts.scheme == "https" else 80}:
+        return False
+    query = parse_qs(parts.query, keep_blank_values=True)
+    if "list" in query or "p" in query:
         return False
     if host in {"youtu.be", "www.youtu.be"}:
         video_id = parts.path.strip("/")

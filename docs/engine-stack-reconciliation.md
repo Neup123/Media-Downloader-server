@@ -91,3 +91,16 @@ remain open; deterministic subprocess and worker tests do not certify the
 original upstream dethrottle incident, a real YouTube download, provider
 authentication, or production exposure. Do not treat this candidate as
 permission to enable gated engines or deploy through the target-host gate.
+
+
+Pinned upstream source check: you-get v0.4.1743
+[`youtube.py` lines 246–272](https://github.com/soimort/you-get/blob/v0.4.1743/src/you_get/extractors/youtube.py#L246-L272)
+and lines 353–364 emit the exact fatal missing-stream-URL diagnostic
+after the playability check. Recognize only that native explicit
+extractor message (including its optional SGR coloring), not generic
+exceptions or the missing-base.js diagnostic. Subprocess fixtures call
+the installed pinned package's own logger. The normal CLI
+[`common.py` lines 1800–1817](https://github.com/soimort/you-get/blob/v0.4.1743/src/you_get/common.py#L1800-L1817)
+suppresses unexpected tracebacks, and debug mode logs the parsed
+arguments. Do not enable debug to infer the historical dethrottle
+incident or risk exposing source or cookie arguments.

@@ -22,6 +22,9 @@ URL = "https://youtu.be/abcdefghijk"
     ("https://www.youtube.com/shorts/abcdefghijk", {}, EngineFailureKind.UNSUPPORTED, True),
     ("https://youtu.be.evil.test/abcdefghijk", {}, EngineFailureKind.UNSUPPORTED, False),
     ("https://youtu.be/abcdefghijk?list=fixture", {}, EngineFailureKind.UNSUPPORTED, False),
+    ("https://youtu.be/abcdefghijk?p=fixture", {}, EngineFailureKind.UNSUPPORTED, False),
+    ("https://youtu.be/abcdefghijk?list=", {}, EngineFailureKind.UNSUPPORTED, False),
+    ("https://youtu.be:8443/abcdefghijk", {}, EngineFailureKind.UNSUPPORTED, False),
     ("https://www.youtube.com/playlist?list=fixture", {}, EngineFailureKind.UNSUPPORTED, False),
     ("https://example.test/abcdefghijk", {}, EngineFailureKind.UNSUPPORTED, False),
     (URL, {"format": "fixture"}, EngineFailureKind.UNSUPPORTED, False),
@@ -56,8 +59,8 @@ assert cookie.parent != Path.cwd()
 from pathlib import Path
 """ + cookie_check + """
 Path('stale.mp4').write_bytes(b'unverified primary bytes')
-print('ERROR: unsupported URL')
-raise SystemExit(3)
+from you_get.util import log
+log.wtf('No signatureCipher or url for itag=18', exit_code=3)
 """)
     secondary = executable(tmp_path, "secondary", """
 from pathlib import Path
@@ -230,3 +233,16 @@ def test_additive_producer_migration_preserves_existing_jobs(settings):
             assert migrated.output_engine is None
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize("line,kind", [
+    ("you-get:   No signatureCipher or url for itag=18", EngineFailureKind.UNSUPPORTED),
+    ("\x1b[31;1myou-get: No signatureCipher or url for itag=140\x1b[0m", EngineFailureKind.UNSUPPORTED),
+    ("you-get: [error] oops, something went wrong.", EngineFailureKind.UNKNOWN),
+    ("you-get: [Failed] Unable to find base.js on the video page", None),
+    ("INFO: you-get: No signatureCipher or url for itag=18", None),
+    ("you-get: No signatureCipher or url for itag=18 https://example.test/secret", None),
+])
+def test_native_pinned_extractor_diagnostic_only(line, kind):
+    from app.engine_failures import classify_cli_error
+    assert classify_cli_error(line) == kind
