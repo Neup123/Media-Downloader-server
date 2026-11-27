@@ -1222,6 +1222,12 @@ components:
         owner_id: { type: [string, 'null'], default: null }
         delivery_subfolder: { type: [string, 'null'], default: null, description: One-off subfolder under the configured standalone destination. }
         engine: { type: string }
+        output_engine:
+          anyOf:
+            - { type: string, enum: [yt-dlp, aria2c, gallery-dl, generic, you-get, svtplay-dl, get-sauce, streamlink] }
+            - { type: 'null' }
+          default: null
+          description: Alternate engine that produced completed output. Null means no alternate output.
         status: { type: string, description: Includes paused for a suspended live aria2 transfer. }
         pause_capability: { type: object, additionalProperties: true, description: 'Per-job can_pause boolean, can_resume boolean, and reason string or null.' }
         queue_block_reason:

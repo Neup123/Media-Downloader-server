@@ -40,6 +40,13 @@ class EngineFailure(RuntimeError):
         super().__init__(diagnostic)
 
 
+class YouGetFallbackFailure(EngineFailure):
+    """Fixed identity of a failed secondary attempt; never reflect its text."""
+
+    def __init__(self, kind: EngineFailureKind):
+        super().__init__(kind, f"you-get fallback to yt-dlp failed ({kind.value})")
+
+
 # Accept explicit diagnostic markers used by the CLI adapters, rather than
 # a word such as "error" in an ordinary progress or media-title line.
 _CLI_ERROR_MARKER = re.compile(
@@ -59,6 +66,14 @@ def classify_cli_error(line: str) -> EngineFailureKind | None:
     # Only inspect bounded explicit diagnostic lines. URL paths, IDs and
     # query values are not HTTP status codes or authentication evidence.
     text = line[:4000]
+    # The pinned you-get 0.4.1743 YouTube extractor emits this fatal line
+    # after its playability check, without an [error] prefix. Native logger
+    # prefixes the program name and may wrap the line in SGR colors.
+    # Do NOT classify the generic catch-all or missing-base.js failure:
+    # those could represent authentication, network or other failures.
+    uncolored = re.sub(r"\x1b\[[0-9;]*m", "", text)
+    if re.fullmatch(r"\s*you-get:\s+No signatureCipher or url for itag=[0-9]+\s*", uncolored):
+        return EngineFailureKind.UNSUPPORTED
     marker = _CLI_ERROR_MARKER.match(text)
     if marker is None:
         return None

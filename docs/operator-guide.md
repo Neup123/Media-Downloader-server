@@ -122,6 +122,14 @@ timeout instead directs the user to the destination; completed output
 remains eligible for existing verified-manifest recovery. The deadline
 budget excludes time spent paused in aria2, as before.
 
+In the reviewed fallback candidate, an explicit unsupported-extractor
+error on a single YouTube video can retry once with yt-dlp if permitted and
+capacity is available. The original selected engine remains in the job;
+the alternate producer is recorded separately when its output completes.
+A failed secondary attempt reports its own fixed error category. The
+worker never retries an authentication, rate-limit, network or unknown
+error using a different engine. Live YouTube acceptance is still required.
+
 A missing executable is an administrator installation problem. A zero-exit
 CLI run without eligible output is still a failure: partial/temporary
 files, aria2 sidecar-associated files and symlink escapes do not qualify.

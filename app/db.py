@@ -31,6 +31,8 @@ class Job(Base):
     delivery_token: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivery_subfolder: Mapped[str | None] = mapped_column(String(100), nullable=True)
     engine: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Alternate engine that produced the completed output, if any.
+    output_engine: Mapped[str | None] = mapped_column(String(40), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="queued", index=True)
     overrides: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     progress: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
@@ -127,6 +129,8 @@ def initialize_database(engine) -> None:
     columns = {column["name"] for column in inspect(engine).get_columns("jobs")}
     preset_columns = {column["name"] for column in inspect(engine).get_columns("presets")}
     with engine.begin() as connection:
+        if "output_engine" not in columns:
+            connection.execute(text("ALTER TABLE jobs ADD COLUMN output_engine VARCHAR(40)"))
         if "stop_requested" not in columns:
             connection.execute(text("ALTER TABLE jobs ADD COLUMN stop_requested BOOLEAN NOT NULL DEFAULT FALSE"))
         if "owner_id" not in columns:

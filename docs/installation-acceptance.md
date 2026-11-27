@@ -112,3 +112,19 @@ container HLS acceptance. The isolated local test checks actual CLI
 recording, graceful Stop, decoded media, verified local delivery and recovery;
 it does not establish real Twitch/YouTube, user credentials or native
 Nextcloud acceptance. No new production deployment is required for CI.
+
+
+### Narrow you-get fallback candidate (legacy #177)
+
+The candidate adds a nullable `jobs.output_engine` column through the
+existing additive database initializer. Keep the existing database volume;
+the migration preserves prior rows and is repeatable. A normal job keeps
+its requested engine and a null alternate producer. Run
+`python -m pytest tests/test_you_get_fallback.py tests/test_openapi_request_shapes.py -q`
+and the normal exact-head integration CI before review. Verify both
+primary and secondary failure paths, stale-workspace cleanup, cancellation,
+disabled/saturated target rejection, verified re-delivery and producer
+provenance. Deterministic fixtures are not real YouTube acceptance.
+The candidate must remain a draft until the separate review and authorized
+live YouTube acceptance are documented; do not activate or deploy it on
+the strength of synthetic tests.

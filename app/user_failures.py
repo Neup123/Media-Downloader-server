@@ -5,7 +5,7 @@ import asyncio
 from typing import Literal
 
 from app.delivery import DeliveryError
-from app.engine_failures import EngineFailure, EngineFailureKind
+from app.engine_failures import EngineFailure, EngineFailureKind, YouGetFallbackFailure
 from app.engine_registry import ENGINE_NAMES
 from app.security import SourceResolutionError, UnsafeUrlError
 
@@ -52,6 +52,13 @@ def user_failure_message(
         return "The download took too long. Try again."
     if during_delivery:
         return "The download finished, but the file could not be saved. Check your destination."
+    if isinstance(error, YouGetFallbackFailure):
+        return (
+            "you-get could not handle this YouTube link; yt-dlp fallback also failed. "
+            + user_failure_message(
+                EngineFailure(error.kind, ""), cookie_guidance=cookie_guidance,
+            )
+        )
     if isinstance(error, EngineFailure):
         if error.kind == EngineFailureKind.AUTH_REQUIRED:
             if cookie_guidance == "selected":

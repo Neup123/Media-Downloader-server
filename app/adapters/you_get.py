@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import re
+from urllib.parse import parse_qs, urlsplit
 from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.common_cli import run_cli
 from app.cookies import materialize_cookie_file
+from app.engine_failures import EngineFailure, EngineFailureKind
 
 
 def effective_settings(global_settings: dict[str, Any], overrides: dict[str, Any]) -> dict[str, Any]:
@@ -56,3 +59,44 @@ async def run_you_get(
             name="you-get", argv=argv, workdir=workdir,
             on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
         )
+
+
+def permits_youtube_fallback(
+    url: str, global_settings: dict[str, Any], overrides: dict[str, Any],
+    failure: EngineFailure,
+) -> bool:
+    """Only explicit unsupported-extractor failures for single YouTube videos.
+
+    No generic exceptions, auth/access/network errors, custom format/proxy
+    settings, playlist links or lookalike domains can trigger another engine.
+    The worker separately enforces the target engine's policy and capacity.
+    """
+    if failure.kind != EngineFailureKind.UNSUPPORTED:
+        return False
+    options = effective_settings(global_settings, overrides)
+    if options["format"] or options["no_proxy"]:
+        return False
+    parts = urlsplit(url)
+    if parts.scheme not in {"https", "http"} or parts.username or parts.password:
+        return False
+    host = parts.hostname
+    if parts.port not in {None, 443 if parts.scheme == "https" else 80}:
+        return False
+    query = parse_qs(parts.query, keep_blank_values=True)
+    if "list" in query or "p" in query:
+        return False
+    if host in {"youtu.be", "www.youtu.be"}:
+        video_id = parts.path.strip("/")
+    elif host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"}:
+        if parts.path == "/watch":
+            values = query.get("v", [])
+            video_id = values[0] if len(values) == 1 else ""
+        elif parts.path.startswith(("/shorts/", "/live/")):
+            video_id = parts.path.split("/")[2]
+            if parts.path.rstrip("/") != "/" + parts.path.split("/")[1] + "/" + video_id:
+                return False
+        else:
+            return False
+    else:
+        return False
+    return re.fullmatch(r"[A-Za-z0-9_-]{11}", video_id) is not None

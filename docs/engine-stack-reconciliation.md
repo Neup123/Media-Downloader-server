@@ -62,3 +62,45 @@ active-engine precedence and exact settings targets; current signed preview
 only accepts yt-dlp/gallery-dl, and cookie list/upload/delete do not implement
 that provider contract. Do not equate metadata failures, generic URL matching,
 file presence, or synthetic credentials with successful authorization.
+
+
+## Narrow you-get fallback candidate (#177)
+
+The candidate only retries an explicit unsupported-extractor failure for a
+single exact-host YouTube video; unknown errors (including an unclassified
+dethrottle traceback), auth, access, network, rate limits, playlists,
+custom primary format/proxy, unavailable/disabled/saturated yt-dlp and
+nondefault target-engine settings never trigger automatic fallback. The
+worker changes the existing dispatcher reservation synchronously from
+you-get to yt-dlp, within the original timeout and cancellation scope.
+The primary workspace is discarded before the secondary attempt. The
+same selected cookie file, if any, is passed through the existing
+materializer; there is no new credential store or credential validation.
+Fixed public error mapping identifies both engines and the secondary
+category without reflecting diagnostics.
+
+No new job state: STARTING/EXTRACTING/DOWNLOADING use the existing
+app/job_states.py transition table and worker writer. The selected engine
+remains immutable. The additive nullable output_engine column records the
+alternate producer before manifest publication; no verified manifest
+means the producer is cleared on failure or recovery. Verified re-delivery
+retains it. Core JobOut and provenance expose it separately.
+
+The legacy real YouTube acceptance and separate reviewed-patch requirement
+remain open; deterministic subprocess and worker tests do not certify the
+original upstream dethrottle incident, a real YouTube download, provider
+authentication, or production exposure. Do not treat this candidate as
+permission to enable gated engines or deploy through the target-host gate.
+
+
+Pinned upstream source check: you-get v0.4.1743
+[`youtube.py` lines 246–272](https://github.com/soimort/you-get/blob/v0.4.1743/src/you_get/extractors/youtube.py#L246-L272)
+and lines 353–364 emit the exact fatal missing-stream-URL diagnostic
+after the playability check. Recognize only that native explicit
+extractor message (including its optional SGR coloring), not generic
+exceptions or the missing-base.js diagnostic. Subprocess fixtures call
+the installed pinned package's own logger. The normal CLI
+[`common.py` lines 1800–1817](https://github.com/soimort/you-get/blob/v0.4.1743/src/you_get/common.py#L1800-L1817)
+suppresses unexpected tracebacks, and debug mode logs the parsed
+arguments. Do not enable debug to infer the historical dethrottle
+incident or risk exposing source or cookie arguments.
