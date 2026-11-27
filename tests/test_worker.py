@@ -165,3 +165,83 @@ def test_delivery_completion_status_distinguishes_existing_collision():
     assert delivery_completion_status(renamed) == JobStatus.COMPLETED
     assert delivery_completion_status(verified) == JobStatus.COMPLETED
     assert delivery_completion_status([verified[0], skipped[0]]) == JobStatus.SKIPPED
+
+
+def test_worker_timeout_messages_follow_actual_phase(settings, client, auth_headers, monkeypatch):
+    import asyncio
+    from dataclasses import replace
+    from unittest.mock import AsyncMock
+
+    from app.completion import WorkspaceRecoveryState, inspect_workspace_recovery
+
+    worker = JobWorker(client.app.state.session_factory, replace(settings, job_timeout_seconds=1))
+
+    async def run_case(case):
+        async def engine(**kwargs):
+            if case == "deadline":
+                # Real asyncio deadline, not a fabricated TimeoutError.
+                await asyncio.sleep(30)
+            if case == "adapter":
+                raise TimeoutError("synthetic adapter diagnostic")
+            if case == "cancel":
+                raise asyncio.CancelledError
+            path = kwargs["workdir"] / "fixture.bin"
+            path.write_bytes(b"synthetic complete output")
+            return [path]
+
+        adapter = AsyncMock(side_effect=engine)
+        delivery = AsyncMock(side_effect=TimeoutError("synthetic delivery diagnostic"))
+        monkeypatch.setattr("app.worker.run_generic", adapter)
+        monkeypatch.setattr("app.worker.deliver_files", delivery)
+        response = client.post("/api/v1/jobs", headers=auth_headers, json={
+            "url": "https://example.org/fixture.bin", "engine": "generic",
+        })
+        assert response.status_code == 202
+        job_id = response.json()["id"]
+        await worker._execute(job_id)
+        adapter.assert_awaited_once()
+        job = client.get("/api/v1/jobs/" + job_id, headers=auth_headers).json()
+        assert job_id not in worker._engine_deadlines
+        assert job_id not in worker._paused_remaining
+        if case == "cancel":
+            assert job["status"] == "cancelled"
+            assert job["error"] is None
+            delivery.assert_not_awaited()
+        else:
+            assert job["status"] == "failed"
+            assert job["finished_at"] is not None
+            assert "synthetic" not in job["error"]
+            if case == "deadline":
+                assert job["error"] == (
+                    "The download took too long. generic reached the configured "
+                    "1-second download limit. Try a smaller download or "
+                    "ask the administrator to review the limit."
+                )
+                delivery.assert_not_awaited()
+            elif case == "adapter":
+                assert job["error"] == "The download took too long. Try again."
+                delivery.assert_not_awaited()
+            else:
+                assert job["error"] == "File delivery timed out. Check your destination and retry."
+                delivery.assert_awaited_once()
+                recovery = inspect_workspace_recovery(settings.data_dir / "jobs" / job_id)
+                assert recovery.state == WorkspaceRecoveryState.VERIFIED_COMPLETION
+                assert len(recovery.files) == 1
+
+    for case in ("deadline", "adapter", "delivery", "cancel"):
+        asyncio.run(run_case(case))
+
+
+def test_deadline_message_uses_only_trusted_engine_and_duration():
+    from app.user_failures import user_failure_message
+    error = TimeoutError("synthetic private diagnostic")
+    for value in (("untrusted engine", 60), ("generic", -1), ("generic", True)):
+        assert user_failure_message(error, engine_deadline=value) == (
+            "The download took too long. Try again."
+        )
+    assert user_failure_message(error, during_delivery=True, engine_deadline=("generic", 60)) == (
+        "File delivery timed out. Check your destination and retry."
+    )
+    assert user_failure_message(RuntimeError("synthetic"), engine_deadline=("generic", 60)) == (
+        "The download failed. Check the technical log or try again."
+    )

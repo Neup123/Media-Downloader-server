@@ -469,7 +469,16 @@ class JobWorker:
                         current.progress = {**(current.progress or {}),
                                             "partial_delivery": True,
                                             "verified_file_count": len(current.output_files)}
-                    current.error = user_failure_message(exc, during_delivery=was_delivering)
+                    deadline = self._engine_deadlines.get(job_id)
+                    expired_engine_deadline = (
+                        (engine, self.settings.job_timeout_seconds)
+                        if not was_delivering and deadline is not None and deadline.expired()
+                        else None
+                    )
+                    current.error = user_failure_message(
+                        exc, during_delivery=was_delivering,
+                        engine_deadline=expired_engine_deadline,
+                    )
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")
                     session.commit()

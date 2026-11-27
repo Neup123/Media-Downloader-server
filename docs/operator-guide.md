@@ -105,6 +105,14 @@ existing redacted log; the public message never repeats an engine's stdout,
 source URL or arbitrary error text. A failed recording/transfer is not marked
 complete because the message is more helpful.
 
+If the configured engine execution deadline expires, the job identifies the
+engine and configured limit (in seconds). Retry a smaller download or ask
+the administrator to review `JOB_TIMEOUT_SECONDS`. A separate adapter
+timeout does not imply the configured deadline was exhausted. A delivery
+timeout instead directs the user to the destination; completed output
+remains eligible for existing verified-manifest recovery. The deadline
+budget excludes time spent paused in aria2, as before.
+
 For direct HTTP(S) downloads using curl, the failure message distinguishes
 timeouts, partial transfers, local read/write errors, redirect limits and
 recognized HTTP failures (including deleted files and temporary source
