@@ -46,6 +46,19 @@ def user_failure_message(error: Exception, *, during_delivery: bool = False) -> 
             EngineFailureKind.CERTIFICATE: "The source certificate could not be verified. Contact the administrator.",
             EngineFailureKind.DISK_FULL: "The download server has insufficient disk space. Contact the administrator.",
             EngineFailureKind.METADATA_ONLY: "Torrent metadata was retrieved, but no file transfer started. Try again later.",
+            EngineFailureKind.TIMEOUT: "The source did not respond in time. Try again later.",
+            EngineFailureKind.SLOW_TRANSFER: "The transfer was too slow to continue. Retry or ask the administrator to check the speed limit.",
+            EngineFailureKind.INCOMPLETE: "The transfer stopped before completion. Retry the download.",
+            EngineFailureKind.RESUME_FAILED: "The previous transfer could not be resumed. Start a new download.",
+            EngineFailureKind.DUPLICATE_TRANSFER: "The same file or torrent is already downloading. Wait for that transfer to finish.",
+            EngineFailureKind.FILE_CONFLICT: "The output file already exists. Ask the administrator to check the download workspace.",
+            EngineFailureKind.STORAGE_IO: "The server could not read or write the download workspace. Ask the administrator to check storage and permissions.",
+            EngineFailureKind.INVALID_METADATA: "The download metadata or link is invalid. Obtain a valid source link or torrent file.",
+            EngineFailureKind.SOURCE_PROTOCOL: "The source returned an unexpected response. Check the link or try again later.",
+            EngineFailureKind.REDIRECT_LIMIT: "The source redirected too many times. Check the link.",
+            EngineFailureKind.ENGINE_CONFIGURATION: "The download engine could not process its settings or request. Contact the administrator.",
+            EngineFailureKind.SOURCE_BUSY: "The source is temporarily unavailable. Try again later.",
+            EngineFailureKind.CHECKSUM_FAILED: "The downloaded data failed its integrity check. Retry the download.",
         }
         return messages.get(error.kind, "The download failed. Check the technical log or try again.")
     return "The download failed. Check the technical log or try again."
