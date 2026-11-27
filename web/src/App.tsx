@@ -43,6 +43,7 @@ type DeliveryDraft = {mode: 'local' | 'webdav'; webdav_url: string | null; usern
 type Job = {
   id: string; url: string; engine: Engine; status: string;
   can_stop?: boolean; stop_requested?: boolean;
+  queue_block_reason?: 'engine_disabled' | null;
   progress: Record<string, unknown>; output_files: { filename: string; size_bytes: number; verified: boolean }[];
   log_text: string; error?: string | null; created_at: string;
 };

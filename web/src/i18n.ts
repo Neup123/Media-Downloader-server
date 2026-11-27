@@ -42,6 +42,7 @@ const he: Record<string, string> = {
   'Downloading': 'מוריד',
   'Delivering to your destination': 'מעביר אל יעד הקבצים',
   'Queued': 'ממתין בתור',
+  'Waiting for administrator to enable the engine': 'ממתין להפעלת המנוע על ידי מנהל המערכת',
   'Cancel': 'ביטול',
   'Stop recording': 'עצירת ההקלטה',
   'Finalizing recording…': 'מסיים ושומר את ההקלטה…',

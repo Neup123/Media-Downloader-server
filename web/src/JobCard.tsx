@@ -9,6 +9,7 @@ export type JobCardData = {
   status: string;
   can_stop?: boolean;
   stop_requested?: boolean;
+  queue_block_reason?: 'engine_disabled' | null;
   progress?: Record<string, unknown>;
   output_files?: { filename: string; size_bytes: number; verified: boolean; skipped?: boolean; skip_reason?: string; path?: string }[];
   log_text?: string;
@@ -78,7 +79,8 @@ export function JobCard({job, expanded, onToggle, onAction, locale = 'en'}: Prop
         (Number(job.progress?.speed_bytes_per_second) > 0
           ? ' · ' + amount(job.progress?.speed_bytes_per_second) + '/s' : '')
       : job.status === 'delivering' ? t('Delivering to your destination')
-      : job.status === 'queued' ? t('Queued') : job.status.replace(/-/g, ' ');
+      : job.status === 'queued' ? (job.queue_block_reason === 'engine_disabled'
+        ? t('Waiting for administrator to enable the engine') : t('Queued')) : job.status.replace(/-/g, ' ');
   return <article className={'job-card job-' + job.status}>
     <div className="job-card-head">
       <span className="job-card-icon" aria-hidden="true">{symbol(job)}</span>

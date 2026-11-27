@@ -60,3 +60,42 @@ def test_engine_registry_requires_probe_and_policy(client, auth_headers, monkeyp
     client.put("/api/v1/engines/generic/policy", headers=auth_headers, json={"enabled": True})
     monkeypatch.setattr("app.main.shutil.which", lambda name: None)
     assert generic()["available"] is False and generic()["enabled"] is True
+
+
+def test_queued_policy_reason_is_derived_and_clears_without_a_worker(client, auth_headers):
+    path = "/api/v1/engines/generic/policy"
+    first = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.org/first.bin", "engine": "generic"
+    }).json()
+    other = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.org/other", "engine": "yt-dlp"
+    }).json()
+    active = client.post("/api/v1/jobs", headers=auth_headers, json={
+        "url": "https://example.org/active.bin", "engine": "generic"
+    }).json()
+    from app.job_states import JobStatus, transition_job
+    with client.app.state.session_factory() as session:
+        transition_job(session.get(Job, active["id"]), JobStatus.STARTING)
+        session.commit()
+    assert first["queue_block_reason"] is None
+    assert client.put(path, headers=auth_headers, json={"enabled": False}).status_code == 200
+    def get(job):
+        response = client.get("/api/v1/jobs/" + job["id"], headers=auth_headers)
+        assert response.status_code == 200
+        return response.json()
+    blocked = get(first)
+    assert blocked["status"] == "queued" and blocked["error"] is None
+    assert blocked["queue_block_reason"] == "engine_disabled"
+    assert blocked["progress"] == first["progress"]
+    assert blocked["log_text"] == first["log_text"]
+    listed = {row["id"]: row for row in client.get("/api/v1/jobs", headers=auth_headers).json()}
+    assert listed[first["id"]]["queue_block_reason"] == "engine_disabled"
+    assert get(other)["queue_block_reason"] is None
+    assert get(active)["queue_block_reason"] is None
+    assert client.put(path, headers=auth_headers, json={"enabled": True}).status_code == 200
+    assert get(first)["queue_block_reason"] is None
+    assert client.put(path, headers=auth_headers, json={"enabled": False}).status_code == 200
+    cancelled = client.post("/api/v1/jobs/" + first["id"] + "/cancel", headers=auth_headers).json()
+    assert cancelled["status"] == "cancelled" and cancelled["queue_block_reason"] is None
+    retried = client.post("/api/v1/jobs/" + first["id"] + "/retry", headers=auth_headers).json()
+    assert retried["status"] == "queued" and retried["queue_block_reason"] == "engine_disabled"
