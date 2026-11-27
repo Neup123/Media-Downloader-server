@@ -42,7 +42,8 @@ for path in files:
     relative = path.relative_to(workdir).as_posix()
     suffix = path.suffix.lower()
     media_verified = False
-    if suffix in {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".mov"}:
+    duration = None
+    if suffix in {".mp4", ".mkv", ".webm", ".mp3", ".m4a", ".mov", ".ts"}:
         probe = subprocess.run(
             ["ffprobe", "-v", "error", "-show_entries", "format=duration",
              "-of", "json", str(path)],
@@ -50,6 +51,13 @@ for path in files:
         )
         if probe.returncode or not json.loads(probe.stdout or b"{}").get("format"):
             raise SystemExit("Video/audio output is not parseable")
+        if suffix == ".ts":
+            duration = float(json.loads(probe.stdout)["format"]["duration"])
+            subprocess.run(
+                ["ffmpeg", "-v", "error", "-protocol_whitelist", "file,pipe",
+                 "-i", str(path), "-frames:v", "1", "-f", "null", "-"],
+                capture_output=True, timeout=15, check=True,
+            )
         media_verified = True
     elif suffix in {".zip", ".cbz"}:
         with zipfile.ZipFile(path) as archive:
@@ -72,6 +80,7 @@ for path in files:
         "size": path.stat().st_size,
         "sha256": _file_sha256(path),
         "media_verified": media_verified,
+        **({"duration": duration} if duration is not None else {}),
     })
 print(json.dumps(output))
 """
@@ -128,7 +137,7 @@ def inspect_original_files(job_id: str) -> list[dict]:
     return manifest
 
 
-def verify_remote_files(job: dict, manifest: list[dict]) -> None:
+def verify_remote_files(job: dict, manifest: list[dict], *, label: str = "P2") -> None:
     output = job.get("output_files") or []
     source = verify_output_sets(manifest, output, job["id"])
     for item in output:
@@ -151,7 +160,7 @@ def verify_remote_files(job: dict, manifest: list[dict]) -> None:
         if transferred != expected["size"] or digest.hexdigest() != expected["sha256"]:
             raise RuntimeError("P2 remote content does not match the completed local file")
     recognized = sum(1 for entry in manifest if entry["media_verified"])
-    print(f"Verified {len(manifest)} P2 WebDAV files by remote SHA-256; "
+    print(f"Verified {len(manifest)} {label} WebDAV files by remote SHA-256; "
           f"{recognized} recognized media files parsed or signature-checked.")
 
 

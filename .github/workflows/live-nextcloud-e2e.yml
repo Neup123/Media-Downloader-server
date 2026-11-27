@@ -14,6 +14,8 @@ on:
       - "app/**"
       - "web/**"
       - "tests/e2e_live_webdav.py"
+      - "tests/e2e_p2_site_webdav.py"
+      - "tests/e2e_streamlink_webdav.py"
       - "tests/e2e_standalone_compose.py"
       - "tests/e2e_browser_engine_settings.py"
       - "tests/test_browser_option_mapping_contract.py"
@@ -140,6 +142,7 @@ jobs:
             -hide_banner -loglevel error -f lavfi -i "color=c=blue:s=160x120:r=10:d=8" \
             -c:v libx264 -g 10 -sc_threshold 0 -f hls -hls_time 1 -hls_list_size 0 \
             /fixtures/recording.m3u8
+          cp fixture/recording.m3u8 fixture/recording-finite.m3u8
           sed -i '/^#EXT-X-ENDLIST/d' fixture/recording.m3u8
 
       - name: Create ephemeral test credentials
@@ -190,6 +193,9 @@ jobs:
             --volume "$PWD:/work" --workdir /work \
             mcr.microsoft.com/playwright/python:v1.56.0-noble \
             bash -lc 'python -m pip install --no-cache-dir playwright==1.56.0 httpx==0.28.1 && python tests/e2e_browser_engine_settings.py'
+
+      - name: Verify finite HLS recording completes naturally with manifest and WebDAV readback
+        run: python tests/e2e_streamlink_webdav.py
 
       - name: Preserve actual running UI screenshots
         if: success()
