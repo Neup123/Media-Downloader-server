@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.adapters.common_cli import _output_files
 from app.engine_failures import EngineFailure, EngineFailureKind, classify_cli_error
 from app.cookies import materialize_cookie_file
 from app.gallery_selection import validate_gallery_selection_settings, validate_gallery_identity_settings
@@ -243,13 +244,7 @@ async def _execute_gallery_dl(
     if return_code != 0:
         raise EngineFailure(failure_kind, f"gallery-dl exited with status {return_code}")
 
-    ignored_suffixes = (".part", ".tmp", ".ytdl", ".aria2")
-    files = sorted(
-        path for path in workdir.rglob("*")
-        if path.is_file()
-        and not path.name.endswith(ignored_suffixes)
-        and not Path(str(path) + ".aria2").exists()
-    )
+    files = _output_files(workdir)
     if not files:
         raise EngineFailure(EngineFailureKind.NO_OUTPUT, "gallery-dl exited successfully but no output file was found")
     return files
