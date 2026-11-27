@@ -29,6 +29,8 @@ SOURCES = {
 }
 VERSION_TEXT = re.compile(r"[vV]?[0-9][0-9A-Za-z.+-]{0,79}\Z")
 SHA256 = re.compile(r"[a-fA-F0-9]{64}\Z")
+GITHUB_PAGE_SIZE = 100
+GITHUB_MAX_PAGES = 20
 
 
 def integration_pin(requirements: str, dockerfile: str, source: tuple[str, str, str]) -> str | None:
@@ -48,7 +50,7 @@ def integration_pin(requirements: str, dockerfile: str, source: tuple[str, str, 
     return pins[0]
 
 
-def fetch_json(url: str) -> dict:
+def fetch_json(url: str) -> dict | list:
     request = Request(url, headers={"Accept": "application/json",
                                    "User-Agent": "downloader-server-release-review/1"})
     with urlopen(request, timeout=20) as response:
@@ -56,22 +58,55 @@ def fetch_json(url: str) -> dict:
     if len(raw) > 8_000_000:
         raise ValueError("Release metadata exceeds bound")
     data = json.loads(raw)
-    if not isinstance(data, dict):
-        raise ValueError("Expected release object")
+    if not isinstance(data, (dict, list)):
+        raise ValueError("Expected release object or collection")
     return data
+
+
+def select_github_stable_release(source_url: str, reader=fetch_json) -> str | None:
+    """Select the highest stable version from a bounded, complete release listing.
+
+    GitHub's prerelease flag alone is insufficient: some upstreams publish
+    beta-tagged releases with prerelease=false. A successful empty or
+    prerelease-only listing is distinct from a malformed/incomplete listing.
+    """
+    selected: tuple[Version, str] | None = None
+    for page in range(1, GITHUB_MAX_PAGES + 1):
+        rows = reader(f"{source_url}?per_page={GITHUB_PAGE_SIZE}&page={page}")
+        if not isinstance(rows, list) or len(rows) > GITHUB_PAGE_SIZE:
+            raise ValueError("Invalid GitHub release page")
+        for row in rows:
+            if (not isinstance(row, dict) or type(row.get("draft")) is not bool
+                    or type(row.get("prerelease")) is not bool):
+                raise ValueError("Invalid GitHub release entry")
+            if row["draft"] or row["prerelease"]:
+                continue
+            tag = row.get("tag_name")
+            if not isinstance(tag, str) or not VERSION_TEXT.fullmatch(tag):
+                raise ValueError("Unrecognized release tag")
+            version = Version(tag)
+            if version.is_prerelease or version.is_devrelease:
+                continue
+            if selected is None or version > selected[0]:
+                selected = (version, tag)
+        if len(rows) < GITHUB_PAGE_SIZE:
+            return selected[1] if selected is not None else None
+    raise ValueError("GitHub release listing exceeds page bound")
 
 
 def check_engine(engine: str, requirements: str, dockerfile: str, reader=fetch_json) -> dict:
     kind, name, repo = SOURCES[engine]
     source_url = (f"https://pypi.org/pypi/{name}/json" if kind == "pypi"
-                  else f"https://api.github.com/repos/{repo}/releases/latest")
+                  else f"https://api.github.com/repos/{repo}/releases")
     current = integration_pin(requirements, dockerfile, SOURCES[engine])
     result = {"engine": engine, "source": source_url, "upstream": f"https://github.com/{repo}",
               "current": current, "candidate": None, "review_required": False}
     if current is None:
         return {**result, "outcome": "not_integrated"}
-    data = reader(source_url)
     if kind == "pypi":
+        data = reader(source_url)
+        if not isinstance(data, dict):
+            raise ValueError("Expected PyPI release object")
         try:
             latest, digest = select_stable_release(data)
         except ValueError as exc:
@@ -82,9 +117,9 @@ def check_engine(engine: str, requirements: str, dockerfile: str, reader=fetch_j
             raise ValueError("Missing valid distribution artifact digest")
         result["artifact_sha256"] = digest
     else:
-        if data.get("draft") is not False or data.get("prerelease") is not False:
-            raise ValueError("Release is not published stable")
-        latest = data.get("tag_name")
+        latest = select_github_stable_release(source_url, reader)
+        if latest is None:
+            return {**result, "outcome": "no_eligible_stable_release"}
     if not isinstance(latest, str) or not VERSION_TEXT.fullmatch(latest):
         raise ValueError("Unrecognized release tag")
     candidate = Version(latest)
