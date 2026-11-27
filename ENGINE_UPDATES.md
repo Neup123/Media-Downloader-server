@@ -319,12 +319,25 @@ BBDown, the installer must use the corresponding Dockerfile ARG
 version source, with independently verified immutable artifacts. There is no
 separate watch-only version. A missing pin is reported as not integrated.
 The weekly/manual main-only job records stable upstream candidates and one
-review issue per engine/version across open and closed issues. No runtime
-activation, pin changes, candidate PR creation or promotion is performed.
+review issue per engine/version across open and closed issues. The watcher
+reads all pages of the repository issue collection, including unlabelled
+issues; PRs do not count. Equivalent PEP 440 version spellings share one
+review, including repeated discoveries within a run. A failed or malformed
+ledger lookup stops issue creation. The existing workflow concurrency guard
+serializes watcher runs; independent concurrent issue writers are not locked.
+No runtime activation, pin changes, candidate PR creation or promotion is performed.
 A review must establish licensing/activation/CLI/API compatibility, then
 prepare the engine-specific candidate and run its legal site/fixture and
-existing full acceptance gate. GitHub latest-release semantics are documented
-at https://docs.github.com/en/rest/releases/releases#get-the-latest-release.
+existing full acceptance gate. For GitHub sources, the watcher scans up to
+20 pages of 100 releases and compares parsed versions, rather than trusting
+the latest-release endpoint or release ordering. Both GitHub's prerelease
+flag and the parsed version must identify a stable release: upstream beta
+tags are not eligible even when GitHub marks them as ordinary releases.
+An empty or beta-only complete listing has no eligible stable release;
+malformed or incomplete/over-bound listings fail discovery rather than
+claiming the installed engine is current. No candidate is installed by this
+review-only watcher. Release listing semantics:
+https://docs.github.com/en/rest/releases/releases#list-releases.
 The current integration stack must still wire real binary/image pins; this
 watch alone does not complete #153.
 
