@@ -14,7 +14,7 @@ import subprocess
 from pathlib import Path
 from urllib.request import Request, urlopen
 
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 from scripts.engine_updates import PIN, select_stable_release
 
 SOURCES = {
@@ -115,13 +115,34 @@ def issue_title(row: dict) -> str:
 
 
 def record_reviews(rows: list[dict], run_url: str, gh=subprocess.check_output) -> None:
-    for row in rows:
-        if row.get("review_required") is not True:
-            continue
+    pending = [row for row in rows if row.get("review_required") is True]
+    if not pending:
+        return
+    # Use the issue collection, not eventually indexed search or a fixed
+    # result cap. Include closed/unlabelled issues; exclude pull requests.
+    pages = json.loads(gh(["gh", "api", "--paginate", "--slurp",
+                           "repos/{owner}/{repo}/issues?state=all&per_page=100"], text=True))
+    if not isinstance(pages, list) or not pages or any(not isinstance(p, list) for p in pages):
+        raise ValueError("Invalid review ledger response")
+    recorded: set[tuple[str, Version]] = set()
+    prefix = "engine-update-blocked: "
+    for page in pages:
+        for item in page:
+            if not isinstance(item, dict) or not isinstance(item.get("title"), str):
+                raise ValueError("Invalid review ledger entry")
+            if "pull_request" in item or not item["title"].startswith(prefix):
+                continue
+            engine, sep, version = item["title"][len(prefix):].partition(" ")
+            if not sep or engine not in SOURCES or not VERSION_TEXT.fullmatch(version):
+                continue
+            try:
+                recorded.add((engine, Version(version)))
+            except InvalidVersion:
+                continue
+    for row in pending:
         title = issue_title(row)
-        existing = json.loads(gh(["gh", "issue", "list", "--state", "all", "--limit", "100",
-                                  "--search", f'"{title}" in:title', "--json", "number,title"], text=True))
-        if any(item["title"] == title for item in existing):
+        key = (row["engine"], Version(row["candidate"]))
+        if key in recorded:
             continue
         body = ("Refs #153. Stable upstream version discovered; not an approved update.\n\n"
                 f"Current pin: {row['current']}\nCandidate: {row['candidate']}\n"
@@ -131,6 +152,7 @@ def record_reviews(rows: list[dict], run_url: str, gh=subprocess.check_output) -
                 "candidate gate. Never merge or release merely because a version was discovered.")
         gh(["gh", "issue", "create", "--title", title, "--label", "engine-update-blocked",
             "--body", body], text=True)
+        recorded.add(key)
 
 
 def main() -> None:
