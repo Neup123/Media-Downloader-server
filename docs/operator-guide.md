@@ -113,6 +113,12 @@ timeout instead directs the user to the destination; completed output
 remains eligible for existing verified-manifest recovery. The deadline
 budget excludes time spent paused in aria2, as before.
 
+CLI diagnostics use the last explicit error marker and a recognized HTTP
+status or failure phrase. Ordinary progress text and status-like numbers in
+source URLs do not establish an HTTP or login failure. Unknown explicit
+errors keep the generic explanation; a diagnostic authentication category
+is not proof that stored cookies are invalid or that a provider is activated.
+
 For direct HTTP(S) downloads using curl, the failure message distinguishes
 timeouts, partial transfers, local read/write errors, redirect limits and
 recognized HTTP failures (including deleted files and temporary source

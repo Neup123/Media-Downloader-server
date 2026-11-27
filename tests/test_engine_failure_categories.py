@@ -201,3 +201,58 @@ def test_real_curl_adapter_failure_against_loopback(tmp_path, path, kind):
         finally:
             server.shutdown()
             thread.join(timeout=5)
+
+
+@pytest.mark.parametrize("line,kind", [
+    ("ERROR: [youtube] fixture: HTTP Error 403: Forbidden", EngineFailureKind.ACCESS_DENIED),
+    ("[gallery][error] 401 Unauthorized", EngineFailureKind.AUTH_REQUIRED),
+    ("you-get: [error] login required", EngineFailureKind.AUTH_REQUIRED),
+    ("ERROR: Sign in to confirm you're not a bot", EngineFailureKind.AUTH_REQUIRED),
+    ("ERROR: cookies are expired", EngineFailureKind.AUTH_REQUIRED),
+    ("ERROR: HTTP status code 503", EngineFailureKind.SOURCE_BUSY),
+    ("ERROR: HTTP Error 504", EngineFailureKind.TIMEOUT),
+    ("ERROR: https://example.invalid/401?token=429", EngineFailureKind.UNKNOWN),
+    ("ERROR: failed to load https://example.invalid/sign-in/404", EngineFailureKind.UNKNOWN),
+    ("ERROR: fixture 429 frames", EngineFailureKind.UNKNOWN),
+    ("INFO: error 429 in media title", None),
+    ("[download] filename error 403.mp4", None),
+    ("ERROR: unrelated operation; sign in the title", EngineFailureKind.UNKNOWN),
+    ("ERROR: connection refused", EngineFailureKind.NETWORK),
+])
+def test_cli_explicit_diagnostic_marker_and_status_context(line, kind):
+    assert classify_cli_error(line) == kind
+
+
+@pytest.mark.parametrize("runner", ["shared", "yt-dlp", "gallery-dl"])
+@pytest.mark.parametrize("last,kind", [
+    ("ERROR: HTTP Error 503: Service Unavailable", EngineFailureKind.SOURCE_BUSY),
+    ("ERROR: https://example.invalid/401?token=synthetic-private", EngineFailureKind.UNKNOWN),
+])
+def test_real_cli_runners_keep_last_explicit_category(tmp_path, runner, last, kind):
+    from app.adapters.yt_dlp import _execute_ytdlp
+    from app.adapters.gallery_dl import _execute_gallery_dl
+
+    logs = []
+
+    async def no_op(_):
+        pass
+
+    async def no():
+        return False
+
+    async def log(line):
+        logs.append(line)
+
+    lines = ["ERROR: login required", last, "INFO: error 429 in media title"]
+    argv = [sys.executable, "-c", f"print({lines[0]!r}); print({lines[1]!r}); print({lines[2]!r}); raise SystemExit(3)"]
+    with pytest.raises(EngineFailure) as caught:
+        if runner == "shared":
+            asyncio.run(run_cli(name="fixture", argv=argv, workdir=tmp_path,
+                                on_progress=no_op, on_log=log, is_cancelled=no))
+        else:
+            execute = _execute_ytdlp if runner == "yt-dlp" else _execute_gallery_dl
+            asyncio.run(execute(argv, tmp_path, no_op, log, no))
+    assert caught.value.kind == kind
+    assert "synthetic-private" not in user_failure_message(caught.value)
+    assert "example.invalid" not in user_failure_message(caught.value)
+    assert any("HTTP Error 503" in x or "example.invalid" in x for x in logs)
