@@ -2,7 +2,6 @@
 import asyncio
 import sys
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 
@@ -45,16 +44,24 @@ def executable(tmp_path, name, script):
     return str(path)
 
 
-@pytest.mark.parametrize("case", ["success", "failed", "disabled", "busy", "missing", "target-settings", "cancelled"])
+@pytest.mark.parametrize("case", ["success", "cookie", "failed", "disabled", "busy", "missing", "target-settings", "cancelled", "stale-producer", "manifest-failure"])
 def test_worker_fallback_contract(client, settings, auth_headers, monkeypatch, tmp_path, case):
+    cookie_check = """
+import sys
+cookie = Path(sys.argv[sys.argv.index('--cookies') + 1])
+assert cookie.read_bytes() == b'synthetic-only'
+assert cookie.parent != Path.cwd()
+""" if case == "cookie" else ""
     primary = executable(tmp_path, "primary", """
 from pathlib import Path
+""" + cookie_check + """
 Path('stale.mp4').write_bytes(b'unverified primary bytes')
 print('ERROR: unsupported URL')
 raise SystemExit(3)
 """)
     secondary = executable(tmp_path, "secondary", """
 from pathlib import Path
+""" + cookie_check + """
 assert not Path('stale.mp4').exists()
 """ + ("""
 print('ERROR: HTTP Error 429: Too Many Requests token=synthetic-private')
@@ -68,14 +75,30 @@ print('__DL_FILE__' + str(p.resolve()))
     worker = JobWorker(factory, settings)
     calls = []
 
+    overrides = {}
+    if case == "cookie":
+        from app.cookies import store_cookie_file
+        store_cookie_file(settings.data_dir / "cookies", "fixture.txt",
+                          b"synthetic-only", settings.encryption_key)
+        overrides["cookies_file"] = "fixture.txt"
     with factory() as session:
-        job = Job(url=URL, engine="you-get", status="queued", overrides={})
+        job = Job(url=URL, engine="you-get", status="queued", overrides=overrides,
+                  output_engine="yt-dlp" if case == "stale-producer" else None)
         session.add(job)
         if case == "target-settings":
             session.add(EngineSetting(engine="yt-dlp", settings={"format": "custom"}))
         session.commit()
         job_id = job.id
     worker._active_engines[job_id] = "you-get"
+    if case == "stale-producer":
+        # Simulate crash after producer persistence but before manifest publication.
+        work = settings.data_dir / "jobs" / job_id
+        work.mkdir(parents=True)
+        (work / "old.mp4").write_bytes(b"unverified")
+    if case == "manifest-failure":
+        def fail_manifest(*_):
+            raise OSError("synthetic disk failure")
+        monkeypatch.setattr("app.worker.save_completed_files", fail_manifest)
     if case == "disabled":
         assert client.put("/api/v1/engines/yt-dlp/policy", headers=auth_headers,
                           json={"enabled": False}).status_code == 200
@@ -85,6 +108,13 @@ print('__DL_FILE__' + str(p.resolve()))
 
     async def run_primary(**kw):
         calls.append("you-get")
+        if case == "stale-producer":
+            with factory() as session:
+                assert session.get(Job, job_id).output_engine is None
+            assert not list(kw["workdir"].iterdir())
+            result = kw["workdir"] / "result.mp4"
+            result.write_bytes(b"verified primary fixture")
+            return [result]
         kw["executable"] = primary
         if case == "cancelled":
             with factory() as session:
@@ -109,7 +139,7 @@ print('__DL_FILE__' + str(p.resolve()))
     job = client.get("/api/v1/jobs/" + job_id, headers=auth_headers).json()
     assert job["engine"] == "you-get"
     work = settings.data_dir / "jobs" / job_id
-    if case == "success":
+    if case in {"success", "cookie"}:
         assert calls == ["you-get", "yt-dlp"]
         assert job["status"] == "completed", job["error"]
         assert job["output_engine"] == "yt-dlp"
@@ -124,6 +154,15 @@ print('__DL_FILE__' + str(p.resolve()))
         assert recovered["status"] == "completed"
         assert recovered["output_engine"] == "yt-dlp"
         assert calls == ["you-get", "yt-dlp"]
+        if case == "cookie":
+            assert not list(work.parent.glob(".downloader-cookie-" + job_id + "-*"))
+            assert "synthetic-only" not in job["log_text"]
+    elif case == "stale-producer":
+        assert calls == ["you-get"]
+        assert job["status"] == "completed"
+        assert job["output_engine"] is None
+        assert load_completed_files(work) == [work / "result.mp4"]
+        assert (settings.output_dir / job_id / "result.mp4").read_bytes() == b"verified primary fixture"
     else:
         assert job["status"] == ("cancelled" if case == "cancelled" else "failed"), job["error"]
         assert job["output_engine"] is None
@@ -135,6 +174,8 @@ print('__DL_FILE__' + str(p.resolve()))
             assert "yt-dlp fallback also failed" in job["error"]
             assert "limiting requests" in job["error"]
             assert "synthetic-private" not in job["error"]
+        elif case == "manifest-failure":
+            assert calls == ["you-get", "yt-dlp"]
         else:
             assert calls == ["you-get"]
             if case != "cancelled":
@@ -161,3 +202,31 @@ def test_secondary_failure_mapping_is_fixed():
         message = user_failure_message(YouGetFallbackFailure(kind))
         assert "yt-dlp fallback also failed" in message
         assert user_failure_message(EngineFailure(kind, "synthetic")) in message
+
+
+def test_additive_producer_migration_preserves_existing_jobs(settings):
+    from sqlalchemy import inspect, text
+    from app.db import initialize_database, make_engine, make_session_factory
+
+    engine = make_engine(settings.database_url)
+    try:
+        initialize_database(engine)
+        factory = make_session_factory(engine)
+        with factory() as session:
+            original = Job(url="https://example.test/fixture", engine="you-get", status="queued")
+            session.add(original)
+            session.commit()
+            original_id = original.id
+        # Simulate pre-feature schema; the existing row must survive upgrade.
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE jobs DROP COLUMN output_engine"))
+        initialize_database(engine)
+        initialize_database(engine)  # idempotent additive migration
+        assert "output_engine" in {column["name"] for column in inspect(engine).get_columns("jobs")}
+        with factory() as session:
+            migrated = session.get(Job, original_id)
+            assert migrated.url == "https://example.test/fixture"
+            assert migrated.engine == "you-get"
+            assert migrated.output_engine is None
+    finally:
+        engine.dispose()
