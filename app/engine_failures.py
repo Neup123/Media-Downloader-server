@@ -40,6 +40,13 @@ class EngineFailure(RuntimeError):
         super().__init__(diagnostic)
 
 
+class YouGetFallbackFailure(EngineFailure):
+    """Fixed identity of a failed secondary attempt; never reflect its text."""
+
+    def __init__(self, kind: EngineFailureKind):
+        super().__init__(kind, f"you-get fallback to yt-dlp failed ({kind.value})")
+
+
 # Accept explicit diagnostic markers used by the CLI adapters, rather than
 # a word such as "error" in an ordinary progress or media-title line.
 _CLI_ERROR_MARKER = re.compile(

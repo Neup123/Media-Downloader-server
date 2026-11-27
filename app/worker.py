@@ -12,7 +12,7 @@ from sqlalchemy import select
 from app.adapters.aria2 import Aria2Rpc
 from app.adapters.gallery_dl import run_gallery_dl
 from app.adapters.generic import run_generic
-from app.adapters.you_get import run_you_get
+from app.adapters.you_get import run_you_get, effective_settings as you_get_settings, permits_youtube_fallback
 from app.adapters.svtplay import run_svtplay
 from app.adapters.get_sauce import run_get_sauce
 from app.adapters.yt_dlp import run_ytdlp
@@ -27,6 +27,7 @@ from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, ENGINE_SET
 from app.engine_gate import disabled_engines, engine_permitted
 from app.cookies import provided_cookie_for_url
 from app.user_failures import user_failure_message
+from app.engine_failures import EngineFailure, EngineFailureKind, YouGetFallbackFailure
 from app.security import preflight_source_dns
 
 
@@ -223,6 +224,26 @@ class JobWorker:
                     self._last_scheduler_warning = now
                 await asyncio.sleep(1.0)
 
+    def _reserve_youtube_fallback(self, job_id: str) -> bool:
+        # The same dispatcher-owned slot map counts both regular and fallback
+        # attempts. No await between checking the limit/policy and reservation.
+        if self._active_engines.get(job_id) != "you-get":
+            return False
+        limit = self.settings.max_concurrent_per_engine.get("yt-dlp", 1)
+        if sum(name == "yt-dlp" for name in self._active_engines.values()) >= limit:
+            return False
+        with self.session_factory() as session:
+            if not engine_permitted(session, "yt-dlp"):
+                return False
+            row = session.get(EngineSetting, "yt-dlp")
+            if row and {**ENGINE_DEFAULTS["yt-dlp"], **(row.settings or {})} != ENGINE_DEFAULTS["yt-dlp"]:
+                # Do not silently drop nondefault target-engine settings.
+                return False
+        if shutil.which("yt-dlp") is None:
+            return False
+        self._active_engines[job_id] = "yt-dlp"
+        return True
+
     async def _execute(self, job_id: str) -> None:
         with self.session_factory() as session:
             job = session.get(Job, job_id)
@@ -303,19 +324,24 @@ class JobWorker:
                     current.output_files = [*existing, item]
                     session.commit()
 
+        output_engine = None
+        manifest_verified = False
+        active_engine = engine
         try:
             # A workspace error must pass through the normal FAILED transition.
             workdir = (self.settings.data_dir / "jobs" / job_id).resolve()
             workdir.mkdir(parents=True, exist_ok=True)
             recovery = inspect_workspace_recovery(workdir)
             existing_files = list(recovery.files)
+            manifest_verified = recovery.state == WorkspaceRecoveryState.VERIFIED_COMPLETION
             if recovery.state != WorkspaceRecoveryState.VERIFIED_COMPLETION:
                 # The only durable authority to preserve previous delivery
                 # records is a verified complete-download manifest.
                 with self.session_factory() as session:
                     current = session.get(Job, job_id)
-                    if current and current.output_files:
+                    if current and (current.output_files or current.output_engine):
                         current.output_files = []
+                        current.output_engine = None
                         append_log(
                             current,
                             "Cleared prior delivery records: no verified completed-download manifest survived recovery",
@@ -379,13 +405,44 @@ class JobWorker:
                         allow_private_targets=self.settings.allow_private_targets,
                     )
                 elif engine == "you-get":
-                    files = await run_you_get(
-                        executable="you-get", url=url, workdir=workdir,
-                        global_settings=global_settings, overrides=overrides,
-                        cookie_dir=cookie_dir,
-                        encryption_key=self.settings.encryption_key,
-                        on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
-                    )
+                    try:
+                        files = await run_you_get(
+                            executable="you-get", url=url, workdir=workdir,
+                            global_settings=global_settings, overrides=overrides,
+                            cookie_dir=cookie_dir,
+                            encryption_key=self.settings.encryption_key,
+                            on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                        )
+                    except EngineFailure as primary:
+                        if await is_cancelled():
+                            raise asyncio.CancelledError
+                        if not permits_youtube_fallback(url, global_settings, overrides, primary):
+                            raise
+                        if not self._reserve_youtube_fallback(job_id):
+                            await on_log("yt-dlp fallback not admitted: policy, capacity, executable or settings")
+                            raise
+                        active_engine = "yt-dlp"
+                        # Never promote partial primary output. Same job ID and
+                        # deadline, but a fresh workspace for the second attempt.
+                        shutil.rmtree(workdir)
+                        workdir.mkdir(parents=True, exist_ok=True)
+                        await on_log("you-get reported unsupported YouTube video; trying yt-dlp")
+                        selected_cookie = you_get_settings(global_settings, overrides)["cookies_file"]
+                        fallback_overrides = {"cookies_file": selected_cookie} if selected_cookie else {}
+                        try:
+                            files = await run_ytdlp(
+                                executable="yt-dlp", url=url, workdir=workdir,
+                                global_settings={}, overrides=fallback_overrides,
+                                cookie_dir=cookie_dir, encryption_key=self.settings.encryption_key,
+                                on_progress=on_progress, on_log=on_log, is_cancelled=is_cancelled,
+                            )
+                        except EngineFailure as secondary:
+                            raise YouGetFallbackFailure(secondary.kind) from secondary
+                        except TimeoutError as secondary:
+                            raise YouGetFallbackFailure(EngineFailureKind.TIMEOUT) from secondary
+                        except Exception as secondary:
+                            raise YouGetFallbackFailure(EngineFailureKind.UNKNOWN) from secondary
+                        output_engine = "yt-dlp"
                 elif engine == "get-sauce":
                     files = await run_get_sauce(
                         executable="get-sauce", url=url, workdir=workdir,
@@ -416,7 +473,17 @@ class JobWorker:
             if await is_cancelled():
                 raise asyncio.CancelledError
             if not existing_files:
+                # Persist the producer before publishing the durable manifest.
+                # Recovery clears it if that manifest never became valid.
+                if output_engine is not None:
+                    with self.session_factory() as session:
+                        current = session.get(Job, job_id)
+                        if current is None:
+                            raise asyncio.CancelledError
+                        current.output_engine = output_engine
+                        session.commit()
                 save_completed_files(workdir, files)
+                manifest_verified = True
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
@@ -446,6 +513,8 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
+                    if not manifest_verified:
+                        current.output_engine = None
                     if self._stopping:
                         transition_job(current, JobStatus.QUEUED)
                         current.cancel_requested = False
@@ -471,6 +540,8 @@ class JobWorker:
             with self.session_factory() as session:
                 current = session.get(Job, job_id)
                 if current:
+                    if not manifest_verified:
+                        current.output_engine = None
                     was_delivering = current.status == JobStatus.DELIVERING
                     transition_job(current, JobStatus.FAILED)
                     if was_delivering and current.output_files:
@@ -479,7 +550,7 @@ class JobWorker:
                                             "verified_file_count": len(current.output_files)}
                     deadline = self._engine_deadlines.get(job_id)
                     expired_engine_deadline = (
-                        (engine, self.settings.job_timeout_seconds)
+                        (active_engine, self.settings.job_timeout_seconds)
                         if not was_delivering and deadline is not None and deadline.expired()
                         else None
                     )

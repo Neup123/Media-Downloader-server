@@ -240,6 +240,7 @@ class JobOut(BaseModel):
     owner_id: str | None = None
     delivery_subfolder: str | None = None
     engine: str
+    output_engine: EngineName | None = None
     status: str
     pause_capability: dict[str, Any]
     queue_block_reason: Literal["engine_disabled"] | None = None

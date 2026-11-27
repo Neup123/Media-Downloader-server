@@ -716,6 +716,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                         "owner_id": owner_id,
                         "source_url": job.url,
                         "engine": job.engine,
+                        "output_engine": job.output_engine or job.engine,
                         "created_at": job.created_at.isoformat(),
                         "filename": item.get("filename", ""),
                     }
@@ -1240,6 +1241,7 @@ def job_to_dict(job: Job, session: Session, *, disabled: set[str] | None = None)
         "owner_id": job.owner_id,
         "delivery_subfolder": job.delivery_subfolder,
         "engine": job.engine,
+        "output_engine": job.output_engine,
         "status": job.status,
         "pause_capability": pause_capability(job),
         "queue_block_reason": queue_block_reason,

@@ -62,3 +62,32 @@ active-engine precedence and exact settings targets; current signed preview
 only accepts yt-dlp/gallery-dl, and cookie list/upload/delete do not implement
 that provider contract. Do not equate metadata failures, generic URL matching,
 file presence, or synthetic credentials with successful authorization.
+
+
+## Narrow you-get fallback candidate (#177)
+
+The candidate only retries an explicit unsupported-extractor failure for a
+single exact-host YouTube video; unknown errors (including an unclassified
+dethrottle traceback), auth, access, network, rate limits, playlists,
+custom primary format/proxy, unavailable/disabled/saturated yt-dlp and
+nondefault target-engine settings never trigger automatic fallback. The
+worker changes the existing dispatcher reservation synchronously from
+you-get to yt-dlp, within the original timeout and cancellation scope.
+The primary workspace is discarded before the secondary attempt. The
+same selected cookie file, if any, is passed through the existing
+materializer; there is no new credential store or credential validation.
+Fixed public error mapping identifies both engines and the secondary
+category without reflecting diagnostics.
+
+No new job state: STARTING/EXTRACTING/DOWNLOADING use the existing
+app/job_states.py transition table and worker writer. The selected engine
+remains immutable. The additive nullable output_engine column records the
+alternate producer before manifest publication; no verified manifest
+means the producer is cleared on failure or recovery. Verified re-delivery
+retains it. Core JobOut and provenance expose it separately.
+
+The legacy real YouTube acceptance and separate reviewed-patch requirement
+remain open; deterministic subprocess and worker tests do not certify the
+original upstream dethrottle incident, a real YouTube download, provider
+authentication, or production exposure. Do not treat this candidate as
+permission to enable gated engines or deploy through the target-host gate.
