@@ -46,6 +46,15 @@ The ordinary workflow is link → preview → selection → submit → Library. 
 
 Use the private cookie-upload mechanism only when an authorized source requires it. Do not paste cookies, proxy credentials, session tokens or app passwords into issue descriptions, terminal command history, screenshot annotations or diagnostic logs. A cookie file is an authentication artifact; invalidate and replace it if exposed.
 
+For yt-dlp, gallery-dl and you-get, a recognized authentication failure
+includes guidance to check the source account and update your own cookie
+file in cookie settings. A selected per-job or owner-matched personal cookie
+gets a replacement instruction. When no personal file was selected, the
+message is identical whether or not an administrator-provided fallback was
+used. Explicit unauthenticated gallery selections and non-authentication
+errors do not get this cookie guidance. The message does not establish that
+a stored cookie expired, and it does not change or revoke any stored file.
+
 ## When the service looks healthy but downloads do not move
 
 The HTTP `/healthz` endpoint checks process liveness only. A queue can still be unhealthy if the database, scheduler or transfer engine cannot work. Once deployed, the separately proposed `/readyz` endpoint checks database and scheduler readiness, not remote sites, host egress, or final WebDAV delivery.
