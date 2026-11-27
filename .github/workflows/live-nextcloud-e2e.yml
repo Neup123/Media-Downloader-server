@@ -196,6 +196,8 @@ jobs:
 
       - name: Verify finite HLS recording completes naturally with manifest and WebDAV readback
         run: python tests/e2e_streamlink_webdav.py
+        env:
+          PYTHONPATH: .
 
       - name: Preserve actual running UI screenshots
         if: success()
