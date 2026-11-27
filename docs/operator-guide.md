@@ -113,6 +113,13 @@ timeout instead directs the user to the destination; completed output
 remains eligible for existing verified-manifest recovery. The deadline
 budget excludes time spent paused in aria2, as before.
 
+A missing executable is an administrator installation problem. A zero-exit
+CLI run without eligible output is still a failure: partial/temporary
+files, aria2 sidecar-associated files and symlink escapes do not qualify.
+The yt-dlp fallback retains its JSON exclusion; explicitly reported
+yt-dlp outputs are also checked against the shared eligibility filter.
+This does not validate the media codec or guarantee remote content integrity.
+
 CLI diagnostics use the last explicit error marker and a recognized HTTP
 status or failure phrase. Ordinary progress text and status-like numbers in
 source URLs do not establish an HTTP or login failure. Unknown explicit

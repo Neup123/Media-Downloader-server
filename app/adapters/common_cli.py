@@ -24,11 +24,11 @@ GRACEFUL_STOP_CODES = frozenset({0, 130})
 EXCLUDED_SUFFIXES = (".part", ".download", ".ytdl", ".aria2", ".tmp")
 
 
-def _output_files(workdir: Path) -> list[Path]:
+def _output_files(workdir: Path, *, additional_excluded_suffixes: tuple[str, ...] = ()) -> list[Path]:
     root = workdir.resolve()
     result = []
     for path in workdir.rglob("*"):
-        if not path.is_file() or path.name.endswith(EXCLUDED_SUFFIXES):
+        if not path.is_file() or path.name.endswith(EXCLUDED_SUFFIXES + additional_excluded_suffixes):
             continue
         resolved = path.resolve()
         if not resolved.is_relative_to(root) or path.is_symlink():

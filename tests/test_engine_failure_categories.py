@@ -256,3 +256,64 @@ def test_real_cli_runners_keep_last_explicit_category(tmp_path, runner, last, ki
     assert "synthetic-private" not in user_failure_message(caught.value)
     assert "example.invalid" not in user_failure_message(caught.value)
     assert any("HTTP Error 503" in x or "example.invalid" in x for x in logs)
+
+
+@pytest.mark.parametrize("runner", ["shared", "yt-dlp", "gallery-dl"])
+@pytest.mark.parametrize("case", ["missing", "empty", "temporary", "reported_partial", "external_symlink", "valid"])
+def test_cli_output_and_missing_binary_contract(tmp_path, runner, case):
+    from app.adapters.yt_dlp import _execute_ytdlp
+    from app.adapters.gallery_dl import _execute_gallery_dl
+
+    work = tmp_path / "work"
+    work.mkdir()
+    outside = tmp_path / "outside.bin"
+    outside.write_bytes(b"synthetic outside file")
+    scripts = {
+        "empty": "pass",
+        "temporary": (
+            "from pathlib import Path; "
+            "[Path(name).write_bytes(b'partial') for name in "
+            "('x.part', 'x.tmp', 'x.download', 'x.ytdl', 'x.aria2', 'paired.mp4', 'paired.mp4.aria2')]"
+        ),
+        "reported_partial": (
+            "from pathlib import Path; p = Path('clip.part'); "
+            "p.write_bytes(b'partial'); print('__DL_FILE__' + str(p.resolve()))"
+        ),
+        "external_symlink": "pass",
+        "valid": (
+            "from pathlib import Path; p = Path('clip.mp4'); "
+            "p.write_bytes(b'synthetic media'); print('__DL_FILE__' + str(p.resolve())); "
+            "Path('clip.tmp').write_bytes(b'partial')"
+        ),
+    }
+    if case == "external_symlink":
+        (work / "link.mp4").symlink_to(outside)
+    argv = [str(tmp_path / "absent-executable")] if case == "missing" else [
+        sys.executable, "-c", scripts[case],
+    ]
+
+    async def no_op(_):
+        pass
+
+    async def no():
+        return False
+
+    async def execute():
+        if runner == "shared":
+            return await run_cli(name="fixture", argv=argv, workdir=work,
+                                 on_progress=no_op, on_log=no_op, is_cancelled=no)
+        adapter = _execute_ytdlp if runner == "yt-dlp" else _execute_gallery_dl
+        return await adapter(argv, work, no_op, no_op, no)
+
+    if case == "valid":
+        assert asyncio.run(execute()) == [work / "clip.mp4"]
+        assert (work / "clip.mp4").read_bytes() == b"synthetic media"
+    else:
+        with pytest.raises(EngineFailure) as caught:
+            asyncio.run(execute())
+        expected = EngineFailureKind.MISSING_BINARY if case == "missing" else EngineFailureKind.NO_OUTPUT
+        assert caught.value.kind == expected
+        message = user_failure_message(caught.value)
+        assert ("not installed" if case == "missing" else "returned no file") in message
+        assert str(tmp_path) not in message
+    assert outside.read_bytes() == b"synthetic outside file"

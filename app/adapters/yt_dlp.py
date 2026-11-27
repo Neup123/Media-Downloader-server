@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any, Awaitable, Callable
 
 from app.adapters.process_env import downloader_environment
+from app.adapters.common_cli import _output_files
 from app.engine_failures import EngineFailure, EngineFailureKind, classify_cli_error
 from app.cookies import materialize_cookie_file
 from app.security import validate_extra_args
@@ -189,7 +190,12 @@ async def _execute_ytdlp(
             if not line:
                 continue
             if line.startswith("__DL_FILE__"):
-                candidate = Path(line[len("__DL_FILE__"):]).expanduser().resolve()
+                candidate = Path(line[len("__DL_FILE__"):]).expanduser()
+                if not candidate.is_absolute():
+                    candidate = workdir / candidate
+                if candidate.is_symlink():
+                    continue
+                candidate = candidate.resolve()
                 try:
                     candidate.relative_to(workdir.resolve())
                     if candidate.is_file():
@@ -226,9 +232,10 @@ async def _execute_ytdlp(
     if return_code != 0:
         raise EngineFailure(failure_kind, f"yt-dlp exited with status {return_code}")
 
-    files = sorted(set(reported_files))
+    eligible = set(_output_files(workdir))
+    files = sorted(set(reported_files) & eligible)
     if not files:
-        files = [p for p in workdir.rglob("*") if p.is_file() and not p.name.endswith((".part", ".ytdl", ".json"))]
+        files = _output_files(workdir, additional_excluded_suffixes=(".json",))
     if not files:
         raise EngineFailure(EngineFailureKind.NO_OUTPUT, "yt-dlp exited successfully but no output file was found")
     return files
