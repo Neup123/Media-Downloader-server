@@ -141,7 +141,12 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         return {"status": "ready", "service": "downloader-server"}
 
     @app.post("/api/v1/preview", response_model=MediaPreviewOut, response_model_exclude_unset=True, tags=["jobs"])
-    async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate)):
+    async def preview_media(payload: MediaPreviewIn, _: bool = Depends(authenticate),
+                            session: Session = Depends(db_session)):
+        # Administrative admission is not a missing user credential. Reject
+        # before DNS or extractor work; do not emit a requirement hint.
+        if not engine_permitted(session, payload.engine):
+            raise HTTPException(status_code=409, detail="Selected engine is disabled")
         try:
             # Explicit extractor choice only; keep existing yt-dlp callers
             # unchanged. The gallery path is strictly public even on trusted
@@ -173,8 +178,11 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
 
 
     @app.post("/api/v1/torrent/manifest", response_model=TorrentManifestOut, tags=["jobs"])
-    async def torrent_manifest(payload: TorrentManifestIn, _: bool = Depends(authenticate)):
+    async def torrent_manifest(payload: TorrentManifestIn, _: bool = Depends(authenticate),
+                               session: Session = Depends(db_session)):
         """Inspect magnet metadata or uploaded .torrent bytes without a download job."""
+        if not engine_permitted(session, "aria2c"):
+            raise HTTPException(status_code=409, detail="Selected engine is disabled")
         try:
             url = None
             torrent_base64 = None
@@ -569,7 +577,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             return row
         existing = prior_submission()
         if existing is not None:
-            return job_to_dict(existing)
+            return job_to_dict(existing, session)
         job = build_job(payload, session, config)
         job.submission_id = request_id
         job.submission_fingerprint = fingerprint
@@ -585,9 +593,9 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             existing = prior_submission()
             if existing is None:
                 raise
-            return job_to_dict(existing)
+            return job_to_dict(existing, session)
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/batch", status_code=202, response_model=JobBatchOut, tags=["jobs"])
     def submit_batch(payload: JobBatchCreate, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -606,7 +614,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         session.commit()
         for job in jobs:
             session.refresh(job)
-        return {"created": len(jobs), "jobs": [job_to_dict(job) for job in jobs]}
+        disabled = disabled_engines(session)
+        return {"created": len(jobs), "jobs": [job_to_dict(job, session, disabled=disabled) for job in jobs]}
 
     @app.get("/api/v1/jobs", response_model=list[JobOut], tags=["jobs"])
     def list_jobs(
@@ -652,7 +661,8 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                     cast(Job.output_files, Text).ilike(pattern, escape="\\"),
                 ))
         query = query.order_by(Job.created_at.desc(), Job.id.desc()).offset(offset).limit(limit)
-        return [job_to_dict(job) for job in session.scalars(query).all()]
+        disabled = disabled_engines(session)
+        return [job_to_dict(job, session, disabled=disabled) for job in session.scalars(query).all()]
 
     @app.post("/api/v1/jobs/retry-failed", tags=["jobs"])
     def retry_all_failed(_: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -717,7 +727,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         job = session.get(Job, job_id)
         if not job:
             raise HTTPException(status_code=404, detail="Job not found")
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/cancel", response_model=JobOut, tags=["jobs"])
     def cancel_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -734,7 +744,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
             append_log(job, "Cancellation requested")
         session.commit()
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/stop", response_model=JobOut, tags=["jobs"])
     def stop_recording(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -743,7 +753,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         job = request_recording_stop(session, job_id)
         if job is None:
             raise HTTPException(status_code=409, detail="Only active standalone Streamlink recordings can be stopped")
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/pause", response_model=JobOut, tags=["jobs"])
     async def pause_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -766,7 +776,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         append_log(job, "Paused current aria2 transfer (same job and GID)")
         session.commit()
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/resume", response_model=JobOut, tags=["jobs"])
     async def resume_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -789,7 +799,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         append_log(job, "Resumed the same aria2 transfer (no restart)")
         session.commit()
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/retry", status_code=202, response_model=JobOut, tags=["jobs"])
     def retry_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -801,7 +811,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         requeue_job(job, reason="Job queued for retry")
         session.commit()
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.post("/api/v1/jobs/{job_id}/redeliver", status_code=202, response_model=JobOut, tags=["jobs"])
     def redeliver_job(job_id: str, _: bool = Depends(authenticate), session: Session = Depends(db_session)):
@@ -827,7 +837,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
         )
         session.commit()
         session.refresh(job)
-        return job_to_dict(job)
+        return job_to_dict(job, session)
 
     @app.get("/api/v1/jobs/{job_id}/events", tags=["jobs"])
     async def job_events(job_id: str, request: Request, _: bool = Depends(authenticate)):
@@ -844,7 +854,7 @@ def create_app(settings: Settings | None = None, start_worker: bool = True) -> F
                     job = session.get(Job, job_id)
                     if not job:
                         break
-                    current = job_to_dict(job)
+                    current = job_to_dict(job, session)
                 fingerprint = json.dumps(current, sort_keys=True, default=str)
                 if fingerprint != previous:
                     yield f"event: job\ndata: {json.dumps(current, default=str)}\n\n"
@@ -1218,7 +1228,12 @@ def pause_capability(job: Job) -> dict[str, Any]:
     }
 
 
-def job_to_dict(job: Job) -> dict:
+def job_to_dict(job: Job, session: Session, *, disabled: set[str] | None = None) -> dict:
+    # Derived from current policy, not a persisted state or repeated scheduler write.
+    queue_block_reason = None
+    if job.status == JobStatus.QUEUED and not job.cancel_requested:
+        if job.engine in (disabled if disabled is not None else disabled_engines(session)):
+            queue_block_reason = "engine_disabled"
     return {
         "id": job.id,
         "url": job.url,
@@ -1227,6 +1242,7 @@ def job_to_dict(job: Job) -> dict:
         "engine": job.engine,
         "status": job.status,
         "pause_capability": pause_capability(job),
+        "queue_block_reason": queue_block_reason,
         "overrides": job.overrides or {},
         "progress": job.progress or {},
         "output_files": job.output_files or [],

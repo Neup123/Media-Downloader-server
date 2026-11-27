@@ -242,6 +242,7 @@ class JobOut(BaseModel):
     engine: str
     status: str
     pause_capability: dict[str, Any]
+    queue_block_reason: Literal["engine_disabled"] | None = None
     overrides: dict[str, Any]
     progress: dict[str, Any]
     output_files: list[dict[str, Any]]

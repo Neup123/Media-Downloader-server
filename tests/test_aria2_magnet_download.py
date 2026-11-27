@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock
 import pytest
 
 from app.adapters.aria2 import Aria2Rpc
+from app.engine_failures import EngineFailure, EngineFailureKind
+from app.user_failures import user_failure_message
 
 
 def _status(state, path, *, total="20", done="20", children=None, selected="true"):
@@ -17,7 +19,7 @@ def _status(state, path, *, total="20", done="20", children=None, selected="true
 
 
 async def _run(tmp_path, monkeypatch, *, url="magnet:?xt=urn:btih:abc", delay=False,
-               error=False, cancel=False, wrong_dir=False, direct=False, invisible=False, unselected=False):
+               error=False, error_code="3", expected_kind=EngineFailureKind.NOT_FOUND, cancel=False, wrong_dir=False, direct=False, invisible=False, unselected=False):
     root = tmp_path / "job"
     root.mkdir()
     payload = root / "payload.bin"
@@ -56,7 +58,7 @@ async def _run(tmp_path, monkeypatch, *, url="magnet:?xt=urn:btih:abc", delay=Fa
             if not child_ready:
                 raise RuntimeError("GID not found")
             if error:
-                return {**_status("error", payload), "errorCode": "3", "errorMessage": "disk"}
+                return {**_status("error", payload), "errorCode": error_code, "errorMessage": "fixture diagnostic only"}
             if polls["child"] == 1:
                 return _status("paused", payload, total="100", done="10")
             if cancel:
@@ -85,10 +87,13 @@ async def _run(tmp_path, monkeypatch, *, url="magnet:?xt=urn:btih:abc", delay=Fa
                                    global_settings={}, overrides={}, on_progress=on_progress,
                                    on_log=on_log, is_cancelled=is_cancelled)
         elif error:
-            with pytest.raises(RuntimeError, match="aria2 download failed"):
+            with pytest.raises(EngineFailure, match="aria2 download failed") as caught:
                 await rpc.download(url=url, job_id="j", workdir=root,
                                    global_settings={}, overrides={}, on_progress=on_progress,
                                    on_log=on_log, is_cancelled=is_cancelled)
+            assert caught.value.kind == expected_kind
+            assert "fixture diagnostic only" not in user_failure_message(caught.value)
+            assert not any(event["percent"] == 100.0 for event in progress)
         elif wrong_dir:
             with pytest.raises(RuntimeError, match="outside the job directory"):
                 await rpc.download(url=url, job_id="j", workdir=root,
@@ -139,3 +144,17 @@ def test_unselected_existing_files_are_not_delivered(tmp_path, monkeypatch):
     calls, events = asyncio.run(_run(tmp_path, monkeypatch, unselected=True))
     assert events[-1]["filename"] == "payload.bin"
     assert any(method == "aria2.getOption" for method, _ in calls)
+
+
+@pytest.mark.parametrize("code,kind", [
+    ("2", EngineFailureKind.TIMEOUT),
+    ("19", EngineFailureKind.NETWORK),
+    ("25", EngineFailureKind.INVALID_METADATA),
+    ("29", EngineFailureKind.SOURCE_BUSY),
+    ("32", EngineFailureKind.CHECKSUM_FAILED),
+    ("31", EngineFailureKind.UNKNOWN),
+])
+def test_payload_rpc_error_category_and_cleanup(tmp_path, monkeypatch, code, kind):
+    calls, _ = asyncio.run(_run(tmp_path, monkeypatch, error=True, error_code=code, expected_kind=kind))
+    for method in ("aria2.forceRemove", "aria2.removeDownloadResult"):
+        assert {params[0] for name, params in calls if name == method} == {"parent", "child"}
