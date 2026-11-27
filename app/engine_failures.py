@@ -40,26 +40,60 @@ class EngineFailure(RuntimeError):
         super().__init__(diagnostic)
 
 
+# Accept explicit diagnostic markers used by the CLI adapters, rather than
+# a word such as "error" in an ordinary progress or media-title line.
+_CLI_ERROR_MARKER = re.compile(
+    r"^\s*(?:(?:\[[^\]\r\n]+\]|(?:you-get|svtplay-dl|streamlink|gallery-dl|yt-dlp|get-sauce):)\s*)*"
+    r"(?:\[(?:error|fatal)\]|(?:error|fatal|exception|[a-z]+error)\s*:)",
+    re.IGNORECASE,
+)
+_CLI_URL = re.compile(r"(?:https?|ftps?)://[^\s<>\"']+", re.IGNORECASE)
+_CLI_HTTP_STATUS = re.compile(
+    r"\b(?:http(?:\s+error|\s+status|\s+status\s+code)?|status(?:\s+code)?)\s*[:=]?\s*"
+    r"([45]\d\d)\b|^\s*[:\s]*(401|403|404|408|410|429|502|503|504)\b",
+    re.IGNORECASE,
+)
+
+
 def classify_cli_error(line: str) -> EngineFailureKind | None:
-    # Only inspect bounded diagnostic lines; retain category, never message.
-    text = line[:4000].lower()
-    if not re.search(r"\berror\b|\bexception\b|\bfatal\b", text):
+    # Only inspect bounded explicit diagnostic lines. URL paths, IDs and
+    # query values are not HTTP status codes or authentication evidence.
+    text = line[:4000]
+    marker = _CLI_ERROR_MARKER.match(text)
+    if marker is None:
         return None
-    if re.search(r"\b429\b|too many requests|rate.limit", text):
+    detail = _CLI_URL.sub(" ", text[marker.end():]).lower()
+    status = _CLI_HTTP_STATUS.search(detail)
+    if status:
+        code = status.group(1) or status.group(2)
+        category = {
+            "401": EngineFailureKind.AUTH_REQUIRED,
+            "403": EngineFailureKind.ACCESS_DENIED,
+            "404": EngineFailureKind.NOT_FOUND,
+            "408": EngineFailureKind.TIMEOUT,
+            "410": EngineFailureKind.NOT_FOUND,
+            "429": EngineFailureKind.RATE_LIMITED,
+            "502": EngineFailureKind.SOURCE_PROTOCOL,
+            "503": EngineFailureKind.SOURCE_BUSY,
+            "504": EngineFailureKind.TIMEOUT,
+        }.get(code)
+        if category is not None:
+            return category
+    if re.search(r"too many requests|rate[- ]limit", detail):
         return EngineFailureKind.RATE_LIMITED
-    if re.search(r"\b401\b|login required|authentication required|sign in|cookies? (?:required|expired|invalid)", text):
+    if re.search(r"login required|log[ -]?in required|authentication required|sign in to confirm|sign in required|cookies? (?:are )?(?:required|expired|invalid)", detail):
         return EngineFailureKind.AUTH_REQUIRED
-    if re.search(r"\b403\b|forbidden|access denied", text):
+    if re.search(r"\bforbidden\b|access denied", detail):
         return EngineFailureKind.ACCESS_DENIED
-    if re.search(r"\b404\b|not found|video unavailable", text):
+    if re.search(r"not found|video unavailable", detail):
         return EngineFailureKind.NOT_FOUND
-    if re.search(r"unsupported url|no suitable extractor|no matching extractor", text):
+    if re.search(r"unsupported url|no suitable extractor|no matching extractor", detail):
         return EngineFailureKind.UNSUPPORTED
-    if re.search(r"certificate verify failed|certificate verification failed", text):
+    if re.search(r"certificate verify failed|certificate verification failed", detail):
         return EngineFailureKind.CERTIFICATE
-    if "no space left on device" in text:
+    if "no space left on device" in detail:
         return EngineFailureKind.DISK_FULL
-    if re.search(r"connection refused|could not resolve|network is unreachable", text):
+    if re.search(r"connection refused|could not resolve|network is unreachable", detail):
         return EngineFailureKind.NETWORK
     return EngineFailureKind.UNKNOWN
 
