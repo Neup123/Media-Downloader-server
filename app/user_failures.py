@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+from typing import Literal
 
 from app.delivery import DeliveryError
 from app.engine_failures import EngineFailure, EngineFailureKind
@@ -12,6 +13,7 @@ from app.security import SourceResolutionError, UnsafeUrlError
 def user_failure_message(
     error: Exception, *, during_delivery: bool = False,
     engine_deadline: tuple[str, int] | None = None,
+    cookie_guidance: Literal["selected", "available"] | None = None,
 ) -> str:
     """Return a bounded user message without reflecting raw engine/stdout/URL text.
 
@@ -51,6 +53,17 @@ def user_failure_message(
     if during_delivery:
         return "The download finished, but the file could not be saved. Check your destination."
     if isinstance(error, EngineFailure):
+        if error.kind == EngineFailureKind.AUTH_REQUIRED:
+            if cookie_guidance == "selected":
+                return (
+                    "The source requires valid authentication. Check your account and "
+                    "replace your selected cookie file in cookie settings before retrying."
+                )
+            if cookie_guidance == "available":
+                return (
+                    "The source requires valid authentication. Check your account, "
+                    "add or update your own cookies in cookie settings, or ask the administrator."
+                )
         messages = {
             EngineFailureKind.MISSING_BINARY: "The download engine is not installed. Contact the administrator.",
             EngineFailureKind.NO_OUTPUT: "The download engine returned no file. Check the source link.",

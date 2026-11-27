@@ -23,7 +23,7 @@ from app.db import EngineSetting, Job, append_log, get_queued_jobs, utcnow
 from app.job_states import JobStatus, TERMINAL_STATUSES, ACTIVE_STATUSES, ENGINE_PROGRESS_STATUSES, InvalidJobTransition, transition_job
 from app.delivery import deliver_files
 from app.redaction import _redact
-from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS
+from app.engine_registry import ENGINE_DEFAULTS, ENGINE_DESCRIPTIONS, ENGINE_SETTING_KEYS
 from app.engine_gate import disabled_engines, engine_permitted
 from app.cookies import provided_cookie_for_url
 from app.user_failures import user_failure_message
@@ -243,6 +243,14 @@ class JobWorker:
             engine_row = session.get(EngineSetting, engine)
             global_settings = {**ENGINE_DEFAULTS.get(engine, {}), **(engine_row.settings if engine_row else {})}
             session.commit()
+
+        # Capture only the caller's selection, before silent administrator
+        # fallback mutates the local overrides. No stored cookie is tested or
+        # invalidated here. Explicit gallery selections must stay unauthenticated.
+        cookie_guidance = None
+        if ("cookies_file" in ENGINE_SETTING_KEYS.get(engine, ())
+                and "gallery_items" not in overrides and "gallery_item_ids" not in overrides):
+            cookie_guidance = "selected" if overrides.get("cookies_file") else "available"
 
         async def on_log(message: str) -> None:
             with self.session_factory() as session:
@@ -478,6 +486,7 @@ class JobWorker:
                     current.error = user_failure_message(
                         exc, during_delivery=was_delivering,
                         engine_deadline=expired_engine_deadline,
+                        cookie_guidance=cookie_guidance,
                     )
                     current.finished_at = utcnow()
                     append_log(current, f"Job failed: {message}")
