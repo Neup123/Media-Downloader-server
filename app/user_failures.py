@@ -5,10 +5,14 @@ import asyncio
 
 from app.delivery import DeliveryError
 from app.engine_failures import EngineFailure, EngineFailureKind
+from app.engine_registry import ENGINE_NAMES
 from app.security import SourceResolutionError, UnsafeUrlError
 
 
-def user_failure_message(error: Exception, *, during_delivery: bool = False) -> str:
+def user_failure_message(
+    error: Exception, *, during_delivery: bool = False,
+    engine_deadline: tuple[str, int] | None = None,
+) -> str:
     """Return a bounded user message without reflecting raw engine/stdout/URL text.
 
     Typed engine failures contribute only a fixed category. The only inspected
@@ -30,6 +34,19 @@ def user_failure_message(error: Exception, *, during_delivery: bool = False) -> 
     if isinstance(error, SourceResolutionError):
         return "The source link could not be reached. Check the address and try again."
     if isinstance(error, (TimeoutError, asyncio.TimeoutError)):
+        if during_delivery:
+            return "File delivery timed out. Check your destination and retry."
+        # Only the worker's expired asyncio deadline is evidence of the
+        # configured engine budget being exhausted. A source/RPC timeout is
+        # not necessarily that deadline. Never interpolate exception text.
+        if engine_deadline is not None:
+            engine, seconds = engine_deadline
+            if engine in ENGINE_NAMES and type(seconds) is int and seconds > 0:
+                return (
+                    f"The download took too long. {engine} reached the configured "
+                    f"{seconds}-second download limit. Try a smaller download or "
+                    "ask the administrator to review the limit."
+                )
         return "The download took too long. Try again."
     if during_delivery:
         return "The download finished, but the file could not be saved. Check your destination."
