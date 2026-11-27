@@ -15,6 +15,19 @@ class EngineFailureKind(StrEnum):
     CERTIFICATE = "certificate"
     DISK_FULL = "disk_full"
     METADATA_ONLY = "metadata_only"
+    TIMEOUT = "timeout"
+    SLOW_TRANSFER = "slow_transfer"
+    INCOMPLETE = "incomplete"
+    RESUME_FAILED = "resume_failed"
+    DUPLICATE_TRANSFER = "duplicate_transfer"
+    FILE_CONFLICT = "file_conflict"
+    STORAGE_IO = "storage_io"
+    INVALID_METADATA = "invalid_metadata"
+    SOURCE_PROTOCOL = "source_protocol"
+    REDIRECT_LIMIT = "redirect_limit"
+    ENGINE_CONFIGURATION = "engine_configuration"
+    SOURCE_BUSY = "source_busy"
+    CHECKSUM_FAILED = "checksum_failed"
     UNKNOWN = "unknown"
 
 
@@ -64,8 +77,37 @@ def curl_failure_kind(code: int, detail: str) -> EngineFailureKind:
                 code, EngineFailureKind.UNKNOWN)
 
 
+# aria2 1.37 RPC errorCode uses the documented exit-status vocabulary.
+# Codes 0 (success), 1 (unknown) and 31 (reserved) have no specific failure.
+# Group only errors that have the same safe operator recovery action.
+_ARIA2_FAILURES = {
+    "2": EngineFailureKind.TIMEOUT,
+    "3": EngineFailureKind.NOT_FOUND,
+    "4": EngineFailureKind.NOT_FOUND,
+    "5": EngineFailureKind.SLOW_TRANSFER,
+    "6": EngineFailureKind.NETWORK,
+    "7": EngineFailureKind.INCOMPLETE,
+    "8": EngineFailureKind.RESUME_FAILED,
+    "9": EngineFailureKind.DISK_FULL,
+    "10": EngineFailureKind.RESUME_FAILED,
+    "11": EngineFailureKind.DUPLICATE_TRANSFER,
+    "12": EngineFailureKind.DUPLICATE_TRANSFER,
+    "13": EngineFailureKind.FILE_CONFLICT,
+    **dict.fromkeys(("14", "15", "16", "17", "18"), EngineFailureKind.STORAGE_IO),
+    "19": EngineFailureKind.NETWORK,
+    "20": EngineFailureKind.INVALID_METADATA,
+    "21": EngineFailureKind.SOURCE_PROTOCOL,
+    "22": EngineFailureKind.SOURCE_PROTOCOL,
+    "23": EngineFailureKind.REDIRECT_LIMIT,
+    "24": EngineFailureKind.AUTH_REQUIRED,
+    **dict.fromkeys(("25", "26", "27"), EngineFailureKind.INVALID_METADATA),
+    "28": EngineFailureKind.ENGINE_CONFIGURATION,
+    "29": EngineFailureKind.SOURCE_BUSY,
+    "30": EngineFailureKind.ENGINE_CONFIGURATION,
+    "32": EngineFailureKind.CHECKSUM_FAILED,
+}
+
+
 def aria2_failure_kind(code: object) -> EngineFailureKind:
-    # aria2 exit-status vocabulary: https://aria2.github.io/manual/en/html/aria2c.html#exit-status
-    return {"3": EngineFailureKind.NOT_FOUND, "6": EngineFailureKind.NETWORK,
-            "9": EngineFailureKind.DISK_FULL, "24": EngineFailureKind.AUTH_REQUIRED}.get(
-                str(code), EngineFailureKind.UNKNOWN)
+    # https://aria2.github.io/manual/en/html/aria2c.html#exit-status
+    return _ARIA2_FAILURES.get(str(code), EngineFailureKind.UNKNOWN)

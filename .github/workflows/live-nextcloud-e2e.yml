@@ -3,7 +3,7 @@ name: Live Nextcloud WebDAV E2E
 on:
   workflow_dispatch:
   pull_request:
-    branches: [main]
+    branches: [main, integration]
   push:
     branches: [main]
     paths:

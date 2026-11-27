@@ -105,6 +105,15 @@ existing redacted log; the public message never repeats an engine's stdout,
 source URL or arbitrary error text. A failed recording/transfer is not marked
 complete because the message is more helpful.
 
+For aria2 file and torrent jobs, documented numeric errors also distinguish
+source timeouts, slow or interrupted transfers, failed resume, duplicate
+transfers, workspace conflicts and I/O failures, invalid metadata, protocol
+and redirect errors, configuration problems, temporary source unavailability,
+and failed checksum verification. Follow the recovery instruction on the
+card; workspace and engine configuration problems require administrator
+attention. Unknown/reserved codes keep the generic message. No change to
+retry, cancellation, cleanup, or delivery rules is implied by these categories.
+
 ### Engine admission policy (administrator API)
 
 The authenticated Core administrator may read or set
