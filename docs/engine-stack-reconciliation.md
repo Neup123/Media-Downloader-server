@@ -40,3 +40,25 @@ separate integration work.
 Do not claim the original stack or any umbrella issue complete until
 all linked acceptance criteria and exact-head checks pass. Existing
 #227 watch and #230 Streamlink adapter are already on main.
+
+## #155 remaining provider and preview boundary
+
+Administrative disable also blocks explicitly selected yt-dlp/gallery-dl
+preview and aria2 manifest inspection before starting a subprocess or RPC
+request (HTTP 409, fixed detail, no missing-user-requirement hint). Uses
+`engine_permitted`; no new stored state or policy writer. The existing
+bounded direct-file HEAD is a separate metadata operation, not an engine
+activation. Tests exercise actual authenticated API routes with mocked
+extractor/DNS/RPC boundaries and policy disable/re-enable; they do not prove
+provider recognition or live credential acceptance.
+
+Full #155 is still blocked: current Core registry has eight engines and no
+Telegram adapter or owner-scoped connection routes. Legacy #173 explicitly
+requires a real authorized account before activation; its instance-only
+secret storage is insufficient for #157. Current vault stores encrypted
+files but lacks provider-authenticated per-site Test/status/invalidation
+(#156). Nextcloud #155 UI requires a typed Core recognition result with
+active-engine precedence and exact settings targets; current signed preview
+only accepts yt-dlp/gallery-dl, and cookie list/upload/delete do not implement
+that provider contract. Do not equate metadata failures, generic URL matching,
+file presence, or synthetic credentials with successful authorization.
